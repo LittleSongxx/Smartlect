@@ -1,0 +1,135 @@
+server:
+  port: ${SMARTLECT_USER_PORT:18082}
+  shutdown: graceful
+
+spring:
+  config:
+    import: optional:classpath:smartlect-common.yml
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  application:
+    name: smartlect-user
+  cloud:
+    openfeign:
+      sentinel:
+        enabled: true
+    loadbalancer:
+      cache:
+        enabled: true
+        ttl: 10s
+        capacity: 256
+      health-check:
+        initial-delay: 0
+        interval: 15s
+        path:
+          default: /actuator/health
+      retry:
+        enabled: true
+        max-retries-on-same-service-instance: 0
+        max-retries-on-next-service-instance: 1
+        retry-on-all-operations: false
+        avoid-previous-instance: true
+    nacos:
+      discovery:
+        server-addr: ${SMARTLECT_NACOS_ADDR:127.0.0.1:18848}
+        username: ${SMARTLECT_NACOS_USERNAME:nacos}
+        password: ${SMARTLECT_NACOS_PASSWORD:}
+        namespace: ${SMARTLECT_NACOS_NAMESPACE:}
+        group: ${SMARTLECT_NACOS_GROUP:SMARTLECT_GROUP}
+        prefer-ip-address: true
+        heart-beat-interval: 5
+        heart-beat-timeout: 15
+        ip-delete-timeout: 30
+    sentinel:
+      transport:
+        dashboard: ${SMARTLECT_SENTINEL_DASHBOARD:}
+      eager: true
+  datasource:
+    url: jdbc:mysql://${SMARTLECT_MYSQL_HOST:127.0.0.1}:${SMARTLECT_MYSQL_PORT:13306}/smartlect_user?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&allowMultiQueries=true&useSSL=false
+    username: ${SMARTLECT_MYSQL_USER:smartlect_app}
+    password: ${SMARTLECT_MYSQL_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    user: ${SMARTLECT_FLYWAY_USER:smartlect_flyway}
+    password: ${SMARTLECT_FLYWAY_PASSWORD:}
+  data:
+    redis:
+      host: ${SMARTLECT_REDIS_HOST:127.0.0.1}
+      port: ${SMARTLECT_REDIS_PORT:16379}
+      username: ${SMARTLECT_REDIS_USERNAME:}
+      password: ${SMARTLECT_REDIS_PASSWORD:}
+      database: ${SMARTLECT_REDIS_DB:0}
+      ssl:
+        enabled: ${SMARTLECT_REDIS_SSL_ENABLED:false}
+  rabbitmq:
+    host: ${SMARTLECT_RABBIT_HOST:127.0.0.1}
+    port: ${SMARTLECT_RABBIT_PORT:15672}
+    username: ${SMARTLECT_RABBIT_USER:smartlect}
+    password: ${SMARTLECT_RABBIT_PASSWORD:}
+    virtual-host: ${SMARTLECT_RABBIT_VHOST:smartlect}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+        default-requeue-rejected: false
+
+mybatis:
+  mapper-locations: classpath*:com/smartlect/mappers/*.xml
+  type-aliases-package: com.smartlect.entity
+  configuration:
+    map-underscore-to-camel-case: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+aliyun:
+  access-key-id: ${SMARTLECT_ALIYUN_ACCESS_KEY_ID:}
+  access-key-secret: ${SMARTLECT_ALIYUN_ACCESS_KEY_SECRET:}
+  directmail:
+    account-name: ${SMARTLECT_ALIYUN_DM_ACCOUNT_NAME:smartlect@smartlect.com}
+    # DirectMail names this boolean switch ReplyToAddress; it is not an email.
+    reply-to-address: ${SMARTLECT_ALIYUN_DM_REPLY_TO_ADDRESS:false}
+
+app:
+  # 之前没声明这个键，SignReconcileTask 就一直没注册过：它的开关是 havingValue = "true"
+  # 且没有 matchIfMissing，键缺失等于关闭。签到写 Redis 位图失败时没有任何补偿，
+  # 这个每小时一次的对账是唯一的兜底，本该是开着的。
+  common-scheduling:
+    enabled: true
+  sign:
+    # SignDailyInitTask 单独关掉，不跟着上面一起开：它在零点把整张 user_sign_record
+    # 无 LIMIT 地读进内存（selectList 只在 simplePage 非空时才拼 limit），
+    # 而写进去的是全 0 位图——getBit 读不存在的键本来就返回 0，这些键存不存在不改变任何行为。
+    # 代价是全表扫描，收益是零。要开之前先把那个查询改成分页。
+    daily-init-enabled: false
+
+user:
+  temp-ban:
+    ms: ${SMARTLECT_USER_TEMP_BAN_MS:7200000}
+    reconcile-interval-ms: ${SMARTLECT_USER_TEMP_BAN_RECONCILE_INTERVAL_MS:60000}
+    reconcile-batch-size: ${SMARTLECT_USER_TEMP_BAN_RECONCILE_BATCH_SIZE:100}
+
+mq:
+  outbox:
+    dispatch-enabled: true
+  compensation:
+    # 用户库现在持有公共补偿审查表，允许自动恢复发送失败；消费失败仍保留人工审查，
+    # MqCompensationLogService 的自动任务会刻意跳过 mq.consume 记录。
+    auto-replay-enabled: true
+
+smartlect:
+  internal:
+    token: ${SMARTLECT_INTERNAL_TOKEN:}
+    auth-enabled: true
+  feign:
+    connect-timeout-ms: 3000
+    read-timeout-ms: 10000
+  security:
+    admin-interceptor: true

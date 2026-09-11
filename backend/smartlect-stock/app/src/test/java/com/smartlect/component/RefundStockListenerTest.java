@@ -1,0 +1,104 @@
+package com.smartlect.component;
+
+import com.smartlect.api.dto.RefundStockRestoreDTO;
+import com.smartlect.biz.SkuStockService;
+import com.smartlect.constants.RabbitMQConfig;
+import com.smartlect.constants.ReliableMessageSender;
+import com.rabbitmq.client.Channel;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class RefundStockListenerTest {
+
+    private final SkuStockService skuStockService = mock(SkuStockService.class);
+    private final ReliableMessageSender reliableMessageSender = mock(ReliableMessageSender.class);
+    private final MqListenerHelper mqListenerHelper = mock(MqListenerHelper.class);
+    private final Channel channel = mock(Channel.class);
+    private RefundStockListener listener;
+
+    @BeforeEach
+    void setUp() {
+        listener = new RefundStockListener();
+        ReflectionTestUtils.setField(listener, "skuStockService", skuStockService);
+        ReflectionTestUtils.setField(listener, "reliableMessageSender", reliableMessageSender);
+        ReflectionTestUtils.setField(listener, "mqListenerHelper", mqListenerHelper);
+        when(mqListenerHelper.tryBeginConsume(any(), anyLong())).thenReturn(true);
+    }
+
+    @Test
+    void successfulRestorePublishesIdempotentResultBeforeAck() throws Exception {
+        RefundStockRestoreDTO payload = payload();
+        Message message = message(17L);
+
+        listener.restore(payload, channel, message);
+
+        verify(skuStockService).restoreRefundStock(payload);
+        verify(reliableMessageSender).replaySend(
+                eq(RabbitMQConfig.REFUND_EXCHANGE),
+                eq(RabbitMQConfig.REFUND_RESULT_KEY),
+                any(),
+                eq("refund:result:r1"));
+        verify(mqListenerHelper).clearConsumeRetry(RabbitMQConfig.REFUND_STOCK_QUEUE, message);
+        verify(channel).basicAck(17L, false);
+        verify(channel, never()).basicNack(17L, false, false);
+    }
+
+    @Test
+    void restoreFailureNacksWithoutPublishingFalseSuccess() throws Exception {
+        RefundStockRestoreDTO payload = payload();
+        Message message = message(18L);
+        doThrow(new IllegalStateException("db unavailable"))
+                .when(skuStockService).restoreRefundStock(payload);
+
+        listener.restore(payload, channel, message);
+
+        verify(reliableMessageSender, never()).replaySend(any(), any(), any(), any());
+        verify(mqListenerHelper).nackWithRetryOrDlq(
+                eq(channel), eq(18L), eq(message), eq(RabbitMQConfig.REFUND_STOCK_QUEUE),
+                eq(payload), any(IllegalStateException.class));
+        verify(channel, never()).basicAck(18L, false);
+    }
+
+    @Test
+    void resultPublishFailureAlsoNacksForBrokerDeadLetterHandling() throws Exception {
+        RefundStockRestoreDTO payload = payload();
+        Message message = message(19L);
+        doThrow(new IllegalStateException("publisher confirm failed"))
+                .when(reliableMessageSender).replaySend(any(), any(), any(), any());
+
+        listener.restore(payload, channel, message);
+
+        verify(mqListenerHelper).nackWithRetryOrDlq(
+                eq(channel), eq(19L), eq(message), eq(RabbitMQConfig.REFUND_STOCK_QUEUE),
+                eq(payload), any(IllegalStateException.class));
+        verify(channel, never()).basicAck(19L, false);
+    }
+
+    private static RefundStockRestoreDTO payload() {
+        RefundStockRestoreDTO payload = new RefundStockRestoreDTO();
+        payload.setRefundRequestId("r1");
+        payload.setBusinessKey("refund:r1");
+        payload.setProductId("p1");
+        payload.setPropertyValueIdHash("sku1");
+        payload.setChangeAmount(2);
+        return payload;
+    }
+
+    private static Message message(long deliveryTag) {
+        MessageProperties properties = new MessageProperties();
+        properties.setDeliveryTag(deliveryTag);
+        return new Message(new byte[0], properties);
+    }
+}

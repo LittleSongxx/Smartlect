@@ -1,0 +1,45 @@
+package com.smartlect.controller.internal;
+
+import com.smartlect.biz.impl.PayChannel4Mock;
+import com.smartlect.biz.PayAttemptService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.smartlect.security.DelegatedUserIdentity;
+import com.smartlect.controller.ABaseController;
+import com.smartlect.entity.vo.ResponseVO;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import jakarta.annotation.Resource;
+
+/** Covered by the common InternalApiAuthFilter; no public mock callback is registered. */
+@RestController
+@RequestMapping("/internal/pay/mock")
+@ConditionalOnProperty(name = "smartlect.payment.mode", havingValue = "mock", matchIfMissing = true)
+public class MockPaymentController extends ABaseController {
+    private final PayChannel4Mock channel;
+    @Resource
+    private PayAttemptService attempts;
+
+    public MockPaymentController(PayChannel4Mock channel) {
+        this.channel = channel;
+    }
+
+    @PostMapping("/complete")
+    public ResponseVO<PayChannel4Mock.PaymentResult> complete(@RequestBody CompletePayment request) {
+        return getSuccessResponseVO(channel.completePayment(request.payOrderId()));
+    }
+
+    @PostMapping("/decline")
+    public ResponseVO<PayAttemptService.Attempt> decline(@RequestBody JsonNode body) {
+        return getSuccessResponseVO(attempts.decline(DelegatedUserIdentity.require(), PayAttemptService.parse(body)));
+    }
+
+    @PostMapping("/attempt")
+    public ResponseVO<PayAttemptService.Attempt> attempt(@RequestBody JsonNode body) {
+        return getSuccessResponseVO(attempts.get(DelegatedUserIdentity.require(), PayAttemptService.parse(body)));
+    }
+
+    public record CompletePayment(String payOrderId) { }
+}

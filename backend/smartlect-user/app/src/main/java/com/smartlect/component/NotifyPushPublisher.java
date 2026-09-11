@@ -1,0 +1,48 @@
+package com.smartlect.component;
+
+import com.smartlect.constants.Constants;
+import com.smartlect.entity.dto.MessageSendDTO;
+import com.smartlect.entity.enums.DateTimePatternEnum;
+import com.smartlect.entity.po.UserNotification;
+import com.smartlect.utils.DateUtil;
+import com.smartlect.utils.StringTools;
+import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RTopic;
+import org.redisson.api.RedissonClient;
+import org.springframework.stereotype.Component;
+
+@Component
+@Slf4j
+public class NotifyPushPublisher {
+
+    @Resource
+    private RedissonClient redissonClient;
+
+    public void push(UserNotification notification) {
+        if (notification == null || StringTools.isEmpty(notification.getUserId())) {
+            return;
+        }
+        try {
+            MessageSendDTO dto = new MessageSendDTO();
+            dto.setMessageType(Constants.WS_MESSAGE_TYPE_NOTIFY);
+            dto.setUserId(notification.getUserId());
+            dto.setNotificationId(notification.getNotificationId());
+            dto.setTitle(notification.getTitle());
+            dto.setContent(notification.getContent());
+            dto.setBizType(notification.getBizType());
+            dto.setBizId(notification.getBizId());
+            if (notification.getCreateTime() != null) {
+                dto.setCreateTime(DateUtil.format(notification.getCreateTime(),
+                        DateTimePatternEnum.YYYY_MM_DD_HH_MM_SS.getPattern()));
+            }
+            RTopic topic = redissonClient.getTopic(Constants.WS_MESSAGE_TOPIC);
+            topic.publish(dto);
+            log.debug("通知 WS 广播已发布 userId={}, notificationId={}",
+                    notification.getUserId(), notification.getNotificationId());
+        } catch (Exception e) {
+            log.warn("通知 WS 广播失败 userId={}, notificationId={}",
+                    notification.getUserId(), notification.getNotificationId(), e);
+        }
+    }
+}

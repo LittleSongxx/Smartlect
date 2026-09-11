@@ -1,0 +1,110 @@
+server:
+  port: ${SMARTLECT_PRODUCT_PORT:18083}
+  shutdown: graceful
+
+spring:
+  config:
+    import: optional:classpath:smartlect-common.yml
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  application:
+    name: smartlect-product
+  cloud:
+    openfeign:
+      sentinel:
+        enabled: true
+    loadbalancer:
+      cache:
+        enabled: true
+        ttl: 10s
+        capacity: 256
+      health-check:
+        initial-delay: 0
+        interval: 15s
+        path:
+          default: /actuator/health
+      retry:
+        enabled: true
+        max-retries-on-same-service-instance: 0
+        max-retries-on-next-service-instance: 1
+        retry-on-all-operations: false
+        avoid-previous-instance: true
+    nacos:
+      discovery:
+        server-addr: ${SMARTLECT_NACOS_ADDR:127.0.0.1:18848}
+        username: ${SMARTLECT_NACOS_USERNAME:nacos}
+        password: ${SMARTLECT_NACOS_PASSWORD:}
+        namespace: ${SMARTLECT_NACOS_NAMESPACE:}
+        group: ${SMARTLECT_NACOS_GROUP:SMARTLECT_GROUP}
+        prefer-ip-address: true
+        heart-beat-interval: 5
+        heart-beat-timeout: 15
+        ip-delete-timeout: 30
+    sentinel:
+      transport:
+        dashboard: ${SMARTLECT_SENTINEL_DASHBOARD:}
+      eager: true
+  datasource:
+    url: jdbc:mysql://${SMARTLECT_MYSQL_HOST:127.0.0.1}:${SMARTLECT_MYSQL_PORT:13306}/smartlect_product?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&allowMultiQueries=true&useSSL=false
+    username: ${SMARTLECT_MYSQL_USER:smartlect_app}
+    password: ${SMARTLECT_MYSQL_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    user: ${SMARTLECT_FLYWAY_USER:smartlect_flyway}
+    password: ${SMARTLECT_FLYWAY_PASSWORD:}
+  data:
+    redis:
+      host: ${SMARTLECT_REDIS_HOST:127.0.0.1}
+      port: ${SMARTLECT_REDIS_PORT:16379}
+      username: ${SMARTLECT_REDIS_USERNAME:}
+      password: ${SMARTLECT_REDIS_PASSWORD:}
+      database: ${SMARTLECT_REDIS_DB:0}
+      ssl:
+        enabled: ${SMARTLECT_REDIS_SSL_ENABLED:false}
+  rabbitmq:
+    host: ${SMARTLECT_RABBIT_HOST:127.0.0.1}
+    port: ${SMARTLECT_RABBIT_PORT:15672}
+    username: ${SMARTLECT_RABBIT_USER:smartlect}
+    password: ${SMARTLECT_RABBIT_PASSWORD:}
+    virtual-host: ${SMARTLECT_RABBIT_VHOST:smartlect}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+        default-requeue-rejected: false
+
+mybatis:
+  mapper-locations: classpath*:com/smartlect/mappers/*.xml
+  type-aliases-package: com.smartlect.entity
+  configuration:
+    map-underscore-to-camel-case: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+app:
+  common-scheduling:
+    enabled: false
+
+mq:
+  outbox:
+    dispatch-enabled: true
+  compensation:
+    auto-replay-enabled: true
+
+smartlect:
+  internal:
+    token: ${SMARTLECT_INTERNAL_TOKEN:}
+    auth-enabled: true
+  feign:
+    connect-timeout-ms: 3000
+    read-timeout-ms: 10000
+  security:
+    admin-interceptor: true

@@ -1,0 +1,31 @@
+package com.smartlect.task;
+
+import com.smartlect.entity.enums.DateTimePatternEnum;
+import com.smartlect.biz.StatisticsInfoService;
+import com.smartlect.utils.DateUtil;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConditionalOnProperty(name = "app.auto-data-task.enabled", havingValue = "true", matchIfMissing = true)
+@Slf4j
+public class AutoDataTask {
+
+    @Resource
+    private StatisticsInfoService statisticsInfoService;
+
+    // 每天的凌晨一点自动统计昨天的数据
+    @Scheduled(cron = "0 0 1 * * ?")
+    @PostConstruct
+    public void autoCountYesterdayData(){
+        // 获取系统当前时间yyyyMMddHHss格式
+        String start = DateUtil.getTimeOnParttern(1, DateTimePatternEnum.YYYY_MM_DD.getPattern()) + " 01:00:00";
+        String end = DateUtil.getTimeOnParttern(0, DateTimePatternEnum.YYYY_MM_DD_HH_MM_SS.getPattern());
+        statisticsInfoService.statistics(start,end);
+        log.info("同步统计数据完成");
+    }
+}
