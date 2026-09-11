@@ -1,0 +1,28 @@
+{
+  "skill_id": "shopping_advice",
+  "version": "1.9.0",
+  "intents": [
+    "选购",
+    "比较规格",
+    "用途预算澄清",
+    "确认下单提案"
+  ],
+  "knowledge": "政策由已加载的support_policy流程处理；实时商品事实来自Java。",
+  "tools": [
+    "recommend_skus",
+    "get_product_offer",
+    "get_my_addresses",
+    "list_my_coupons",
+    "propose_order",
+    "get_conversation_memory",
+    "remember_preference"
+  ],
+  "output_contract": "真实有货SKU卡；已有预算或要求展示可售规格时本轮检索；无法检索所需的交易参数缺失时才澄清；下单只返回待用户确认的提案。",
+  "instructions": "围绕用户用途和明确约束找商品；信息足够就检索或比较，不要求每次都有用途与预算。用户已经给出预算、数量或要求展示当前可售规格时，本轮必须 search_skus 或 recommend_skus；空集是合法收口，不得改口只澄清品类。recommend_skus返回可售规格，get_product_offer补充商品介绍，二者可结合；商品ID用product_id缩小范围，未知类目省略。硬约束只来自用户明确价格、数量、类目或要求，query表达软偏好。保持已核对的价格、库存、规格与功能事实，不以名称或价格推断效果。缺货时解释并寻找满足约束的替代；缺少下单所需规格或地址时再澄清。下单使用真实SKU、数量和收货地址，地址不明确时查本人地址并确认；可用 list_my_coupons 查看本人未使用券，propose_order 可带 userCouponId，成交价以 Java 报价为准；propose_order只生成待用户确认提案。偏好和历史用于理解意图，不代替当前交易事实。",
+  "stop_conditions": [
+    "需要用户澄清",
+    "提案待确认",
+    "全部候选无货",
+    "工具失败或调用额度耗尽"
+  ]
+}
