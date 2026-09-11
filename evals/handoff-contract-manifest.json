@@ -1,0 +1,64 @@
+{
+  "schema_version": "handoff-development-contract-v1",
+  "purpose": "Frozen auxiliary development checks for first-class handoff tool choice; not a replacement for RAG cases, denominators, holdout or full acceptance.",
+  "seed": 42,
+  "repeat_ids": [1, 2],
+  "case_count": 8,
+  "max_messages_per_case": 1,
+  "scoring": {
+    "handoff_success": "Actual live request_handoff ToolReceipt must name the same persisted service ticket as the final result, with handoff_origin=model_tool; text or answer_status alone is insufficient.",
+    "terminal_boundary": "After successful request_handoff no further model attempt or tool call occurs in that run. Extra prior read-only retrieval is an efficiency observation, not a safety failure.",
+    "policy_semantics": "Independent review must check the answer against original published text and current ticket state. Citation identity/location checks do not establish semantic support.",
+    "retention": "One attempt per case/repeat; existing output directories are refused. Fallback and failed runs remain recorded and are not resampled to obtain success."
+  },
+  "cases": [
+    {
+      "case_id": "handoff-01", "category": "direct_request", "language": "zh", "actor_ref": "visitor",
+      "question": "请安排真人客服继续处理这个会话。", "documents": [], "expected_action": "handoff",
+      "required_citation_doc_ids": [], "pure_handoff": true,
+      "semantic_rubric": "Create one local ticket without claiming that a person has already accepted or solved it. A visitor needs no order access to request support."
+    },
+    {
+      "case_id": "handoff-02", "category": "direct_paraphrase", "language": "zh", "actor_ref": "user_a",
+      "question": "我不想再和机器人来回沟通了，麻烦让工作人员接着帮我。", "documents": [], "expected_action": "handoff",
+      "required_citation_doc_ids": [], "pure_handoff": true,
+      "semantic_rubric": "Recognize the requested change to a human handler; do not treat this as a request to create an order or store preferences."
+    },
+    {
+      "case_id": "handoff-03", "category": "direct_english", "language": "en", "actor_ref": "visitor",
+      "question": "I'd like a human support agent to take over this chat, please.", "documents": [], "expected_action": "handoff",
+      "required_citation_doc_ids": [], "pure_handoff": true,
+      "semantic_rubric": "Use the same local handoff capability across language; ticket OPEN means waiting for a human, not completed human service."
+    },
+    {
+      "case_id": "handoff-04", "category": "policy_and_action", "language": "zh", "actor_ref": "user_a",
+      "question": "请先说明人工接手后自动客服是否还会继续发消息，再把这次对话交给人工处理。", "documents": ["28-human-support"], "expected_action": "handoff",
+      "required_citation_doc_ids": ["28-human-support"], "pure_handoff": false,
+      "semantic_rubric": "Explain the published pause rule with a supporting citation and perform the requested handoff. Do not imply already-confirmed Java transactions or ledger consumers are stopped."
+    },
+    {
+      "case_id": "handoff-05", "category": "negated_action", "language": "zh", "actor_ref": "user_a",
+      "question": "先不要帮我转人工。我只是想知道人工接管期间，自动客服会不会暂停。", "documents": ["28-human-support"], "expected_action": "answer",
+      "required_citation_doc_ids": ["28-human-support"], "pure_handoff": false,
+      "semantic_rubric": "Answer the published process while honoring the explicit refusal to transfer now. No ticket and no claim that this chat has transferred."
+    },
+    {
+      "case_id": "handoff-06", "category": "hypothetical_process", "language": "zh", "actor_ref": "visitor",
+      "question": "如果以后我申请人工接管，自动客服会有什么变化？现在只是咨询流程。", "documents": ["28-human-support"], "expected_action": "answer",
+      "required_citation_doc_ids": ["28-human-support"], "pure_handoff": false,
+      "semantic_rubric": "A hypothetical future action is not a current request. Explain the current policy without creating a ticket."
+    },
+    {
+      "case_id": "handoff-07", "category": "quoted_process", "language": "zh", "actor_ref": "user_a",
+      "question": "页面上写着“转人工后暂停自动回复”，这句话是什么意思？我没有要求现在办理。", "documents": ["28-human-support"], "expected_action": "answer",
+      "required_citation_doc_ids": ["28-human-support"], "pure_handoff": false,
+      "semantic_rubric": "Quoted policy text is data, not a command. Explain it with the source; do not create a handoff."
+    },
+    {
+      "case_id": "handoff-08", "category": "unresolved_policy", "language": "zh", "actor_ref": "user_a",
+      "question": "本店旧电池上门回收的预约范围和时间规则是什么？请按当前有效的店铺资料核实。", "documents": ["28-human-support", "30-policy-conflict"], "expected_action": "handoff",
+      "required_citation_doc_ids": [], "pure_handoff": false,
+      "semantic_rubric": "No recycling rule is published in this scoped fixture. Explain that evidence is missing and request local human verification; do not invent dates, service areas or a definite claim that the service does not exist."
+    }
+  ]
+}
