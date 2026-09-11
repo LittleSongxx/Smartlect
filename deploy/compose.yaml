@@ -1,0 +1,122 @@
+name: smartlect
+
+services:
+  mysql:
+    image: mysql:8.4.11
+    ports: ["127.0.0.1:${SMARTLECT_MYSQL_PORT:?run bootstrap}:3306"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SMARTLECT_MYSQL_ROOT_PASSWORD:?run bootstrap}
+      SMARTLECT_MYSQL_PASSWORD: ${SMARTLECT_MYSQL_PASSWORD:?run bootstrap}
+      SMARTLECT_FLYWAY_PASSWORD: ${SMARTLECT_FLYWAY_PASSWORD:?run bootstrap}
+      SMARTLECT_NACOS_MYSQL_PASSWORD: ${SMARTLECT_NACOS_MYSQL_PASSWORD:?run bootstrap}
+      SMARTLECT_SEATA_MYSQL_PASSWORD: ${SMARTLECT_SEATA_MYSQL_PASSWORD:?run bootstrap}
+      SMARTLECT_GROWTH_MYSQL_PASSWORD: ${SMARTLECT_GROWTH_MYSQL_PASSWORD:?run bootstrap}
+      TZ: Asia/Shanghai
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_general_ci, --innodb_buffer_pool_size=128M, --max_connections=160]
+    volumes:
+      - mysql:/var/lib/mysql
+      - ./mysql-init.sh:/docker-entrypoint-initdb.d/00-smartlect.sh:ro
+      - ./sql/14-nacos.sql:/docker-entrypoint-initdb.d/14-nacos.sql:ro
+      - ./sql/15-seata.sql:/docker-entrypoint-initdb.d/15-seata.sql:ro
+      - ./sql/16-seata-undo.sql:/docker-entrypoint-initdb.d/16-seata-undo.sql:ro
+    mem_limit: 768m
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" mysqladmin ping -h 127.0.0.1 -uroot --silent']
+      interval: 5s
+      timeout: 3s
+      retries: 40
+
+  redis:
+    image: redis:7.4.7-alpine
+    ports: ["127.0.0.1:${SMARTLECT_REDIS_PORT:?run bootstrap}:6379"]
+    environment:
+      REDIS_PASSWORD: ${SMARTLECT_REDIS_PASSWORD:?run bootstrap}
+    command: [sh, -ec, 'exec redis-server --appendonly yes --maxmemory 192mb --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"']
+    volumes: [redis:/data]
+    mem_limit: 384m
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4.2.9-management
+    ports:
+      - "127.0.0.1:${SMARTLECT_RABBIT_PORT:?run bootstrap}:5672"
+      - "127.0.0.1:${SMARTLECT_RABBIT_MANAGEMENT_PORT:?run bootstrap}:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${SMARTLECT_RABBIT_USER:?run bootstrap}
+      RABBITMQ_DEFAULT_PASS: ${SMARTLECT_RABBIT_PASSWORD:?run bootstrap}
+      RABBITMQ_DEFAULT_VHOST: ${SMARTLECT_RABBIT_VHOST:?run bootstrap}
+    volumes:
+      - rabbit:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/conf.d/20-smartlect.conf:ro
+    mem_limit: 768m
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  nacos:
+    image: nacos/nacos-server:v2.5.3
+    ports:
+      - "127.0.0.1:${SMARTLECT_NACOS_PORT:?run bootstrap}:8848"
+      - "127.0.0.1:${SMARTLECT_NACOS_GRPC_PORT:?run bootstrap}:9848"
+    depends_on:
+      mysql: {condition: service_healthy}
+    environment:
+      MODE: standalone
+      PREFER_HOST_MODE: hostname
+      JVM_XMS: 128m
+      JVM_XMX: 256m
+      JVM_XMN: 64m
+      NACOS_AUTH_ENABLE: "true"
+      NACOS_AUTH_TOKEN: ${SMARTLECT_NACOS_AUTH_TOKEN:?run bootstrap}
+      NACOS_AUTH_IDENTITY_KEY: smartlect-server
+      NACOS_AUTH_IDENTITY_VALUE: ${SMARTLECT_NACOS_IDENTITY:?run bootstrap}
+      SPRING_DATASOURCE_PLATFORM: mysql
+      MYSQL_SERVICE_HOST: mysql
+      MYSQL_SERVICE_PORT: 3306
+      MYSQL_SERVICE_DB_NAME: smartlect_nacos
+      MYSQL_SERVICE_USER: smartlect_nacos
+      MYSQL_SERVICE_PASSWORD: ${SMARTLECT_NACOS_MYSQL_PASSWORD:?run bootstrap}
+      MYSQL_SERVICE_DB_PARAM: characterEncoding=utf8&connectTimeout=10000&socketTimeout=30000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    mem_limit: 768m
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:8848/nacos/v1/console/health/readiness]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 30s
+
+  seata:
+    image: smartlect-seata:2.5.0
+    build: ./seata
+    ports: ["${SMARTLECT_SEATA_IP:?run bootstrap}:${SMARTLECT_SEATA_PORT:?run bootstrap}:${SMARTLECT_SEATA_PORT:?run bootstrap}"]
+    depends_on:
+      mysql: {condition: service_healthy}
+      nacos: {condition: service_healthy}
+    environment:
+      SEATA_IP: ${SMARTLECT_SEATA_IP:?run bootstrap}
+      SEATA_PORT: ${SMARTLECT_SEATA_PORT:?run bootstrap}
+      SMARTLECT_NACOS_USERNAME: ${SMARTLECT_NACOS_USERNAME:?run bootstrap}
+      SMARTLECT_NACOS_PASSWORD: ${SMARTLECT_NACOS_PASSWORD:?run bootstrap}
+      SMARTLECT_SEATA_MYSQL_PASSWORD: ${SMARTLECT_SEATA_MYSQL_PASSWORD:?run bootstrap}
+      SMARTLECT_SEATA_SECRET: ${SMARTLECT_SEATA_SECRET:?run bootstrap}
+      JVM_XMS: 128m
+      JVM_XMX: 256m
+      JVM_MaxDirectMemorySize: 128m
+    volumes: ["./seata/application.yml:/seata-server/resources/application.yml:ro"]
+    mem_limit: 640m
+    healthcheck:
+      test: [CMD-SHELL, 'bash -ec "exec 3<>/dev/tcp/127.0.0.1/$$SEATA_PORT"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  mysql:
+  redis:
+  rabbit:

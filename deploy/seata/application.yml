@@ -1,0 +1,49 @@
+server:
+  port: ${SEATA_PORT:18092}
+spring:
+  application:
+    name: smartlect-seata
+  main:
+    web-application-type: none
+logging:
+  config: classpath:logback-spring.xml
+  file:
+    path: /seata-server/logs
+seata:
+  config:
+    type: file
+  registry:
+    type: nacos
+    nacos:
+      application: smartlect-seata
+      server-addr: nacos:8848
+      group: SMARTLECT_SEATA_GROUP
+      namespace: ""
+      cluster: default
+      username: ${SMARTLECT_NACOS_USERNAME}
+      password: ${SMARTLECT_NACOS_PASSWORD}
+  server:
+    service-port: ${SEATA_PORT:18092}
+  store:
+    mode: db
+    session:
+      mode: db
+    lock:
+      mode: db
+    db:
+      datasource: druid
+      db-type: mysql
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: jdbc:mysql://mysql:3306/smartlect_seata?rewriteBatchedStatements=true&useUnicode=true&characterEncoding=utf8&connectTimeout=10000&socketTimeout=30000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      user: smartlect_seata
+      password: ${SMARTLECT_SEATA_MYSQL_PASSWORD}
+      min-conn: 1
+      max-conn: 8
+      global-table: global_table
+      branch-table: branch_table
+      lock-table: lock_table
+      distributed-lock-table: distributed_lock
+      vgroup-table: vgroup_table
+  security:
+    secretKey: ${SMARTLECT_SEATA_SECRET}
+    tokenValidityInMilliseconds: 1800000
