@@ -1,0 +1,143 @@
+
+$color-primary: #FF5000;
+$color-primary-hover: #FF4400;
+$color-primary-active: #E13C00;
+$color-primary-soft: #FFF1E8;
+$color-primary-muted: rgba(255, 80, 0, 0.10);
+
+$color-gold: #E67E00;
+$color-gold-soft: #FFF8D6;
+$color-gold-muted: rgba(255, 210, 0, 0.28);
+$color-search-btn: #FFD200;
+$color-search-btn-text: #333333;
+$color-silver: #64748B;
+$color-silver-soft: #F1F5F9;
+$color-accent-gradient: linear-gradient(90deg, #FF5000 0%, #FF8800 55%, #FFD200 100%);
+$color-accent-gradient-gold: linear-gradient(90deg, #FF8800 0%, #FFD200 100%);
+
+$color-emphasis: #17202A;
+$color-price: #FF5000;
+$color-price-soft: #FFF1E8;
+
+$color-success: #16A34A;
+$color-success-soft: #F0FDF4;
+$color-success-border: rgba(22, 163, 74, 0.24);
+
+$color-error: #DC2626;
+$color-error-soft: #FEF2F2;
+$color-error-border: rgba(220, 38, 38, 0.22);
+
+$color-warning: #D97706;
+$color-warning-soft: #FFFBEB;
+$color-warning-border: rgba(217, 119, 6, 0.24);
+
+$color-info: #2563EB;
+$color-info-soft: #EFF6FF;
+$color-info-border: rgba(37, 99, 235, 0.20);
+
+$color-bg: #F5F5F5;
+$color-bg-pink: #FFF3F0;
+$color-bg-subtle: #F5F5F5;
+$color-cat-hover-bg: #FFF7E8;
+$color-border-gray: #E5E5E5;
+$color-text-primary: #17202A;
+$color-primary-hover-bright: #FF8800;
+$color-topbar-start: #FFFFFF;
+$color-topbar-end: #F5F5F5;
+$color-card: #FFFFFF;
+$color-elevated: #FFFFFF;
+$color-surface-inset: #EEF3F5;
+
+$color-text-title: #17202A;
+$color-text-body: #4B5B63;
+$color-text-muted: #73848C;
+$color-text-secondary: $color-text-muted;
+$color-text-disabled: #A8B4BA;
+$color-border: #E8E8E8;
+$color-border-light: #F0F0F0;
+$color-footer-bg: #F5F5F5;
+$color-tab-inactive: #73848C;
+
+$radius-xs: 4px;
+$radius-sm: 6px;
+$radius-card: 8px;
+$radius-btn: 6px;
+$radius-tag: 6px;
+$radius-search: 8px;
+$radius-pill: 999px;
+$radius-app-shell: 0;
+
+$shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.04);
+$shadow-card: 0 2px 16px rgba(0, 0, 0, 0.05);
+$shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.08);
+$shadow-nav: 0 1px 0 rgba(0, 0, 0, 0.05);
+$shadow-float: 0 6px 28px rgba(0, 0, 0, 0.09);
+$shadow-app-bar: none;
+$shadow-tab-bar: 0 -1px 0 rgba(0, 0, 0, 0.05);
+
+$header-height: 64px;
+$pc-topbar-height: 32px;
+$pc-search-row-height: 88px;
+$tab-header-height: 48px;
+$home-search-bar-height: 86px;
+$content-max-width: 1190px;
+$content-width-percent: 100%;
+$content-width: $content-max-width;
+$content-gutter: 16px;
+
+@mixin store-content {
+  width: 100%;
+  max-width: $content-max-width;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: $content-gutter;
+  padding-right: $content-gutter;
+  box-sizing: border-box;
+}
+$pc-product-columns: 5;
+$pc-product-tile-min-width: 200px;
+$pc-aside-left-width: 200px;
+$pc-aside-right-width: 180px;
+$pc-layout-min-width: 1190px;
+$pc-breakpoint-hide-right-aside: 1320px;
+$pc-breakpoint-hide-left-aside: 1120px;
+$pc-breakpoint-hide-hot-words: 1280px;
+$pc-breakpoint-hide-brand-text: 1080px;
+$pc-breakpoint-hide-header-icon-label: 1180px;
+$pc-breakpoint-hide-header-message: 1080px;
+$pc-breakpoint-hide-header-user-name: 1020px;
+$pc-breakpoint-hide-header-cart-icon: 960px;
+$pc-breakpoint-hide-search-category: 920px;
+$pc-breakpoint-hide-float-toolbar: 1000px;
+$pc-breakpoint-hide-nav-label: 900px;
+$pc-breakpoint-hide-topbar-extra: 1100px;
+$pc-breakpoint-hide-header-actions: 880px;
+$pc-search-min-width: 360px;
+$pc-detail-gallery-width: 480px;
+$pc-detail-info-min-width: 400px;
+$pc-home-main-max-width: 1190px;
+$footer-height: 80px;
+$mobile-tab-height: 62px;
+$mobile-tab-reserved: 8px;
+$z-index-float-agent: 10000;
+$z-index-agent-composer: 1200;
+
+$font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC',
+  'Helvetica Neue', 'Microsoft YaHei', system-ui, sans-serif;
+$font-display: $font-family;
+
+$letter-spacing-display: 0;
+$letter-spacing-heading: 0;
+$letter-spacing-body: 0;
+$letter-spacing-label: 0;
+
+$transition-fast: 0.2s ease;
+$transition-normal: 0.3s ease;
+$transition-spring: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+$breakpoint-tablet: 1199px;
+$breakpoint-mobile: 768px;
+
+$app-page-gutter: 12px;
+$mobile-page-bg: #F5F5F5;
+$mobile-section-radius: 8px;
