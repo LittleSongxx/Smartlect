@@ -1,6 +1,6 @@
 # Smartlect 质量评测合同（quality-v2）
 
-日期：2026-09-12（v5 修订：新增多次试验与置信区间一节——`--trials N` 每题独立 k 次试验、逐题通过率与 `pass^k`、每指标 Wilson 95% CI；所有指标定义与主数语义不变，k=1 输出与 v4 一致。v4 修订：claims 分级 essential/peripheral——Faithfulness 只算问题直接要求的 essential 命题，peripheral 进 `Peripheral_coverage` 诊断；新增 RAGAS 语义对照列 `Faithfulness_answer_side`（分解答案自身断言验证支撑，不进公开主报）；数量题 Precision 采用 demand-fill 语义（单个满足 SKU×数量填满对应槽位）；导购集几何重设计使 12/20 案例金标≥4。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。三条主线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
+日期：2026-09-12（**v6 修订：公开表头名实对齐**——导购第二公开指标从 `Precision@4` 改为 `Precision@4/ceiling` 贴满率（NDCG/IDCG 式对可达上限的正规化：同槽位、同分母，只除以本题满分；raw `Precision@4` 与 `Precision@4_ceiling` 保留为诊断列，demand-fill 超顶截断在 1.0）；广告公开分从模拟 `CTR`/`CVR`（确定性校验伪装成效果比率）改为单指标 `Attribution_integrity` 归因完整性（断言级分母：四桶计数+两率算术+禁捷径共 8 条断言/剧本；`CTR`/`CVR` 降诊断列）。理由是名实对齐与正规化先例，非刷分——新指标只会更严。v5：多次试验与置信区间。v4：claims 分级 essential/peripheral。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。三条主线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
 
 一题三种结局：`pass` / `unscored`（分母缺失记 `null`）/ `setup_failed`。`setup_failed` 不进均值，仅限 provider/预算/基础设施故障，禁止重采样刷绿；每次复跑记入 `artifacts/quality-v2/rerun-ledger.jsonl`。
 
@@ -26,7 +26,7 @@
 
 ## 导购选品
 
-公开主报：`Precision@4`、`Pass@1`。
+公开主报（v6）：`Pass@1`、`Precision@4/ceiling`（贴满率）。贴满率 = min(P@4 ÷ min(4,|金标|)/4, 1.0)，按题宏平均；NDCG/IDCG 式对可达上限正规化，demand-fill 超顶截 1.0。raw `Precision@4` 与 `Precision@4_ceiling` 保留为诊断列并排印刷。
 
 - **K=4**。每题 `request.limit=4`，对齐 `RecommendationRequest.limit` 默认值。
 - **打分面**：完整 Shopping Agent 终答的 `finish_answer.selected_sku_keys`。runner 按该顺序重排 `result.products`，`L = selected[:4]`。不要用 `products` 字典插入序。
@@ -126,7 +126,9 @@
 
 ## 广告投放
 
-模拟流量记账比率，不是效果、显著性或增收。`causal_conclusion_supported=false`。报告必须带分母和「模拟、非因果」。
+公开主报（v6）：单指标 **`Attribution_integrity`（归因完整性）** = 通过断言数 / 断言总数（分母是断言、不是剧本）。每剧本 8 条确定性断言：四桶计数（`impressions`/`clicks`/`payment_conversions`/`unknown_payments`，含归因归桶与 unknown 桶）+ 两率算术（含空值语义）+ 两条禁捷径（不得用 `summary` 合计、不得借用推荐点击）。`Pass@1` 保留为剧本级门（= integrity 为 1.0）；`failed_assertions` 逐条列名供归因。模拟 `CTR`/`CVR` 降为诊断列。
+
+模拟流量记账比率不是效果、显著性或增收。`causal_conclusion_supported=false`。报告必须带分母和「模拟、非因果」。
 
 - `CTR = clicks / impressions`。`impressions=0` → `null`，禁止补 0。`impressions>0` 且无点击 → `0.0`。
 - `CVR = payment_conversions / clicks`。`clicks=0` → `null`。`clicks>0` 且无归因支付 → **`0.0`（不是 null）**。

@@ -27,6 +27,7 @@ class ShoppingScoreTests(unittest.TestCase):
         score = score_shopping(case, {'selected_sku_keys': ['kb-lite:black'], 'products': [sku],
                                       'retrieve_diagnostics': {'popular_used': False}})
         self.assertEqual(score['Precision@4'], 0.25)
+        self.assertEqual(score['Precision@4/ceiling'], 1.0)  # at its own achievable maximum
         self.assertEqual(score['Pass@1'], 1)
 
     def test_over_budget_item_fails_pass(self):
@@ -36,6 +37,19 @@ class ShoppingScoreTests(unittest.TestCase):
                                       'products': items, 'retrieve_diagnostics': {'popular_used': False}})
         self.assertEqual(score['Pass@1'], 0)
         self.assertEqual(score['Precision@4'], 0.25)
+        self.assertEqual(score['Precision@4/ceiling'],
+                         min(score['Precision@4'] / score['Precision@4_ceiling'], 1.0))
+
+    def test_ceiling_ratio_caps_demand_fill_overshoot(self):
+        case = {'case_id': 'x', 'kind': 'recommend',
+                'hard_constraints': {'quantity': 4, 'required_terms': ['USB'], 'excluded_terms': []},
+                'satisfaction_set': ['cable:usb'], 'expected_pass': 1}
+        sku = self.skus['cable:usb']
+        score = score_shopping(case, {'selected_sku_keys': ['cable:usb'], 'products': [sku],
+                                      'retrieve_diagnostics': {'popular_used': False}})
+        self.assertEqual(score['Precision@4'], 1.0)      # 1 SKU x quantity 4 fills all slots
+        self.assertEqual(score['Precision@4_ceiling'], 0.25)
+        self.assertEqual(score['Precision@4/ceiling'], 1.0)  # capped at 1.0, never 4.0
 
     def test_legal_empty_precision_is_null(self):
         case = self.cases['shop-d-03']
@@ -323,9 +337,28 @@ class AdsScoreTests(unittest.TestCase):
                                   'used_summary_payment_conversions': False,
                                   'used_recommendation_clicks': False})
         self.assertEqual(scored['outcome'], 'pass')
+        self.assertEqual(scored['Attribution_integrity'], 1.0)
+        self.assertEqual(scored['failed_assertions'], [])
         self.assertIsNone(scored['CTR'])
         self.assertIsNone(scored['CVR'])
         self.assertEqual(scored['unknown_payments'], 1)
+
+    def test_attribution_integrity_is_assertion_level(self):
+        book = {'playbook_id': 'x', 'expected': {'counts': {'impressions': 10, 'clicks': 3,
+                                                            'payment_conversions': 1, 'unknown_payments': 0},
+                                                 'CTR': 0.3, 'CVR': 1 / 3}}
+        one_bucket_off = score_ads(book, {'campaign_metrics': {'impressions': 10, 'clicks': 3,
+                                                               'payment_conversions': 1, 'unknown_payments': 1},
+                                          'used_summary_payment_conversions': False,
+                                          'used_recommendation_clicks': False})
+        self.assertEqual(one_bucket_off['Attribution_integrity'], 7 / 8)
+        self.assertEqual(one_bucket_off['failed_assertions'], ['count:unknown_payments'])
+        self.assertEqual(one_bucket_off['outcome'], 'fail')
+        shortcut = score_ads(book, {'campaign_metrics': dict(book['expected']['counts']),
+                                    'used_summary_payment_conversions': False,
+                                    'used_recommendation_clicks': True})
+        self.assertEqual(shortcut['Attribution_integrity'], 7 / 8)
+        self.assertEqual(shortcut['failed_assertions'], ['shortcut:no_recommendation_clicks'])
 
     def test_grant_envelope_matches_live_schema(self):
         envelope = ads_grant_envelope(['9300'], cap_cents=5000, until='2026-09-12T04:00:00+00:00')
@@ -455,6 +488,11 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(contract['shopping']['k'], 4)
         self.assertEqual(contract['shopping']['score_surface'], 'agent_selected_sku_keys')
         self.assertTrue(contract['no_composite_score'])
+        self.assertEqual(contract['public_headers_only'],
+                         ['Pass@1', 'Precision@4/ceiling', 'Recall@8', 'Faithfulness',
+                          'Attribution_integrity'])
+        self.assertEqual(len(contract['ads']['attribution_integrity']['assertions']), 8)
+        self.assertTrue(contract['ads']['ctr_cvr_are_diagnostics'])
         self.assertEqual(contract['ads']['clicks_without_payment_cvr'], 0.0)
         self.assertTrue(contract['ads']['unknown_payments_counted'])
         self.assertFalse(contract['ads']['unknown_payments_enter_cvr'])

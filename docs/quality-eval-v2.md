@@ -1,12 +1,12 @@
 # quality-v2 质量评测索引
 
-更新 2026-09-12（v4：合同 v5 新增 `--trials N` 多次试验、`pass^k` 与每指标 Wilson 95% CI——指标定义与主数语义不变）。三条主线（导购选品 / 政策客服 / 广告投放）的公开指标评测体系。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
+更新 2026-09-13（v5：合同 v6 公开表头名实对齐——导购 `Precision@4/ceiling` 贴满率（NDCG 式正规化，raw P@4 与 ceiling 留诊断列）、广告单指标 `Attribution_integrity` 归因完整性（断言级分母，CTR/CVR 降诊断）；v4：合同 v5 的 `--trials N` 多次试验、`pass^k` 与 Wilson 95% CI）。三条主线（导购选品 / 政策客服 / 广告投放）的公开指标评测体系。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
 
 ## 位置
 
 | 内容 | 路径 |
 |---|---|
-| 指标合同（操作定义，v5） | `evals/quality-v2/metrics-contract.md` / `.json` |
+| 指标合同（操作定义，v6） | `evals/quality-v2/metrics-contract.md` / `.json` |
 | 导购开发集 / 商品快照 | `evals/quality-v2/shopping/dev.jsonl`（29 例）/ `catalog-snapshot.json`（20 SKU） |
 | 客服开发集 | `evals/quality-v2/support/dev.jsonl`（24 例，1 例 replay-only） |
 | 广告剧本 | `evals/quality-v2/ads/playbooks.json`（5 剧本） |
@@ -15,11 +15,11 @@
 | 合同测试 | `scripts/test_quality_v2.py`（38 项）+ growth 全量 352 项 |
 | 产物 | `artifacts/quality-v2/<run-id>/`，复跑台账 `artifacts/quality-v2/rerun-ledger.jsonl` |
 
-## 公开表头（只用这些，不合成总分）
+## 公开表头（合同 v6，只用这些，不合成总分）
 
-- 导购：`Precision@4`、`Pass@1`
-- 客服：`Recall@8`、`Faithfulness`（**v3 起为 judge 判分**：DeepSeek `deepseek-flash`，与主模型 qwen 不同源，全量覆盖带 claims 的题，温度 0；旧原文子串分保留为 `Faithfulness_rule` 诊断列）
-- 广告：`CTR`、`CVR`（模拟记账比率，非因果、非效果）
+- 导购：`Pass@1`、`Precision@4/ceiling`（贴满率 = min(P@4 ÷ min(4,|金标|)/4, 1.0) 按题宏平均，NDCG/IDCG 式对可达上限正规化；raw `Precision@4` 与 `Precision@4_ceiling` 为并排诊断列）
+- 客服：`Recall@8`（k=生产检索面 FINAL_DEPTH=8，`Recall@4` 为伴读诊断）、`Faithfulness`（v3 起为 judge 判分：DeepSeek `deepseek-flash`，与主模型 qwen 不同源，quote 门控；v4 起只算 essential 命题）
+- 广告：`Attribution_integrity`（归因完整性，v6 起唯一公开分：断言级分母，每剧本 8 条确定性断言=四桶计数+两率算术+禁捷径；`Pass@1` 为剧本级门；模拟 `CTR`/`CVR` 降诊断列，恒标「模拟、非因果」）
 
 禁句（`must_not_claim` 否定窗口豁免 / `forbidden_claims` 原样命中）与禁文档（`forbidden_doc_ids`）仍是**确定性规则门**，不交给 judge。judge 失败该题 Faithfulness 记 null（分母缺失），不借用规则分。judge 有 MoE 运行方差（实测 ±0.08），官方数字以 run 内单次判定为准并记录 judge 模型与 prompt 版本。
 

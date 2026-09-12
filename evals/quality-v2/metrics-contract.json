@@ -1,13 +1,12 @@
 {
-  "schema_version": "quality-v2-metrics-contract-v5",
+  "schema_version": "quality-v2-metrics-contract-v6",
   "dataset_family": "quality-v2",
   "public_headers_only": [
-    "Precision@4",
     "Pass@1",
+    "Precision@4/ceiling",
     "Recall@8",
     "Faithfulness",
-    "CTR",
-    "CVR"
+    "Attribution_integrity"
   ],
   "no_composite_score": true,
   "case_outcomes": [
@@ -71,7 +70,12 @@
     "catalog_overlay_restored_after_case": true,
     "official_model_mode": "live",
     "mock_not_official": true,
-    "quantity_precision_semantics": "demand-fill: one satisfying SKU at requested quantity fills quantity slots"
+    "quantity_precision_semantics": "demand-fill: one satisfying SKU at requested quantity fills quantity slots",
+    "precision_ceiling_ratio": {
+      "definition": "min(Precision@4 / (min(4, |gold|)/4), 1.0), macro over cases",
+      "precedent": "NDCG/IDCG normalization against the achievable ideal",
+      "demand_fill_overshoot": "capped at 1.0; overshoot stays visible in raw Precision@4"
+    }
   },
   "support": {
     "metrics": [
@@ -144,6 +148,41 @@
     "buy_targets": [
       "ad_sku",
       "other_sku"
+    ],
+    "attribution_integrity": {
+      "definition": "passed deterministic assertions / total assertions; denominator is assertions, not playbooks",
+      "assertions": [
+        "count:impressions",
+        "count:clicks",
+        "count:payment_conversions",
+        "count:unknown_payments",
+        "rate:CTR",
+        "rate:CVR",
+        "shortcut:no_summary_conversions",
+        "shortcut:no_recommendation_clicks"
+      ],
+      "playbook_gate": "Pass@1 requires integrity == 1.0"
+    },
+    "ctr_cvr_are_diagnostics": true
+  },
+  "headline_revision_v6": {
+    "reason": "名实对齐与正规化，非刷分：导购 P@4 换 NDCG 式贴满率（同槽位同分母，仅除以可达 ceiling，raw P@4 与 ceiling 保留诊断列）；广告公开分从模拟 CTR/CVR（确定性校验伪装成效果比率）改为归因完整性（断言级分母），CTR/CVR 降为诊断列。",
+    "shopping_public": [
+      "Pass@1",
+      "Precision@4/ceiling"
+    ],
+    "support_public": [
+      "Recall@8",
+      "Faithfulness"
+    ],
+    "ads_public": [
+      "Attribution_integrity"
+    ],
+    "raw_columns_kept_as_diagnostics": [
+      "Precision@4",
+      "Precision@4_ceiling",
+      "CTR",
+      "CVR"
     ]
   }
 }

@@ -301,6 +301,10 @@ def score_shopping(case, observation, catalog=None):
     passed = in_gold and no_violators and not popular
     return {'line': 'shopping', 'case_id': case['case_id'], 'outcome': 'pass' if passed else 'fail',
             'Precision@4': precision, 'Precision@4_ceiling': ceiling,
+            # NDCG-style normalization against the achievable ceiling: same slots,
+            # same hits — the ratio only answers "how close to this case's maximum".
+            # Capped at 1.0; demand-fill overshoot stays visible in the raw column.
+            'Precision@4/ceiling': min(precision / ceiling, 1.0) if ceiling else None,
             'Pass@1': 1 if passed else 0, 'hits': hits, 'selected': selected_keys}
 
 
@@ -452,7 +456,8 @@ ADS_COUNT_KEYS = ('impressions', 'clicks', 'payment_conversions', 'unknown_payme
 def score_ads(playbook, observation):
     if observation.get('setup_failed'):
         return {'line': 'ads', 'case_id': playbook['playbook_id'], 'outcome': 'setup_failed',
-                'CTR': None, 'CVR': None, 'reason': observation.get('setup_reason') or 'setup_failed'}
+                'Attribution_integrity': None, 'CTR': None, 'CVR': None,
+                'reason': observation.get('setup_reason') or 'setup_failed'}
     if observation.get('used_summary_payment_conversions'):
         raise AnnotationError('forbid_summary_payment_conversions')
     metrics = dict(observation['campaign_metrics'])
@@ -464,9 +469,22 @@ def score_ads(playbook, observation):
     documented = campaign_rates(expected_counts)
     if documented['CTR'] != playbook['expected']['CTR'] or documented['CVR'] != playbook['expected']['CVR']:
         raise AnnotationError('playbook_expected_rates_must_match_counts:' + playbook['playbook_id'])
-    counts_ok = all(metrics[key] == expected_counts[key] for key in ADS_COUNT_KEYS)
-    passed = counts_ok and rates == documented and not observation.get('used_recommendation_clicks')
+    # Attribution integrity is the single public ads metric: every deterministic
+    # contract of the funnel — bucket counts (incl. attributed conversions and
+    # unknown_payments), rate arithmetic with its null semantics, and the no-shortcut
+    # rules — is one assertion; the denominator is assertions, not playbooks.
+    # The simulated CTR/CVR stay as diagnostic columns, never a causal claim.
+    assertions = [(name, metrics[key] == expected_counts[key]) for name, key in
+                  (('count:' + key, key) for key in ADS_COUNT_KEYS)]
+    assertions += [('rate:CTR', rates['CTR'] == documented['CTR']),
+                   ('rate:CVR', rates['CVR'] == documented['CVR']),
+                   ('shortcut:no_summary_conversions', not observation.get('used_summary_payment_conversions')),
+                   ('shortcut:no_recommendation_clicks', not observation.get('used_recommendation_clicks'))]
+    integrity = sum(1 for _, ok in assertions if ok) / len(assertions)
+    passed = integrity == 1.0
     return {'line': 'ads', 'case_id': playbook['playbook_id'], 'outcome': 'pass' if passed else 'fail',
+            'Attribution_integrity': integrity,
+            'failed_assertions': [name for name, ok in assertions if not ok],
             **rates, 'unknown_payments': metrics['unknown_payments'],
             'simulated_not_causal': True, 'Pass@1': 1 if passed else 0}
 
@@ -834,11 +852,12 @@ def write_report(output_dir, shopping, support, ads, *, official=False, partial=
                 + (f' 导购/客服每题独立 {trials} 次试验（各自 fresh scenario）；'
                    f'pass^k=全部 k 次试验都通过的题占比；ads 为确定性模拟跑单次。' if trials > 1 else ''),
         'provenance': provenance(),
-        'shopping': aggregate_line('shopping', shopping, ('Precision@4', 'Precision@4_ceiling', 'Pass@1')),
+        'shopping': aggregate_line('shopping', shopping, ('Precision@4/ceiling', 'Precision@4',
+                                                        'Precision@4_ceiling', 'Pass@1')),
         'support': aggregate_line('support', support, ('Recall@8', 'Faithfulness',
                                                       'Faithfulness_rule', 'Faithfulness_answer_side',
                                                       'Peripheral_coverage', 'Pass@1')),
-        'ads': aggregate_line('ads', ads, ('CTR', 'CVR', 'Pass@1')),
+        'ads': aggregate_line('ads', ads, ('Attribution_integrity', 'CTR', 'CVR', 'Pass@1')),
         'cases': {'shopping': shopping, 'support': support, 'ads': ads},
     }
     if trials > 1:
