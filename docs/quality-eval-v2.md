@@ -7,7 +7,7 @@
 | 内容 | 路径 |
 |---|---|
 | 指标合同（操作定义，v6） | `evals/quality-v2/metrics-contract.md` / `.json` |
-| 导购开发集 / 商品快照 | `evals/quality-v2/shopping/dev.jsonl`（39 例）/ `catalog-snapshot.json`（20 SKU） |
+| 导购开发集 / 商品快照 | `evals/quality-v2/shopping/dev.jsonl`（65 例）/ `catalog-snapshot.json`（20 SKU） |
 | 客服开发集 | `evals/quality-v2/support/dev.jsonl`（62 例，T1 扩容后；1 例 replay-only） |
 | 广告剧本 | `evals/quality-v2/ads/playbooks.json`（5 剧本） |
 | 评分库 / runner | `scripts/quality_v2.py` / `scripts/eval_quality_v2.py` |

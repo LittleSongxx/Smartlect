@@ -417,7 +417,7 @@ class ReportTests(unittest.TestCase):
 
     def test_self_check_passes_and_has_no_total(self):
         shopping, support, ads = self_check_scores()
-        self.assertEqual(len(shopping), 39)
+        self.assertEqual(len(shopping), 65)
         self.assertEqual(len(support), 62)
         self.assertEqual(len(ads), 5)
         self.assertTrue(all(row['outcome'] == 'pass' for row in shopping + support + ads))
