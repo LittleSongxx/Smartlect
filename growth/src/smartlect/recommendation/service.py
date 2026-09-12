@@ -1,15 +1,11 @@
-"""Bounded recommendation functions over Java facts; no independent Agent or commerce writes."""
+"""Bounded homepage recommendation; shopping retrieve lives in shopping_retrieve."""
 import asyncio
-from collections import Counter
 from datetime import datetime, timezone
-from decimal import Decimal
 from hashlib import sha256
 import math
-import unicodedata
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from smartlect.ads.analytics import to_cents
+from smartlect.catalog_gate import (RecommendationRequest, _fold, constraints, eligible_skus,
+                                    in_scope, scope_filter)
 from smartlect.commerce import CommerceError
 from smartlect.events import canonical
 from smartlect.knowledge import tokens
@@ -20,133 +16,6 @@ FEATURES = ('content', 'category', 'copurchase', 'popularity', 'newness', 'prefe
 MAX_PRODUCTS = 50
 MAX_RERANK_SKUS = 12
 ALGORITHM_VERSION = 'sku-rank-paid-units-v1'
-
-
-class RecommendationRequest(BaseModel):
-    model_config = ConfigDict(strict=True, extra='forbid')
-    query: str = Field(default='', max_length=200, description='名称/规格软匹配；商品ID用product_id，不填此处')
-    product_id: str | None = Field(default=None, min_length=1, max_length=64, description='用户指定的真实商品ID；仅缩小授权范围')
-    category_id: str | None = Field(default=None, min_length=1, max_length=64, description='仅已知真实类目ID，未知省略，不能猜')
-    max_price_cents: int | None = Field(default=None, ge=0, le=100000000)
-    min_price_cents: int = Field(default=0, ge=0, le=100000000)
-    quantity: int = Field(default=1, ge=1, le=999)
-    limit: int = Field(default=4, ge=1, le=8)
-    required_terms: list[str] = Field(default_factory=list, max_length=16, description='名称/规格必须包含的文字；不是商品ID')
-    excluded_terms: list[str] = Field(default_factory=list, max_length=20)
-    excluded_product_ids: list[str] = Field(default_factory=list, max_length=64)
-    excluded_sku_keys: list[str] = Field(default_factory=list, max_length=64)
-
-
-def _fold(text):
-    return unicodedata.normalize('NFKC', text).casefold()
-
-
-def constraints(request, preferences=()):
-    request = request if isinstance(request, RecommendationRequest) else RecommendationRequest.model_validate(request)
-    result = request.model_dump()
-    for key in ('required_terms', 'excluded_terms', 'excluded_product_ids', 'excluded_sku_keys'):
-        if any(not value.strip() or len(value) > 128 for value in result[key]):
-            raise StateError('invalid_recommendation_constraint', 422)
-    # Only explicit saved restrictions become default hard constraints. Inferred
-    # preferences remain ranking signals; current request restrictions take priority.
-    for preference in preferences:
-        if preference.get('source') != 'explicit':
-            continue
-        if preference.get('preference_key') == 'budget_max_cents' and result['max_price_cents'] is None:
-            value = preference.get('value')
-            if type(value) is int and 0 <= value <= 100000000:
-                result['max_price_cents'] = value
-        if preference.get('preference_key') == 'avoid' and 'excluded_terms' not in request.model_fields_set:
-            value = preference.get('value')
-            if isinstance(value, list) and all(isinstance(item, str) and item for item in value):
-                result['excluded_terms'] = list(value)
-    if result['max_price_cents'] is not None and result['min_price_cents'] > result['max_price_cents']:
-        raise StateError('invalid_price_interval', 422)
-    return result
-
-
-def scope_filter(product_scope):
-    if not isinstance(product_scope, dict) or set(product_scope) != {'include', 'exclude'}:
-        raise StateError('product_scope_required', 403)
-    included, excluded = product_scope['include'], product_scope['exclude']
-    if included is not None and (not isinstance(included, list) or len(included) > 5000):
-        raise StateError('invalid_product_scope', 403)
-    if not isinstance(excluded, list) or len(excluded) > 5000:
-        raise StateError('invalid_product_scope', 403)
-    if any(not isinstance(value, str) or not value or len(value) > 64 for value in [*(included or []), *excluded]):
-        raise StateError('invalid_product_scope', 403)
-    return None if included is None else frozenset(included), frozenset(excluded)
-
-
-def in_scope(product_id, product_scope):
-    included, excluded = product_scope
-    return product_id not in excluded and (included is None or product_id in included)
-
-
-def eligible_skus(snapshot, stocks, request, *, product_scope, allowed_sku_keys=None):
-    """Extracted from F2 tools.search_skus; exact per-SKU stock, never totalStocks."""
-    catalog = {row['productId']: row for row in snapshot.get('products', [])}
-    stock_rows = {}
-    duplicate_stock = set()
-    for row in stocks:
-        key = (row.get('productId'), row.get('propertyValueIdHash'))
-        if key in stock_rows:
-            duplicate_stock.add(key)
-        stock_rows[key] = row.get('stock')
-    properties = {(row['productId'], row['propertyValueId']): row for row in snapshot.get('propertyValues', [])}
-    cards, removed, seen = [], Counter(), set()
-    for sku in snapshot.get('skus', []):
-        product_id, digest, value_ids = sku.get('productId'), sku.get('propertyValueIdHash'), sku.get('propertyValueIds')
-        if any(not isinstance(value, str) or not value for value in (product_id, digest, value_ids)):
-            removed['invalid_sku'] += 1
-            continue
-        key = product_id + ':' + digest
-        if key in seen:
-            removed['duplicate_sku'] += 1
-            continue
-        seen.add(key)
-        if not in_scope(product_id, product_scope) or allowed_sku_keys is not None and key not in allowed_sku_keys:
-            removed['scope_or_candidate_denied'] += 1
-            continue
-        product = catalog.get(product_id)
-        if not product or type(product.get('status')) is not int or product['status'] != 1:
-            removed['not_on_sale'] += 1
-            continue
-        stock = stock_rows.get((product_id, digest))
-        if (product_id, digest) in duplicate_stock or type(stock) is not int or stock < request['quantity']:
-            removed['stock_unavailable'] += 1
-            continue
-        try:
-            if type(sku.get('price')) not in {int, str, Decimal}:
-                raise ValueError()
-            price = to_cents(str(sku['price']))
-        except ValueError:
-            removed['invalid_price'] += 1
-            continue
-        if (price < request['min_price_cents'] or request['max_price_cents'] is not None
-                and price > request['max_price_cents']):
-            removed['price_constraint'] += 1
-            continue
-        if product_id in request['excluded_product_ids'] or key in request['excluded_sku_keys']:
-            removed['explicit_exclusion'] += 1
-            continue
-        if request['category_id'] is not None and product.get('categoryId') != request['category_id']:
-            removed['category_constraint'] += 1
-            continue
-        property_rows = [properties.get((product_id, value_id)) for value_id in value_ids.split('-')]
-        if any(row is None or not isinstance(row.get('propertyValue'), str) for row in property_rows):
-            removed['unknown_specification'] += 1
-            continue
-        specification = '/'.join(row['propertyValue'] for row in property_rows)
-        text = _fold(str(product.get('productName') or '') + ' ' + specification)
-        if (any(_fold(term) not in text for term in request['required_terms']) or
-                any(_fold(term) in text for term in request['excluded_terms'])):
-            removed['term_constraint'] += 1
-            continue
-        cards.append({**sku, 'price': str(sku['price']), 'price_cents': price, 'stock': stock,
-            'productName': product.get('productName') or '', 'categoryId': product.get('categoryId'),
-            'cover': product.get('cover'), 'specification': specification, 'sku_key': key})
-    return cards, dict(removed)
 
 
 def merge_candidates(route_rows, *, product_scope, limit=MAX_PRODUCTS):

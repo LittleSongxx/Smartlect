@@ -1,0 +1,430 @@
+"""Conversation-scoped shopping slots. Closed extractor; not a taxonomy or preference profile."""
+import re
+import unicodedata
+
+from smartlect.state import StateError, _integer, _text
+
+MISSION_VERSION = 1
+MAX_TERMS = 20
+MAX_REQUIRED = 16
+MAX_TARGETS = 4
+
+
+def empty_mission():
+    return {
+        'version': MISSION_VERSION,
+        'budget_max_cents': None,
+        'min_price_cents': None,
+        'category_id': None,
+        'excluded_terms': [],
+        'required_terms': [],
+        'comparison_targets': [],
+        'comparison_required': False,
+        'query': '',
+    }
+
+
+def _fold(text):
+    return unicodedata.normalize('NFKC', str(text or '')).casefold()
+
+
+def _unique(values, limit):
+    result = []
+    seen = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        item = ' '.join(value.split())
+        if not item or len(item) > 128:
+            continue
+        key = _fold(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def normalize_mission(value):
+    data = value if isinstance(value, dict) else {}
+    budget = data.get('budget_max_cents')
+    if budget is not None:
+        _integer(budget, 'budget_max_cents', 0, 100000000)
+    minimum = data.get('min_price_cents')
+    if minimum is not None:
+        _integer(minimum, 'min_price_cents', 0, 100000000)
+    category = data.get('category_id')
+    if category is not None:
+        category = _text(category, 'category_id', 64)
+    query = ' '.join(str(data.get('query') or '').split())[:200]
+    return {
+        'version': MISSION_VERSION,
+        'budget_max_cents': budget,
+        'min_price_cents': minimum,
+        'category_id': category,
+        'excluded_terms': _unique(data.get('excluded_terms') or [], MAX_TERMS),
+        'required_terms': _unique(data.get('required_terms') or [], MAX_REQUIRED),
+        'comparison_targets': _unique(data.get('comparison_targets') or [], MAX_TARGETS),
+        'comparison_required': bool(data.get('comparison_required')),
+        'query': query,
+    }
+
+
+def extract_mission(utterance):
+    """Deterministic slots from the current user turn. No scene-word tables."""
+    text = str(utterance or '').strip()
+    extracted = empty_mission()
+    reversed_terms = []
+    if not text:
+        extracted['reversed_terms'] = reversed_terms
+        return extracted
+    for match in re.finditer(r'预算\s*(\d+)\s*(?:元|块)?', text):
+        extracted['budget_max_cents'] = int(match.group(1)) * 100
+    for match in re.finditer(r'(\d+)\s*(?:元|块)\s*以内', text):
+        extracted['budget_max_cents'] = int(match.group(1)) * 100
+    for match in re.finditer(r'(\d+)\s*(?:元|块)\s*以上', text):
+        extracted['min_price_cents'] = int(match.group(1)) * 100
+    for match in re.finditer(r'其实\s*([^，。！？\s]{1,12})\s*可以', text):
+        reversed_terms.append(match.group(1))
+    for match in re.finditer(r'([^，。！？\s]{1,12})\s*(?:也行|没关系)', text):
+        term = match.group(1)
+        reversed_terms.append(term[2:] if term.startswith('其实') else term)
+    for match in re.finditer(r'可以要\s*([^，。！？\s]{1,12})', text):
+        reversed_terms.append(match.group(1))
+    extracted['reversed_terms'] = _unique(reversed_terms, MAX_TERMS)
+    for match in re.finditer(r'(?:不要买|不要|别要|排除)\s*([^，。！？\s]{1,16})', text):
+        term = match.group(1)
+        if not any(_fold(term) == _fold(item) for item in extracted['reversed_terms']):
+            extracted['excluded_terms'].append(term)
+    extracted['excluded_terms'] = _unique(extracted['excluded_terms'], MAX_TERMS)
+    if re.search(r'比较|对比', text):
+        extracted['comparison_required'] = True
+    for match in re.finditer(
+            r'(?:比较|对比)\s*(?:一下|下)?\s*([^，。！？\s]{1,16})\s*(?:和|与|跟)\s*([^，。！？\s]{1,16})',
+            text):
+        extracted['comparison_targets'].extend([match.group(1), match.group(2)])
+        extracted['comparison_required'] = True
+    for match in re.finditer(
+            r'([^，。！？\s]{1,16})\s*(?:和|与|跟)\s*([^，。！？\s]{1,16})\s*(?:比一比|比较|对比|比一下|比)',
+            text):
+        extracted['comparison_targets'].extend([match.group(1), match.group(2)])
+        extracted['comparison_required'] = True
+    for match in re.finditer(r'([^，。！？\s]{1,16})\s*(?:和|与|跟)\s*([^，。！？\s]{1,16})', text):
+        left, right = match.group(1), match.group(2)
+        if left in {'其实', '不要', '别要', '排除'} or right in {'可以', '也行', '没关系'}:
+            continue
+        if re.search(r'不要|别要|排除', text[max(0, match.start() - 4):match.start()]):
+            continue
+        extracted['comparison_targets'].extend([left, right])
+        extracted['comparison_required'] = True
+    cleaned = []
+    for target in extracted['comparison_targets']:
+        item = re.sub(r'^(?:比较一下|对比一下|比一比|比较|对比)', '', target)
+        cleaned.append(re.sub(r'(?:比较一下|对比一下|比一比|比较|对比)$', '', item))
+    extracted['comparison_targets'] = _unique(cleaned, MAX_TARGETS)
+    expanded = []
+    for target in extracted['comparison_targets']:
+        expanded.extend(part for part in re.split(r'[、/]', target) if part)
+    extracted['comparison_targets'] = _unique(expanded, MAX_TARGETS)
+    match = re.search(r'([A-Za-z][A-Za-z0-9]{0,7})类目', text)
+    if match:
+        extracted['category_id'] = match.group(1)
+    return extracted
+
+
+def requirement_slots(utterance):
+    """Closed frames only: 要/只要 X, explicit buy frames, and price-attributive 的 X.
+    Not a free-noun harvest."""
+    text = str(utterance or '').strip()
+    raw = []
+    for match in re.finditer(r'(?<![不别])(?:只要|要)([^，。！？、\s]{1,16})', text):
+        if text[max(0, match.start() - 2):match.start()] == '可以':
+            continue
+        term = match.group(1)
+        if term.startswith('预算'):
+            continue
+        raw.append(term)
+    # Explicit purchase intent names the product: 买/购买 + optional count+measure + term.
+    # Negations and interrogatives (买不到/能买吗) stay outside via lookarounds.
+    for match in re.finditer(r'(?<![不别没])(?:买|购买)(?![吗吧呢到不没来])'
+                             r'(?:[0-9０-９一二两三四五六七八九十百千]+\s*[个只条台把张件套份支块]?)*'
+                             r'([^，。！？、\s]{2,16})', text):
+        raw.append(match.group(1))
+    for match in re.finditer(
+            r'(?:预算\s*\d+\s*(?:元|块)?|\d+\s*(?:元|块)\s*(?:以内|以上)|以内|以上)\s*的\s*([^，。！？、\s]{1,16})',
+            text):
+        raw.append(match.group(1))
+    terms = []
+    for item in raw:
+        item = re.sub(r'(?:这款|看看|给我看|来一[个台份])$', '', item).strip('的')
+        if not item:
+            continue
+        latin = ''.join(re.findall(r'[A-Za-z0-9]+', item))
+        cjk = ''.join(re.findall(r'[\u3400-\u9fff]+', item))
+        if len(latin) >= 2:
+            terms.append(latin)
+        if len(cjk) == 2:
+            terms.append(cjk)
+        elif len(cjk) > 2:
+            terms.extend([cjk[:2], cjk[-2:]])
+    return _unique(terms, MAX_REQUIRED)
+
+
+def _remove_reversed(terms, reversed_terms):
+    dropped = [_fold(item) for item in reversed_terms]
+    return [term for term in terms if not any(key == _fold(term) or key in _fold(term) for key in dropped)]
+
+
+def merge_mission(previous, extracted, explicit=None):
+    """Tool args beat this-turn extract, which beats the stored conversation slots."""
+    previous = normalize_mission(previous)
+    extracted = extracted if isinstance(extracted, dict) else empty_mission()
+    explicit = explicit if isinstance(explicit, dict) else {}
+    reversed_terms = list(extracted.get('reversed_terms') or [])
+    if explicit.get('budget_max_cents') is not None:
+        budget = explicit['budget_max_cents']
+    elif extracted.get('budget_max_cents') is not None:
+        budget = extracted['budget_max_cents']
+    else:
+        budget = previous['budget_max_cents']
+    if explicit.get('min_price_cents') is not None:
+        minimum = explicit['min_price_cents']
+    elif extracted.get('min_price_cents') is not None:
+        minimum = extracted['min_price_cents']
+    else:
+        minimum = previous['min_price_cents']
+    if explicit.get('category_id') is not None:
+        category = explicit['category_id']
+    elif extracted.get('category_id') is not None:
+        category = extracted['category_id']
+    else:
+        category = previous['category_id']
+    if explicit.get('excluded_terms') is not None:
+        excluded = list(explicit['excluded_terms'])
+        excluded.extend(extracted.get('excluded_terms') or [])
+    else:
+        excluded = list(previous['excluded_terms'])
+        excluded.extend(extracted.get('excluded_terms') or [])
+    excluded = _remove_reversed(_unique(excluded, MAX_TERMS), reversed_terms)
+    if explicit.get('required_terms') is not None:
+        required = list(explicit['required_terms'])
+    else:
+        required = list(previous['required_terms'])
+        required.extend(extracted.get('required_terms') or [])
+    if explicit.get('comparison_targets') is not None:
+        targets = list(explicit['comparison_targets'])
+    else:
+        targets = list(previous['comparison_targets'])
+        targets.extend(extracted.get('comparison_targets') or [])
+    if explicit.get('comparison_required') is not None:
+        comparison_required = bool(explicit['comparison_required'])
+    elif extracted.get('comparison_required'):
+        comparison_required = True
+    else:
+        comparison_required = bool(previous['comparison_required']) and bool(_unique(targets, MAX_TARGETS))
+    if explicit.get('query'):
+        query = explicit['query']
+    else:
+        query = previous.get('query') or ''
+    return normalize_mission({
+        'budget_max_cents': budget,
+        'min_price_cents': minimum,
+        'category_id': category,
+        'excluded_terms': excluded,
+        'required_terms': required,
+        'comparison_targets': targets,
+        'comparison_required': comparison_required,
+        'query': query,
+    })
+
+
+def explicit_from_request(params):
+    explicit = {}
+    if params.get('max_price_cents') is not None:
+        explicit['budget_max_cents'] = params['max_price_cents']
+    if (params.get('min_price_cents') or 0) > 0:
+        explicit['min_price_cents'] = params['min_price_cents']
+    if params.get('category_id') is not None:
+        explicit['category_id'] = params['category_id']
+    if 'excluded_terms' in params:
+        explicit['excluded_terms'] = list(params.get('excluded_terms') or [])
+    if 'required_terms' in params:
+        explicit['required_terms'] = list(params.get('required_terms') or [])
+    if params.get('comparison_targets') is not None:
+        explicit['comparison_targets'] = list(params['comparison_targets'])
+    if params.get('query'):
+        explicit['query'] = params['query']
+    return explicit
+
+
+def has_hard_constraints(request, mission=None):
+    mission = mission or empty_mission()
+    return bool(
+        request.get('max_price_cents') is not None
+        or (request.get('min_price_cents') or 0) > 0
+        or request.get('required_terms')
+        or request.get('excluded_terms')
+        or request.get('excluded_product_ids')
+        or request.get('excluded_sku_keys')
+        or request.get('product_id')
+        or request.get('category_id')
+        or mission.get('budget_max_cents') is not None
+        or (mission.get('min_price_cents') or 0) > 0
+        or mission.get('category_id')
+        or mission.get('excluded_terms')
+        or mission.get('required_terms')
+        or mission.get('comparison_required')
+    )
+
+
+def apply_mission_to_request(request, mission):
+    result = dict(request)
+    if result.get('max_price_cents') is None and mission.get('budget_max_cents') is not None:
+        result['max_price_cents'] = mission['budget_max_cents']
+    if (result.get('min_price_cents') or 0) <= 0 and (mission.get('min_price_cents') or 0) > 0:
+        result['min_price_cents'] = mission['min_price_cents']
+    if result.get('category_id') is None and mission.get('category_id'):
+        result['category_id'] = mission['category_id']
+    if not str(result.get('query') or '').strip() and mission.get('query'):
+        result['query'] = mission['query']
+    result['excluded_terms'] = _unique([*(result.get('excluded_terms') or []), *(mission.get('excluded_terms') or [])], MAX_TERMS)
+    result['required_terms'] = _unique([*(result.get('required_terms') or []), *(mission.get('required_terms') or [])], MAX_REQUIRED)
+    for key in ('required_terms', 'excluded_terms', 'excluded_product_ids', 'excluded_sku_keys'):
+        if any(not str(value).strip() or len(str(value)) > 128 for value in result.get(key) or []):
+            raise StateError('invalid_recommendation_constraint', 422)
+    if result.get('max_price_cents') is not None and result.get('min_price_cents', 0) > result['max_price_cents']:
+        raise StateError('invalid_price_interval', 422)
+    return result
+
+
+def shopping_request(params, mission):
+    """Hard slots come from this-turn args and mission, never long-term user_preference."""
+    from smartlect.catalog_gate import RecommendationRequest
+    allowed = set(RecommendationRequest.model_fields)
+    request = RecommendationRequest.model_validate({key: value for key, value in (params or {}).items() if key in allowed})
+    return apply_mission_to_request(request.model_dump(), normalize_mission(mission))
+
+
+def retrieval_variants(request, mission):
+    variants = []
+
+    def add(text):
+        item = ' '.join(str(text or '').split())
+        if item and item not in variants:
+            variants.append(item)
+
+    add(request.get('query'))
+    if request.get('required_terms'):
+        add(' '.join(request['required_terms']))
+    targets = mission.get('comparison_targets') or []
+    if len(targets) == 1:
+        add(targets[0])
+    return variants[:3]
+
+
+def shopping_turn_changed(extracted, slots=()):
+    """This turn wrote or replaced a conversation shopping slot."""
+    extracted = extracted if isinstance(extracted, dict) else {}
+    return bool(
+        extracted.get('budget_max_cents') is not None
+        or (extracted.get('min_price_cents') or 0) > 0
+        or extracted.get('category_id')
+        or extracted.get('excluded_terms')
+        or extracted.get('reversed_terms')
+        or extracted.get('comparison_required')
+        or extracted.get('comparison_targets')
+        or slots
+    )
+
+
+def retrieve_matches_mission(request, mission):
+    """Last retrieve already carries the conversation hard slots."""
+    if not request:
+        return False
+    mission = normalize_mission(mission)
+    if mission['budget_max_cents'] is not None and request.get('max_price_cents') != mission['budget_max_cents']:
+        return False
+    if (mission['min_price_cents'] or 0) > 0 and request.get('min_price_cents') != mission['min_price_cents']:
+        return False
+    if mission['category_id'] and request.get('category_id') != mission['category_id']:
+        return False
+    have_excluded = {_fold(item) for item in request.get('excluded_terms') or []}
+    have_required = {_fold(item) for item in request.get('required_terms') or []}
+    if any(_fold(item) not in have_excluded for item in mission['excluded_terms']):
+        return False
+    if any(_fold(item) not in have_required for item in mission['required_terms']):
+        return False
+    return True
+
+
+def mission_retrieve_params(mission):
+    """Tool args for a retrieve that shopping_request can merge with mission."""
+    mission = normalize_mission(mission)
+    params = {}
+    if mission['query']:
+        params['query'] = mission['query']
+    if mission['budget_max_cents'] is not None:
+        params['max_price_cents'] = mission['budget_max_cents']
+    if (mission['min_price_cents'] or 0) > 0:
+        params['min_price_cents'] = mission['min_price_cents']
+    if mission['category_id']:
+        params['category_id'] = mission['category_id']
+    if mission['excluded_terms']:
+        params['excluded_terms'] = list(mission['excluded_terms'])
+    if mission['comparison_targets']:
+        params['comparison_targets'] = list(mission['comparison_targets'])
+    return params
+
+
+def validate_sku_key(value):
+    key = _text(value, 'sku_key', 160)
+    if ':' not in key:
+        raise StateError('invalid_sku_key', 422)
+    product_id, digest = key.split(':', 1)
+    if not product_id or not digest or len(product_id) > 64:
+        raise StateError('invalid_sku_key', 422)
+    return key
+
+
+def _squash(text):
+    return re.sub(r'[\W_]+', '', _fold(text))
+
+
+def ground_tool_params(params, utterance, mission):
+    """Model-declared hard slots must trace back to user words — this turn's utterance
+    or the stored conversation mission. Untraceable slots are demoted (dropped from the
+    gate) instead of silently filtering the catalog; product/sku id exclusions are
+    catalog-grounded and exempt. Mirrors ADR-0002: the model declares, the system
+    compiles against what the user actually said."""
+    params = params or {}
+    mission = normalize_mission(mission)
+    text = _squash(utterance)
+    dropped = {}
+    filtered = dict(params)
+    for key in ('required_terms', 'excluded_terms'):
+        values = params.get(key)
+        if values is None:
+            continue
+        mission_pool = {_squash(value) for value in mission.get(key) or []}
+        kept, lost = [], []
+        for value in values:
+            needle = _squash(value)
+            (kept if needle and (needle in text or needle in mission_pool) else lost).append(value)
+        if lost:
+            dropped[key] = lost
+            filtered[key] = kept
+    category = params.get('category_id')
+    if category is not None and _squash(category) not in text and category != mission.get('category_id'):
+        dropped['category_id'] = category
+        filtered.pop('category_id', None)
+    extracted = extract_mission(utterance)
+    for param_key, slot_key in (('max_price_cents', 'budget_max_cents'), ('min_price_cents', 'min_price_cents')):
+        value = params.get(param_key)
+        if value is None or (param_key == 'min_price_cents' and not value):
+            continue
+        if extracted.get(slot_key) != value and mission.get(slot_key) != value:
+            dropped[param_key] = value
+            filtered.pop(param_key)
+    return filtered, dropped

@@ -147,6 +147,26 @@ describe('安全呈现与恢复', () => {
     expect(acceptEvent(event, 'r1', 'c2', 1)).toBe(false);
     expect(readSseFrame('data: not JSON')).toBeNull();
   });
+  it('比较结果展示只读对照表，商品格仍走原推荐卡片', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] });
+    const wrapper = mount(AgentChatItem, { props: { data: { agent_run_id: 'compare-run', conversation_id: 'c1', message_id: 'm1', state: 'COMPLETED', model_mode: 'mock', result: {
+      answer: '两款都在预算内。',
+      comparison_complete: false,
+      comparison: { sku_keys: ['p1:s1', 'p2:s2'], columns: [
+        { sku_key: 'p1:s1', productName: '轻便键盘' }, { sku_key: 'p2:s2', productName: '基础键盘' },
+      ], rows: [
+        { field: 'price_cents', label: '价格', values: { 'p1:s1': 8000, 'p2:s2': 10000 }, differ: true },
+        { field: 'stock', label: '库存', values: { 'p1:s1': 4, 'p2:s2': 4 }, differ: false },
+      ] },
+      products: [{ recommendation_id: 'rec-compare', position: 1, productId: 'p1', propertyValueIds: 's1', productName: '轻便键盘', stock: 4, price_cents: 8000 }],
+    } } }, global: { plugins: [router], stubs: { ElIcon: true, ProductImage: true } } });
+    expect(wrapper.text()).toContain('轻便键盘');
+    expect(wrapper.text()).toContain('基础键盘');
+    expect(wrapper.text()).toContain('¥80.00');
+    expect(wrapper.text()).toContain('对照目标未齐，未用其它商品补位。');
+    expect(wrapper.find('.agent-products').exists()).toBe(true);
+    wrapper.unmount();
+  });
   it('客服只展示文档名和正文标号，不打开规则原文或运行凭据', async () => {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] });
     const fetch = vi.fn(() => Promise.resolve(json({ title: '不应请求', body: '秘密原文' }))); vi.stubGlobal('fetch', fetch);

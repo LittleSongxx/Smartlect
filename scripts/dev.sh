@@ -43,11 +43,9 @@ case "$command" in
   seed-store)
     "$runtime_python" scripts/runtime.py apps-check
     exec growth/.venv/bin/python scripts/seed_store_playbook.py "$@" ;;
-  eval)
-    exec growth/.venv/bin/python scripts/evaluate.py "$@" ;;
   reset-demo)
     exec growth/.venv/bin/python scripts/reset_demo.py "$@" ;;
   help)
-    echo 'Usage: ./scripts/dev.sh {bootstrap|config|model-mode|build|check|infra-up|infra-check|up|apps-check|status|apps-down|down|catalog|demo|seed-store|eval|reset-demo}' ;;
+    echo 'Usage: ./scripts/dev.sh {bootstrap|config|model-mode|build|check|infra-up|infra-check|up|apps-check|status|apps-down|down|catalog|demo|seed-store|reset-demo}' ;;
   *) echo "Unknown command: $command" >&2; exit 2 ;;
 esac

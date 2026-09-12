@@ -48,7 +48,8 @@ def model_env(path=None):
     allowed = {"SMARTLECT_" + field for field in (
         "MODEL_API_KEY", "MODEL_BASE_URL", "MODEL_ID", "EMBEDDING_API_KEY", "EMBEDDING_BASE_URL",
         "EMBEDDING_MODEL", "EMBEDDING_DIMENSIONS", "EMBEDDING_PROVIDER", "RERANK_API_KEY",
-        "RERANK_BASE_URL", "RERANK_MODEL", "RERANK_API_FORMAT")}
+        "RERANK_BASE_URL", "RERANK_MODEL", "RERANK_API_FORMAT",
+        "JUDGE_API_KEY", "JUDGE_BASE_URL", "JUDGE_MODEL")}
     values = parse_env(path)
     if set(values) - allowed:
         raise RuntimeError("run/model.env contains non-model fields; values suppressed")

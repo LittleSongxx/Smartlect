@@ -5,7 +5,10 @@ from smartlect.agents.shopping import (EMPTY_EVIDENCE_ANSWER, PROVIDER_FAULT_ANS
                                        allow_retrieval_rewrite, classify_evidence, close_degraded_turn,
                                        compile_decision, controller_fallback_result,
                                        empty_evidence_result, keep_uncovered_leftovers,
-                                       knowledge_observation, misses_utterance_constraints,
+                                       knowledge_observation, looks_like_irreconcilable_sources,
+                                       looks_like_service_request,
+                                       misses_utterance_constraints,
+                                       no_business_claim_has_store_conclusion,
                                        rejected_search_data, retrieval_budget_action,
                                        store_policy_allows_empty_citations)
 from smartlect.events import canonical
@@ -74,6 +77,24 @@ class DecisionCompileTests(unittest.TestCase):
     def test_opposite_empty_service_and_explicit_handoff_open_tickets(self):
         self.assertEqual(compile_decision('request_service', 'none'),
                          {'answer_status': 'needs_human', 'open_ticket': True})
+        self.assertEqual(compile_decision('request_handoff', 'supported'),
+                         {'answer_status': 'needs_human', 'open_ticket': True})
+
+    def test_imperative_booking_is_service_request_rule_question_is_not(self):
+        self.assertTrue(looks_like_service_request('请现在帮我预约旧电池上门回收。'))
+        self.assertTrue(looks_like_service_request('麻烦给我办理上门安装。'))
+        self.assertFalse(looks_like_service_request('本店旧电池上门回收的预约范围和时间规则是什么？'))
+        self.assertFalse(looks_like_service_request('办理上门安装的条件是什么？'))
+        self.assertTrue(no_business_claim_has_store_conclusion('聊天里推荐过的商品不一定现在还买得到。'))
+        self.assertTrue(no_business_claim_has_store_conclusion('这款现在缺货。'))
+        self.assertFalse(no_business_claim_has_store_conclusion('您好，我可以帮您查询店铺政策。'))
+
+    def test_irreconcilable_sources_are_handoff_topic_difference_is_not(self):
+        self.assertTrue(looks_like_irreconcilable_sources('两份政策互相矛盾。'))
+        self.assertTrue(looks_like_irreconcilable_sources('两处说明对不上。'))
+        self.assertTrue(looks_like_irreconcilable_sources('旧电池回收到底做不做？两份说明不一样。'))
+        self.assertFalse(looks_like_irreconcilable_sources('退货和运费有什么不一样？'))
+        self.assertFalse(looks_like_irreconcilable_sources('本店旧电池上门回收的预约范围和时间规则是什么？'))
         self.assertEqual(compile_decision('request_handoff', 'supported'),
                          {'answer_status': 'needs_human', 'open_ticket': True})
 

@@ -1,0 +1,132 @@
+{
+  "schema_version": "quality-v2-metrics-contract-v4",
+  "dataset_family": "quality-v2",
+  "public_headers_only": [
+    "Precision@4",
+    "Pass@1",
+    "Recall@8",
+    "Faithfulness",
+    "CTR",
+    "CVR"
+  ],
+  "no_composite_score": true,
+  "case_outcomes": [
+    "pass",
+    "unscored",
+    "setup_failed"
+  ],
+  "setup_failed_excluded_from_mean": true,
+  "setup_failed_scope": "provider_or_budget_or_infrastructure_only",
+  "annotation_error_aborts_run": true,
+  "denominators_printed_per_metric": true,
+  "resample_forbidden": true,
+  "rerun_ledger": "artifacts/quality-v2/rerun-ledger.jsonl",
+  "holdout": {
+    "sealed": true,
+    "questions_authored": false,
+    "load_policy": "refuse_until_freeze_artifact",
+    "freeze_command": "scripts/eval_quality_v2.py freeze"
+  },
+  "shopping": {
+    "metrics": [
+      "Precision@4",
+      "Pass@1"
+    ],
+    "k": 4,
+    "request_limit": 4,
+    "score_surface": "agent_selected_sku_keys",
+    "score_order": "selected_sku_keys",
+    "entry_tools": [
+      "recommend_skus",
+      "compare_skus"
+    ],
+    "forbidden_entry": [
+      "GET /api/assistant/recommendations",
+      "RecommendationService"
+    ],
+    "legal_empty_precision": null,
+    "compare_precision": null,
+    "empty_reasons_ok": [
+      "hard_constraint_unsatisfied",
+      "no_eligible_sku"
+    ],
+    "hallucinated_sku_key_counts_as_violating_slot": true,
+    "catalog_overlay_restored_after_case": true,
+    "official_model_mode": "live",
+    "mock_not_official": true,
+    "quantity_precision_semantics": "demand-fill: one satisfying SKU at requested quantity fills quantity slots"
+  },
+  "support": {
+    "metrics": [
+      "Recall@8",
+      "Faithfulness"
+    ],
+    "recall_k": 8,
+    "recall_surface": "last_real_search_knowledge.candidates",
+    "recall_empty_relevant": null,
+    "diagnostic_recall_k": 4,
+    "faithfulness_surface": "llm_judge_deepseek_over_answer_and_citations",
+    "faithfulness_requires_answer_side_and_citation_side": true,
+    "faithfulness_empty_claims": null,
+    "faithfulness_on_citation_cleared": null,
+    "must_not_claim_consumed": "uncued hit in final answer fails the case",
+    "forbidden_claims_consumed": "verbatim hit in final answer fails the case",
+    "handoff_is_aux_pass": true,
+    "llm_judge": {
+      "development_only": true,
+      "enters_public_score": true,
+      "sample_seed": 20260912,
+      "note": "Faithfulness 主报为 judge；CLI judge 报告用于抽检复核"
+    },
+    "faithfulness_judge": {
+      "enters_public_score": true,
+      "judge_model_env": [
+        "SMARTLECT_JUDGE_API_KEY",
+        "SMARTLECT_JUDGE_BASE_URL",
+        "SMARTLECT_JUDGE_MODEL"
+      ],
+      "default_judge_model": "deepseek-flash",
+      "judge_differs_from_main_model": true,
+      "temperature": 0,
+      "full_coverage_over_claim_cases": true,
+      "judge_failure_policy": "Faithfulness=null (missing denominator), never a borrowed rule value",
+      "prompt_version": "qv2-judge-faith-v2"
+    },
+    "faithfulness_rule_diagnostic": "Faithfulness_rule (exact substring, both sides)",
+    "claims_scope": {
+      "essential": "counts into Faithfulness",
+      "peripheral": "diagnostic Peripheral_coverage only",
+      "validator_enforced": true
+    },
+    "faithfulness_answer_side": {
+      "definition": "decompose the answer's own statements, verify each against docs (RAGAS-aligned)",
+      "enters_public_score": false,
+      "judge_prompt_version": "qv2-judge-answer-side-v1"
+    }
+  },
+  "ads": {
+    "metrics": [
+      "CTR",
+      "CVR"
+    ],
+    "ctr": "clicks / impressions",
+    "cvr": "campaign.metrics.payment_conversions / clicks",
+    "impressions_zero_ctr": null,
+    "clicks_zero_cvr": null,
+    "clicks_without_payment_cvr": 0.0,
+    "unknown_payments_counted": true,
+    "unknown_payments_enter_cvr": false,
+    "forbid_summary_payment_conversions": true,
+    "simulated_not_causal": true,
+    "playbook_kinds": [
+      "impressions_only",
+      "clicks_no_payment",
+      "attributed_payment",
+      "organic_payment"
+    ],
+    "buy_targets": [
+      "ad_sku",
+      "other_sku"
+    ]
+  }
+}

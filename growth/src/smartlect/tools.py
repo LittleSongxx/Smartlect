@@ -15,7 +15,7 @@ from smartlect.business_skills import load_skill
 from smartlect.knowledge import compose_search_query
 from smartlect.provider import ProviderError
 from smartlect.state import StateError
-from smartlect.recommendation.service import RecommendationRequest, in_scope, scope_filter
+from smartlect.catalog_gate import RecommendationRequest, in_scope, scope_filter
 
 
 class Arguments(BaseModel):
@@ -28,6 +28,23 @@ class ProductArgs(Arguments):
 
 class SearchArgs(RecommendationRequest):
     pass
+
+
+class CompareArgs(Arguments):
+    sku_keys: list[str] = Field(default_factory=list, max_length=4,
+        description='2–4个sku_key对照；未填则用会话比较目标各检索一次')
+    comparison_targets: list[str] = Field(default_factory=list, max_length=4,
+        description='要对照的商品名或规格词，最多4个')
+    query: str = Field(default='', max_length=200)
+    product_id: str | None = Field(default=None, min_length=1, max_length=64)
+    category_id: str | None = Field(default=None, min_length=1, max_length=64)
+    max_price_cents: int | None = Field(default=None, ge=0, le=100000000)
+    min_price_cents: int = Field(default=0, ge=0, le=100000000)
+    quantity: int = Field(default=1, ge=1, le=999)
+    required_terms: list[str] = Field(default_factory=list, max_length=16)
+    excluded_terms: list[str] = Field(default_factory=list, max_length=20)
+    excluded_product_ids: list[str] = Field(default_factory=list, max_length=64)
+    excluded_sku_keys: list[str] = Field(default_factory=list, max_length=64)
 
 
 class KnowledgeArgs(Arguments):
@@ -115,6 +132,7 @@ REGISTRY = {
     "search_knowledge": Tool(KnowledgeArgs, "shopping:read", "检索已发布且有权限的政策/说明原文及引用"),
     "search_skus": Tool(SearchArgs, "shopping:read", "按关键字/预算从Java查询实际有货SKU；价格单位分"),
     "recommend_skus": Tool(SearchArgs, "shopping:read", "按用途/预算/硬约束推荐真实可售SKU，返回来源、策略和理由；价格单位分"),
+    "compare_skus": Tool(CompareArgs, "shopping:read", "对照2–4个可售SKU或任务槽比较目标；缺目标只标不全，不用热销凑数"),
     "get_my_addresses": Tool(Arguments, "orders:read", "查询本人收货地址ID与默认标记，不返回电话或详细地址"),
     "get_payment_status": Tool(PaymentArgs, "orders:read", "核对本人付款意图及订单同步状态"),
     "get_conversation_memory": Tool(MemoryArgs, "shopping:read", "读取本人的当前会话摘要、近期原话与结构化偏好；不是交易事实"),
@@ -162,14 +180,14 @@ def schemas(actor, allowed=None):
 
 
 async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None, allowed=None,
-                 knowledge=None, embed_query=None, memory=None, recommend=None, product_scope=None,
+                 knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, product_scope=None,
                  observed_citations=None, user_utterance=None):
     tool = REGISTRY.get(name)
     if tool is None or (allowed is not None and name not in allowed):
         raise ValueError("tool_not_allowed")
     actor.require(tool.permission)
     params = tool.schema.model_validate(arguments).model_dump(exclude_none=True,
-                    exclude_unset=name in {'search_skus', 'recommend_skus'})
+                    exclude_unset=name in {'search_skus', 'recommend_skus', 'compare_skus'})
     if name == 'request_handoff' and (len(set(params['citation_chunk_ids'])) != len(params['citation_chunk_ids'])
             or any(key not in (observed_citations or {}) for key in params['citation_chunk_ids'])):
         raise ValueError('unsupported_reference')
@@ -188,8 +206,8 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
     if prior["outcome"] != "started":
         return prior["receipt"]
     try:
-        result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, observed_citations, user_utterance),
-                                        timeout=30 if name in {"search_knowledge", "search_skus", "recommend_skus"} else 15)
+        result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, compare, observed_citations, user_utterance),
+                                        timeout=30 if name in {"search_knowledge", "search_skus", "recommend_skus", "compare_skus"} else 15)
         status = "command_accepted"
         if name == "get_refund_status":
             status = "business_completed" if result and all(item.get("status") == "COMPLETED" for item in result) else "business_pending"
@@ -208,7 +226,7 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
         raise
 
 
-async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, observed_citations=None, user_utterance=None):
+async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, observed_citations=None, user_utterance=None):
     if name == 'request_handoff':
         citations = [(observed_citations or {})[key] for key in params['citation_chunk_ids']]
         ticket = await asyncio.to_thread(memory.handoff, actor, lease['conversation_id'], 'model_requested_handoff',
@@ -216,7 +234,8 @@ async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, e
         return {'ticket': ticket, 'answer': params['answer'], 'citations': citations}
     if name == 'get_conversation_memory':
         data = await asyncio.to_thread(memory.context, actor, lease['conversation_id'])
-        return {'preferences': data['preferences'], 'summary': data['summary'], 'memory_version': data['memory_version'],
+        return {'preferences': data['preferences'], 'summary': data['summary'], 'mission': data.get('mission'),
+                'memory_version': data['memory_version'],
                 'messages': [{k: m[k] for k in ('message_id', 'role', 'content')} for m in data['messages'][-params['limit'] * 2:]]}
     if name == 'remember_preference':
         run = await asyncio.to_thread(store.get_run, actor, lease['agent_run_id'])
@@ -268,6 +287,10 @@ async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, e
         if recommend is None:
             raise ValueError('recommendation_service_unavailable')
         return await recommend(params)
+    if name == 'compare_skus':
+        if compare is None:
+            raise ValueError('comparison_service_unavailable')
+        return await compare(params)
     if name == "get_payment_status":
         return await commerce.request("order", "/internal/order/commerce/v2/actionStatus", actor=actor,
                                       data={"actionType": "PAYMENT", "params": params})

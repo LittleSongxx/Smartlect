@@ -277,5 +277,56 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
                 await bad.chat(MESSAGES)
 
 
+
+
+class GlmProviderTests(unittest.IsolatedAsyncioTestCase):
+    GLM_CONFIG = {"SMARTLECT_MODEL_API_KEY": "test-secret-do-not-log",
+                  "SMARTLECT_MODEL_BASE_URL": "https://open.bigmodel.cn/api/paas/v4",
+                  "SMARTLECT_MODEL_ID": "glm-5.3"}
+
+    async def test_glm_model_and_endpoints_authorized(self):
+        provider = Provider(self.GLM_CONFIG)
+        self.assertEqual(provider.model_id, "glm-5.3")
+        base, _key, region = provider._endpoint("MODEL")
+        self.assertEqual(base, "https://open.bigmodel.cn/api/paas/v4")
+        self.assertEqual(region, "cn-zhipu")
+        intl = Provider({**self.GLM_CONFIG,
+                         "SMARTLECT_MODEL_BASE_URL": "https://api.z.ai/api/paas/v4"})
+        self.assertEqual(intl._endpoint("MODEL")[2], "intl-zhipu")
+
+    async def test_glm_uses_openai_protocol_body(self):
+        bodies = []
+
+        def handler(request):
+            bodies.append(json.loads(request.content))
+            return httpx.Response(200, json={
+                "model": "glm-5.3",
+                "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "ok"}}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4}})
+
+        provider = Provider(self.GLM_CONFIG, transport=httpx.MockTransport(handler))
+        await provider.chat(MESSAGES, max_tokens=64)
+        self.assertEqual(bodies[0]["max_tokens"], 64)
+        self.assertNotIn("max_completion_tokens", bodies[0])
+        self.assertNotIn("enable_thinking", bodies[0])
+        self.assertNotIn("enable_search", bodies[0])
+        def dashscope_handler(request):
+            bodies.append(json.loads(request.content))
+            return httpx.Response(200, json=completion())
+
+        dashscope = Provider(CONFIG, transport=httpx.MockTransport(dashscope_handler))
+        await dashscope.chat(MESSAGES, max_tokens=64)
+        self.assertIn("enable_thinking", bodies[1])
+        self.assertIn("max_completion_tokens", bodies[1])
+
+    async def test_glm_wrong_path_or_host_rejected(self):
+        for url in ("https://open.bigmodel.cn/compatible-mode/v1",
+                    "https://evil.bigmodel.cn/api/paas/v4",
+                    "https://open.bigmodel.cn/api/paas/v4/../v4"):
+            bad = Provider({**self.GLM_CONFIG, "SMARTLECT_MODEL_BASE_URL": url})
+            with self.assertRaisesRegex(ProviderError, "model_endpoint_not_authorized"):
+                await bad.chat(MESSAGES)
+
+
 if __name__ == "__main__":
     unittest.main()

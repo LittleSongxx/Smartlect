@@ -1,0 +1,23 @@
+{
+  "schema_version": "quality-v2-holdout-freeze-v1",
+  "frozen_at": "2026-09-12T11:17:06.011499+00:00",
+  "frozen_by": "scripts/eval_quality_v2.py freeze",
+  "note": "冻结开发集形态。留出题目尚未出；出题后以其自身 manifest 为准，禁止用留出调系统。",
+  "dev_digests": {
+    "shopping_dev_sha256": "75fe5ca5ba4b371d402537cb66d3527d0c9259e7daad617856b3d1f689786f6a",
+    "support_dev_sha256": "f4f92d6d417c48598f55115727bc40f6ce3d222b7158cd8d461cfec0a593e6e0",
+    "ads_playbooks_sha256": "fa5f7ac2d198051833d06b2b5b104eaef9737b075e2b194778f808b027f516e0",
+    "catalog_snapshot_sha256": "c6c5d26130758bd48173a38b75084be232b0e3a2579e71654f20ea15ef643583",
+    "metrics_contract_sha256": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae"
+  },
+  "provenance": {
+    "workdir": "/home/song/code/Smartlect",
+    "contract_sha256": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae",
+    "scorer_sha256": {
+      "quality_v2.py": "4fa0e7197edb9147ed42fb4452014208bc91b7b0f5ac212795d39450f4053364",
+      "eval_quality_v2.py": "a1f65c0a05c23b5fb2b5bebb35734d4d5f8fd77254433ffbcae47f16bdf4cf84"
+    },
+    "git_head": "6dee21873ca7ec9d2282666d5600f6ba32804c4f",
+    "working_diff_sha256": "54551b2a54ffd9c0519c91c07f459327c1c42cc8b719a0026e80e4d1b93f3016"
+  }
+}

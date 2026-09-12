@@ -114,8 +114,13 @@ class AttributionStore(SessionStore):
             cursor.execute("SELECT resource_id,execution_scope_id FROM execution_resource WHERE resource_type='product'")
             rows = cursor.fetchall()
         scope = actor.execution_scope_id
-        return {'include': None if scope == 'store' else [r['resource_id'] for r in rows if r['execution_scope_id'] == scope],
-                'exclude': [r['resource_id'] for r in rows if r['execution_scope_id'] != scope]}
+        if scope == 'store':
+            return {'include': None,
+                    'exclude': [r['resource_id'] for r in rows if r['execution_scope_id'] != 'store']}
+        # A bounded include already fences a scoped actor; enumerating every other
+        # scope's products would grow with each demo scenario and trip the scope cap.
+        return {'include': [r['resource_id'] for r in rows if r['execution_scope_id'] == scope],
+                'exclude': []}
 
     def register_scope(self, scope, *, scenario_run_id, branch_id, users, products, visitors=()):
         """Local scenario setup only; there is no public resource registration endpoint."""

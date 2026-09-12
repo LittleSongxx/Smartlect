@@ -1,0 +1,49 @@
+{
+  "dataset_id": "quality-v2-support-v3-dev",
+  "schema_version": "quality-v2-support-v3",
+  "split": "development",
+  "holdout": {
+    "sealed": true,
+    "questions_authored": false,
+    "load_policy": "refuse_until_freeze_artifact",
+    "freeze_command": "scripts/eval_quality_v2.py freeze"
+  },
+  "checksums": {
+    "evals/quality-v2/support/dev.jsonl": "f4f92d6d417c48598f55115727bc40f6ce3d222b7158cd8d461cfec0a593e6e0",
+    "evals/quality-v2/metrics-contract.json": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae"
+  },
+  "metrics": [
+    "Recall@8",
+    "Faithfulness"
+  ],
+  "case_count": 24,
+  "case_ids": [
+    "sup-d-01",
+    "sup-d-02",
+    "sup-d-03",
+    "sup-d-04",
+    "sup-d-05",
+    "sup-d-06",
+    "sup-d-07",
+    "sup-d-08",
+    "sup-d-09",
+    "sup-d-10",
+    "sup-d-11",
+    "sup-d-12",
+    "sup-d-13",
+    "sup-d-14",
+    "sup-d-15",
+    "sup-d-16",
+    "sup-d-17",
+    "sup-d-18",
+    "sup-d-19",
+    "sup-d-20",
+    "sup-d-21",
+    "sup-d-22",
+    "sup-d-23",
+    "sup-d-24"
+  ],
+  "live_skip": [
+    "sup-d-24"
+  ]
+}

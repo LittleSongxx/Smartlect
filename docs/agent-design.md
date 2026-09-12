@@ -103,10 +103,19 @@ SSE回放已落库事件与最终正文；当前没有把供应商逐token流直
 
 ## 推荐与交易：确定性服务
 
-[RecommendationService](../growth/src/smartlect/recommendation/service.py) 为HTTP与Shopping共用，
-不是第三个Agent。Java按内容/类目/已付款共购/付款热门/新品召回，最多50商品、500SKU；
-每路SQL在LIMIT前应用服务端scope及请求的缩小筛选。Java快照和逐SKU库存决定可售、价格与硬约束。
-规则贡献和理由可检查；付款热度是已确认付款件数，包含后续退款，不称净销量，未知值保持null。
+首页 [`GET /recommendations`](../growth/src/smartlect/app.py) 仍走 [RecommendationService](../growth/src/smartlect/recommendation/service.py)
+五路召回（内容/类目/已付款共购/付款热门/新品），算法版本 `sku-rank-paid-units-v1`。
+可售门 [`eligible_skus`](../growth/src/smartlect/catalog_gate.py) 与广告投放共用；`rank_skus` 权重和广告相关性不变。
+这不是第三个 Agent。每路 SQL 在 LIMIT 前应用服务端 scope 及请求的缩小筛选。Java 快照和逐 SKU 库存决定可售、价格与硬约束。
+规则贡献和理由可检查；付款热度是已确认付款件数，包含后续退款，不称净销量，未知值保持 null。
+
+Shopping 的 `recommend_skus` / `search_skus` / `compare_skus` 不再调用首页五路服务，
+只走 [ShoppingRetrieve](../growth/src/smartlect/shopping_retrieve.py)：会话任务槽合并后打 `searchOnSale`，
+再过同一可售门。有硬约束时禁止 popular / copurchase 补位；落空返回合法空集
+`empty_reason=hard_constraint_unsatisfied`。比较 2–4 个目标缺一个只标 `comparison_complete=false`，
+不补无关热销。长期 `user_preference` 只作排序软信号，不自动变成硬排除。
+回执仍写 [`save_recommendation`](../growth/src/smartlect/attribution.py)，卡片继续带 `recommendation_id` /
+`position`；策略版本为 `shopping-constraint-v1`，不读 `StrategyStore`。商家 `set_recommendation_policy` 因此不再改导购。
 
 最多12个合法SKU可接受一次有界语义重排，只能返回同集合完整排列；随后重新查询这些SKU的Java状态，
 剔除售罄/涨价越界者，不再次召回补位。规则、内容规则、真实语义及语义失败回退分别记录ranking_mode。

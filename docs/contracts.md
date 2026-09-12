@@ -55,7 +55,7 @@ Growth JSON 请求体和工具参数使用 Pydantic `strict=True,extra=forbid`�
 | `cancel` | `orderId` 1–64 字符，先查本人订单再生成提案。 |
 | `refund` | `orderItemId` 1–64 字符；整数 `refundAmountCents` 为 0 至有符号 64 位整数上限；`reason` 最长 500。当前针对该明细全部剩余可退金额，预查和 Java 执行时均要求金额匹配，未增加任意部分金额退款接口。 |
 
-注册工具为 `load_skill/request_handoff/search_knowledge/recommend_skus/search_skus/get_my_addresses/get_payment_status/get_conversation_memory/remember_preference/get_product_offer/get_my_orders/get_order_status/get_refund_status/propose_order/propose_cancel/propose_refund`，同时受 actor 权限和本次任务白名单限制。`shopping_advice` 开放 `recommend_skus`；`search_skus` 保留共享服务兼容入口。模型参数无主体、凭证或批准字段；Java 服务/路径由程序固定，委托来自 ActorContext。推荐最终逐 SKU 复验，商品合计 `totalStocks` 不作为可售依据。
+注册工具为 `load_skill/request_handoff/search_knowledge/recommend_skus/search_skus/compare_skus/get_my_addresses/get_payment_status/get_conversation_memory/remember_preference/get_product_offer/get_my_orders/get_order_status/get_refund_status/propose_order/propose_cancel/propose_refund`，同时受 actor 权限和本次任务白名单限制。`shopping_advice` 开放 `recommend_skus` 与 `compare_skus`；`search_skus` 保留导购检索兼容入口。模型参数无主体、凭证或批准字段；Java 服务/路径由程序固定，委托来自 ActorContext。推荐最终逐 SKU 复验，商品合计 `totalStocks` 不作为可售依据。
 
 `request_handoff` 是用户/访客本人会话的终止工具，仅接受转交说明及本轮知识引用；纯转交无需先检索或加载Skill。必须独占工具批次，混合交易/转交在任何动作前拒绝；原租约与主体在建单事务内复核，真实OPEN工单产生`command_accepted`回执后终止，不继续调用模型，也不表示人工已经接管。普通`finish_answer`不创建工单；无依据/冲突/模型失败的控制器升级另标`controller_safety/controller_fallback`，与`model_tool`区分。建单、工具回执和最终回答目前分属事务，崩溃后若已有工单，只返回原工单并取消续跑，标`recovered_existing_ticket`，不虚称丢失的回执已经完成；同一消息ID和请求指纹的HTTP重放可恢复原run，原调用计数保持；新消息及异参在会话锁内拒绝，恢复不会启动模型。人工接管撤销原租约，禁止迟到回答。
 

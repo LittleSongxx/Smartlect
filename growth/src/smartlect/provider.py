@@ -142,9 +142,11 @@ def _message(value):
 class Provider:
     """Reuse one instance per API process: chat and embeddings share two request slots."""
 
+    ZHIPU_HOSTS = {"open.bigmodel.cn": "cn-zhipu", "api.z.ai": "intl-zhipu"}
+
     def __init__(self, config, *, transport=None):
         self.model_id = config.get("SMARTLECT_MODEL_ID", "qwen3.7-plus")
-        if self.model_id not in {"qwen3.7-plus", "qwen3.7-plus-2026-05-26"}:
+        if self.model_id not in {"qwen3.7-plus", "qwen3.7-plus-2026-05-26", "glm-5.3"}:
             raise ValueError("model_id_not_authorized")
         self._config = {k: v for k, v in config.items() if k.startswith((
             "SMARTLECT_MODEL_", "SMARTLECT_EMBEDDING_"))}
@@ -157,12 +159,15 @@ class Provider:
         parsed = urlsplit(base)
         if not key or not base:
             raise ProviderError("model_not_configured" if prefix == "MODEL" else "embedding_not_configured")
+        zhipu = parsed.hostname in self.ZHIPU_HOSTS
         if (parsed.scheme != "https" or parsed.username or parsed.password or parsed.query or parsed.fragment
-                or parsed.port not in {None, 443} or parsed.path != "/compatible-mode/v1"
-                or not re.fullmatch(r"(?:dashscope(?:-intl|-us)?\.aliyuncs\.com|llm-[a-z0-9-]+\.[a-z0-9-]+\.maas\.aliyuncs\.com)", parsed.hostname or "")):
+                or parsed.port not in {None, 443}
+                or parsed.path != ("/api/paas/v4" if zhipu else "/compatible-mode/v1")
+                or not (zhipu or re.fullmatch(r"(?:dashscope(?:-intl|-us)?\.aliyuncs\.com|llm-[a-z0-9-]+\.[a-z0-9-]+\.maas\.aliyuncs\.com)", parsed.hostname or ""))):
             raise ProviderError("model_endpoint_not_authorized")
         host = parsed.hostname
-        region = (host.split(".")[1] if ".maas.aliyuncs.com" in host else
+        region = (self.ZHIPU_HOSTS[host] if zhipu else
+                  host.split(".")[1] if ".maas.aliyuncs.com" in host else
                   {"dashscope.aliyuncs.com": "cn-beijing", "dashscope-intl.aliyuncs.com": "ap-southeast-1",
                    "dashscope-us.aliyuncs.com": "us-east-1"}.get(host, "unknown"))
         return base, key, region
@@ -182,9 +187,15 @@ class Provider:
                     or (message.get("content") is not None and not isinstance(message["content"], str))):
                 raise ValueError("invalid_model_message")
             clean_messages.append(message)
+        base = self._config.get("SMARTLECT_MODEL_BASE_URL", "")
+        dashscope = "aliyuncs.com" in base
         body = {"model": self.model_id, "messages": clean_messages, "stream": stream,
-                "enable_thinking": False, "enable_search": False, "temperature": 0,
-                "max_completion_tokens": max_tokens}
+                "temperature": 0,
+                ("max_completion_tokens" if dashscope else "max_tokens"): max_tokens}
+        if dashscope:
+            # Vendor-specific switches; the Zhipu endpoint takes the plain OpenAI protocol.
+            body["enable_thinking"] = False
+            body["enable_search"] = False
         if tools:
             if (not isinstance(tools, list) or len(tools) > 32 or any(
                     not isinstance(t, dict) or t.get("type") != "function"
@@ -243,7 +254,7 @@ class Provider:
                          "usage": _usage(None), "cost_estimate_cny": None, "price_version": None,
                          "returned_model": None, "resolved_snapshot": None, "first_delta_ms": None}
                 trace["request_parameters"] = {"temperature": body.get("temperature"),
-                    "max_completion_tokens": body.get("max_completion_tokens"),
+                    "max_completion_tokens": body.get("max_completion_tokens", body.get("max_tokens")),
                     "response_format_type": (body.get("response_format") or {}).get("type"),
                     "function_tool_count": len(body.get("tools", [])), "tool_choice": body.get("tool_choice"),
                     "dimensions": body.get("dimensions")}

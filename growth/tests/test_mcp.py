@@ -41,7 +41,7 @@ class McpProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(listed & writes)
         self.assertFalse(listed & mcp.INTERNAL_TOOLS)
         # recommend_skus writes an attribution receipt whose exposures an MCP client cannot report.
-        self.assertFalse({'recommend_skus', 'search_skus'} & listed)
+        self.assertFalse({'recommend_skus', 'search_skus', 'compare_skus'} & listed)
         with self.assertRaises(mcp.JsonRpcError):
             await self.call('tools/call', {'name': 'recommend_skus', 'arguments': {'query': 'x'}},
                             who=BUYER, call_tool=self.receipt)

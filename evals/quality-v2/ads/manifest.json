@@ -1,0 +1,27 @@
+{
+  "dataset_id": "quality-v2-ads-v2-dev",
+  "schema_version": "quality-v2-ads-v2",
+  "split": "development",
+  "holdout": {
+    "sealed": true,
+    "questions_authored": false,
+    "load_policy": "refuse_until_freeze_artifact",
+    "freeze_command": "scripts/eval_quality_v2.py freeze"
+  },
+  "checksums": {
+    "evals/quality-v2/ads/playbooks.json": "fa5f7ac2d198051833d06b2b5b104eaef9737b075e2b194778f808b027f516e0",
+    "evals/quality-v2/metrics-contract.json": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae"
+  },
+  "metrics": [
+    "CTR",
+    "CVR"
+  ],
+  "playbook_count": 5,
+  "case_ids": [
+    "ads-d-01",
+    "ads-d-02",
+    "ads-d-03",
+    "ads-d-04",
+    "ads-d-05"
+  ]
+}

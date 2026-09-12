@@ -24,12 +24,12 @@ EXPOSED_KINDS = ("read",)
 #                   apply it to.
 #   recommend_skus  saves a recommendation receipt that an A/B assignment and later exposure
 #   search_skus     and click reports are attributed against; both names run the same
-#                   implementation. That receipt only means something when the caller is a
+#   compare_skus    shopping retrieve. That receipt only means something when the caller is a
 #                   display surface bound to report those events, which an MCP client is not,
 #                   so serving them here would put unreported impressions into the
 #                   attribution ledger. get_product_offer covers catalog lookup and reads
 #                   Java product facts without recording anything.
-INTERNAL_TOOLS = frozenset({"load_skill", "recommend_skus", "search_skus"})
+INTERNAL_TOOLS = frozenset({"load_skill", "recommend_skus", "search_skus", "compare_skus"})
 
 
 class JsonRpcError(Exception):

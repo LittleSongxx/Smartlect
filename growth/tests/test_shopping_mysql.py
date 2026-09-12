@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 
 from smartlect.agents.shopping import run_shopping
+from smartlect.attribution import AttributionStore
 from smartlect.business_skills import USER_SKILLS, load_skill
 from smartlect.app import create_app
 from smartlect.auth import ActorContext, IdentityBridge
@@ -24,6 +25,7 @@ from smartlect.memory import MemoryStore
 from smartlect.provider import ProviderError
 from smartlect.state import SessionStore, StateError
 from smartlect.tools import ToolReceipt, invoke
+from test_recommendation import FakeCommerce
 import test_ledger_mysql as ledger_tests
 
 
@@ -157,10 +159,10 @@ class ShoppingMySQLTests(unittest.TestCase):
         lease = self.store.claim_run(self.actor, run["agent_run_id"], owner="fake-shopping-test", ttl_seconds=90)
         return self.store.get_run(self.actor, run["agent_run_id"]), lease
 
-    async def execute(self, provider, run, lease, config=None, commerce=None):
+    async def execute(self, provider, run, lease, config=None, commerce=None, attribution=None, recommendations=None):
         return await run_shopping(actor=self.actor, run=run, lease=lease, store=self.store,
             commerce=commerce or NoCommerce(), knowledge=self.knowledge, memory=self.memory, provider=provider,
-            mode="live", config=config or {})
+            mode="live", config=config or {}, attribution=attribution, recommendations=recommendations)
 
     def test_declaring_needs_human_in_the_final_answer_opens_a_real_ticket(self):
         # The observed failure was an agent writing "please contact a human" while filing the
@@ -417,7 +419,7 @@ class ShoppingMySQLTests(unittest.TestCase):
         result = asyncio.run(self.execute(provider, run, lease))
         self.assertEqual(result["state"], "COMPLETED")
         answer = result["result"]
-        self.assertTrue({"load_skill", "request_handoff", "finish_answer", "search_knowledge", "recommend_skus", "get_my_orders"} <= provider.offered_tools[0])
+        self.assertTrue({"load_skill", "request_handoff", "finish_answer", "search_knowledge", "recommend_skus", "compare_skus", "get_my_orders"} <= provider.offered_tools[0])
         self.assertIn("search_knowledge", provider.offered_tools[1])
         self.assertTrue(all("propose_order" in offered for offered in provider.offered_tools))
         self.assertEqual(answer["model_calls"], 3)
@@ -822,6 +824,58 @@ class ShoppingMySQLTests(unittest.TestCase):
                     self.assertEqual(self.store.get_conversation(self.actor, self.conversation)['messages'], before)
                     self.assertEqual(provider.actual_attempts, 3)
         asyncio.run(exercise())
+
+    def test_recommend_skus_uses_constraint_retrieve_not_homepage_routes(self):
+        commerce = FakeCommerce()
+        attribution = AttributionStore(self.connect)
+        attribution.register_scope(self.scope, scenario_run_id=self.scope, branch_id='contract',
+                                   users=[self.actor.actor_id], products=['content', 'popular', 'new', 'paired', 'seed'])
+        homepage = AsyncMock()
+        homepage.recommend = AsyncMock(side_effect=AssertionError('homepage recommend must not run'))
+
+        def finish(messages):
+            observed = json.loads(next(m['content'] for m in reversed(messages) if m['role'] == 'tool'))
+            items = observed if isinstance(observed, list) else observed.get('items', [])
+            return tool('finish_answer', {
+                'answer': '这些规格当前可售。',
+                'request_kind': 'inquire_fact', 'handoff_requested': False,
+                'grounding': 'user_facts',
+                'selected_sku_keys': [items[0]['sku_key']] if items else []})
+
+        provider = FakeProvider([
+            tool('recommend_skus', {'query': '键盘', 'max_price_cents': 20000}),
+            finish])
+        run, lease = self.begin('预算200元，不要塑料，给我看键盘')
+        result = asyncio.run(self.execute(provider, run, lease, commerce=commerce,
+                                          attribution=attribution, recommendations=homepage))
+        self.assertEqual(result['state'], 'COMPLETED')
+        card = result['result']['products'][0]
+        self.assertEqual(card['productId'], 'content')
+        self.assertEqual(card['strategy_version'], 'shopping-constraint-v1')
+        self.assertTrue(card['recommendation_id'])
+        homepage.recommend.assert_not_awaited()
+        self.assertFalse(any('popularProducts' in path or 'coPurchase' in path for _, path, _ in commerce.calls))
+        mission = self.memory.mission(self.actor, self.conversation)
+        self.assertEqual(mission['budget_max_cents'], 20000)
+        self.assertIn('塑料', mission['excluded_terms'])
+
+        def finish_empty(messages):
+            observed = json.loads(next(m['content'] for m in reversed(messages) if m['role'] == 'tool'))
+            self.assertEqual(observed.get('empty_reason'), 'hard_constraint_unsatisfied')
+            return tool('finish_answer', {
+                'answer': '当前没有满足预算的可售规格。',
+                'request_kind': 'inquire_fact', 'handoff_requested': False,
+                'grounding': 'user_facts'})
+
+        empty = FakeCommerce()
+        provider = FakeProvider([
+            tool('recommend_skus', {'query': '键盘', 'max_price_cents': 1}),
+            finish_empty])
+        run, lease = self.begin('只要1分钱的键盘')
+        empty_result = asyncio.run(self.execute(provider, run, lease, commerce=empty, attribution=attribution,
+                                                recommendations=homepage))
+        self.assertEqual(empty_result['result']['products'], [])
+        self.assertFalse(any('popularProducts' in path for _, path, _ in empty.calls))
 
 
 if __name__ == "__main__":

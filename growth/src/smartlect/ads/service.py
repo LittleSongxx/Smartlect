@@ -9,7 +9,8 @@ from pydantic import Field, model_validator
 from smartlect.commerce import CommerceError
 from smartlect.state import StateError, _integer
 from smartlect.tools import Arguments
-from smartlect.recommendation.service import RecommendationRequest, constraints, eligible_skus, rank_skus, scope_filter
+from smartlect.catalog_gate import RecommendationRequest, constraints, eligible_skus, scope_filter
+from smartlect.recommendation.service import rank_skus
 from smartlect.recommendation.store import DEFAULT_STRATEGIES
 
 

@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 from smartlect.agents.shopping import (PROMPT_VERSION, SCHEMA_VERSION, PROPOSAL_CONFIRMATION, FinalAnswer,
                                        attach_proposal_confirmation, bounded_messages,
-                                       knowledge_observation, product_observation, BudgetExceeded)
+                                       knowledge_observation, product_observation, sku_observation, BudgetExceeded)
 from smartlect.business_skills import load_skill
 from smartlect.events import canonical
 from smartlect.privacy import redact_text
@@ -11,12 +11,14 @@ from smartlect.tools import tool_schema, SearchArgs, CreateOrderArgs, Preference
 
 class ShoppingBoundaryTests(unittest.TestCase):
     def test_final_answer_declares_request_kind_instead_of_status(self):
-        self.assertEqual(PROMPT_VERSION, 'shopping-react-v23')
+        self.assertEqual(PROMPT_VERSION, 'shopping-react-v24')
         self.assertEqual(SCHEMA_VERSION, 'shopping-answer-v5')
         advice = load_skill('shopping_advice')
-        self.assertEqual(advice['version'], '1.9.0')
+        self.assertEqual(advice['version'], '1.12.0')
         self.assertIn('list_my_coupons', advice['tools'])
+        self.assertIn('compare_skus', advice['tools'])
         self.assertIn('search_skus 或 recommend_skus', advice['instructions'])
+        self.assertIn('要比较时用 compare_skus', advice['instructions'])
         self.assertIn('空集是合法收口', advice['instructions'])
         self.assertIn('request_kind', FinalAnswer.model_fields)
         self.assertIn('handoff_requested', FinalAnswer.model_fields)
@@ -58,6 +60,23 @@ class ShoppingBoundaryTests(unittest.TestCase):
         self.assertNotIn('skus', observed)
         self.assertIn('not_observed', observed['sku_stock'])
         self.assertEqual(data['skus'], [{'stock': None}])
+
+    def test_sku_observation_keeps_comparison_contract_without_inventing_cards(self):
+        data = {'items': [{'sku_key': 'p:h', 'productId': 'p', 'propertyValueIds': 'v',
+                           'productName': '键盘', 'price_cents': 8000, 'stock': 2,
+                           'specification': '黑色', 'reasons': ['匹配']}],
+                'comparison': {'sku_keys': ['p:h'], 'rows': []},
+                'comparison_complete': False, 'missing_targets': ['鼠标'],
+                'empty_reason': None}
+        observed = sku_observation(data)
+        self.assertEqual(observed['items'][0]['sku_key'], 'p:h')
+        self.assertEqual(observed['comparison']['sku_keys'], ['p:h'])
+        self.assertFalse(observed['comparison_complete'])
+        self.assertEqual(observed['missing_targets'], ['鼠标'])
+        self.assertEqual(sku_observation([]), [])
+        empty = sku_observation({'items': [], 'empty_reason': 'hard_constraint_unsatisfied'})
+        self.assertEqual(empty['items'], [])
+        self.assertEqual(empty['empty_reason'], 'hard_constraint_unsatisfied')
 
     def test_credentials_redacted_without_erasing_trade_ids(self):
         value = 'sku=910000000000000 api_key=private-secret token=private-session sk-abcdefghijklm1234'

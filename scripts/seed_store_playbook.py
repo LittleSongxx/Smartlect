@@ -13,9 +13,7 @@ import uuid
 
 import httpx
 
-from check_f3 import json_value, proposal_from
-from check_f4 import login_merchant
-from demo import wait_for
+from eval_support import json_value, login_merchant, proposal_from, wait_for
 from runtime import ROOT, ENV_FILE, parse_env
 from seed_knowledge import seed as seed_knowledge
 from smartlect.commerce import CommerceClient, CommerceError

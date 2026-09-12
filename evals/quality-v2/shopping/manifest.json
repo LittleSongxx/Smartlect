@@ -1,0 +1,52 @@
+{
+  "dataset_id": "quality-v2-shopping-v3-dev",
+  "schema_version": "quality-v2-shopping-v3",
+  "split": "development",
+  "holdout": {
+    "sealed": true,
+    "questions_authored": false,
+    "load_policy": "refuse_until_freeze_artifact",
+    "freeze_command": "scripts/eval_quality_v2.py freeze"
+  },
+  "checksums": {
+    "evals/quality-v2/shopping/dev.jsonl": "35c7fc85bff092bd4ec91e7d2d4e725c7249c1ffa7bb118e2ee35311bc06d2c5",
+    "evals/quality-v2/shopping/catalog-snapshot.json": "c6c5d26130758bd48173a38b75084be232b0e3a2579e71654f20ea15ef643583",
+    "evals/quality-v2/metrics-contract.json": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae"
+  },
+  "metrics": [
+    "Precision@4",
+    "Pass@1"
+  ],
+  "case_count": 29,
+  "case_ids": [
+    "shop-d-01",
+    "shop-d-02",
+    "shop-d-03",
+    "shop-d-04",
+    "shop-d-05",
+    "shop-d-06",
+    "shop-d-07",
+    "shop-d-08",
+    "shop-d-09",
+    "shop-d-10",
+    "shop-d-11",
+    "shop-d-12",
+    "shop-d-13",
+    "shop-d-14",
+    "shop-d-15",
+    "shop-d-16",
+    "shop-d-17",
+    "shop-d-18",
+    "shop-d-19",
+    "shop-d-20",
+    "shop-d-21",
+    "shop-d-22",
+    "shop-d-23",
+    "shop-d-24",
+    "shop-d-25",
+    "shop-d-26",
+    "shop-d-27",
+    "shop-d-28",
+    "shop-d-29"
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "schema_version": "quality-v2-ads-playbooks-v2",
+  "split": "development",
+  "simulated_not_causal": true,
+  "causal_conclusion_supported": false,
+  "count_source": "campaign.metrics",
+  "forbid": ["summary.payment_conversions", "recommendation_clicks", "GET /admin-api/assistant/ads top-level totals"],
+  "playbooks": [
+    {
+      "playbook_id": "ads-d-01",
+      "kind": "impressions_only",
+      "steps": ["create_campaign", "grant", "activate_campaign", "activate_creative", "exposures"],
+      "traffic": {"impressions": 8, "clicks": 0, "payments": 0},
+      "expected": {
+        "counts": {"impressions": 8, "clicks": 0, "payment_conversions": 0, "unknown_payments": 0},
+        "CTR": 0.0,
+        "CVR": null
+      }
+    },
+    {
+      "playbook_id": "ads-d-02",
+      "kind": "clicks_no_payment",
+      "steps": ["create_campaign", "grant", "activate_campaign", "activate_creative", "exposures", "clicks"],
+      "traffic": {"impressions": 10, "clicks": 3, "payments": 0},
+      "expected": {
+        "counts": {"impressions": 10, "clicks": 3, "payment_conversions": 0, "unknown_payments": 0},
+        "CTR": 0.3,
+        "CVR": 0.0
+      }
+    },
+    {
+      "playbook_id": "ads-d-03",
+      "kind": "attributed_payment",
+      "steps": ["create_campaign", "grant", "activate_campaign", "activate_creative", "exposures", "clicks", "confirm_same_sku", "mock_pay"],
+      "traffic": {"impressions": 6, "clicks": 2, "payments": 1},
+      "buy": "ad_sku",
+      "expected": {
+        "counts": {"impressions": 6, "clicks": 2, "payment_conversions": 1, "unknown_payments": 0},
+        "CTR": 0.3333333333333333,
+        "CVR": 0.5
+      }
+    },
+    {
+      "playbook_id": "ads-d-04",
+      "kind": "attributed_payment",
+      "steps": ["create_campaign", "grant", "activate_campaign", "activate_creative", "exposures", "clicks", "confirm_other_sku", "mock_pay"],
+      "traffic": {"impressions": 8, "clicks": 2, "payments": 1},
+      "buy": "other_sku",
+      "note": "点广告A买B：付款仍应归因到该活动并计入 payment_conversions",
+      "expected": {
+        "counts": {"impressions": 8, "clicks": 2, "payment_conversions": 1, "unknown_payments": 0},
+        "CTR": 0.25,
+        "CVR": 0.5
+      }
+    },
+    {
+      "playbook_id": "ads-d-05",
+      "kind": "organic_payment",
+      "steps": ["confirm_without_campaign", "mock_pay"],
+      "traffic": {"impressions": 0, "clicks": 0, "payments": 1},
+      "note": "未挂活动的付款进 unknown_attribution，不得塞进任何活动的 CVR 分子",
+      "expected": {
+        "counts": {"impressions": 0, "clicks": 0, "payment_conversions": 0, "unknown_payments": 1},
+        "CTR": null,
+        "CVR": null
+      }
+    }
+  ]
+}

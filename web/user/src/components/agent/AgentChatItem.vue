@@ -7,6 +7,7 @@
       <p v-if="data.result?.answer_status === 'insufficient'" class="empty-hint">当前信息不足，请补充需求或等待人工核实。</p>
       <p v-if="['conflicting', 'needs_human'].includes(data.result?.answer_status)" class="empty-hint">该问题需要人工核实，当前不会继续自动执行。</p>
       <p v-if="data.result?.ticket" class="muted">已为您提交人工核实，可刷新会话查看客服回复。</p>
+      <AgentCompareTable v-if="data.result?.comparison" :comparison="data.result.comparison" :complete="data.result.comparison_complete !== false" />
       <AgentProductList v-if="data.result?.products?.length" :list="data.result.products" @select="selectProduct" />
       <AgentOrderList v-if="data.result?.orders?.length" :list="data.result.orders" />
       <AgentConfirmCard v-if="data.result?.proposal" :card="data.result.proposal" @updated="(proposal) => emit('proposal-updated', proposal)" />
@@ -26,6 +27,7 @@ import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { Service } from '@element-plus/icons-vue';
 import MarkdownContent from '@/components/common/MarkdownContent.vue';
+import AgentCompareTable from '@/components/agent/AgentCompareTable.vue';
 import AgentProductList from '@/components/agent/AgentProductList.vue';
 import AgentOrderList from '@/components/agent/AgentOrderList.vue';
 import AgentConfirmCard from '@/components/agent/AgentConfirmCard.vue';

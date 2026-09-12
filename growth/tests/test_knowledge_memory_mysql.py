@@ -196,6 +196,23 @@ class KnowledgeMemoryMySQLTests(unittest.TestCase):
         self.assertIsNone(cleared['summary'])
         self.assertEqual(len(self.state.get_conversation(self.user, self.conversation)['messages']), 20)
         self.assertGreater(cleared['memory_version'], context['memory_version'])
+        self.assertEqual(cleared['mission']['excluded_terms'], [])
+        self.assertIsNone(cleared['mission']['budget_max_cents'])
+
+    def test_shopping_mission_persists_across_restart_and_clears_with_forget(self):
+        stored = self.memory.put_mission(self.user, self.conversation, {
+            'budget_max_cents': 20000, 'excluded_terms': ['红色'], 'comparison_targets': ['键盘', '鼠标'],
+            'comparison_required': True})
+        self.assertEqual(stored['budget_max_cents'], 20000)
+        self.assertEqual(self.memory.mission(self.user, self.conversation)['excluded_terms'], ['红色'])
+        restarted = MemoryStore(self.connect)
+        context = restarted.context(self.user, self.conversation)
+        self.assertEqual(context['mission']['budget_max_cents'], 20000)
+        self.assertEqual(context['mission']['comparison_targets'], ['键盘', '鼠标'])
+        self.memory.clear(self.user, self.conversation)
+        forgotten = restarted.mission(self.user, self.conversation)
+        self.assertIsNone(forgotten['budget_max_cents'])
+        self.assertEqual(forgotten['excluded_terms'], [])
 
     def test_handoff_deduplicates_persists_and_only_authorized_human_can_reply(self):
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:

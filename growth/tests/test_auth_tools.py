@@ -81,7 +81,7 @@ class AuthToolTests(unittest.IsolatedAsyncioTestCase):
     async def test_registry_cannot_grant_write_or_accept_actor_fields(self):
         guest = ActorContext(subject_type='visitor', actor_id='guest', session_id='proof', permissions=('shopping:read',))
         self.assertEqual([t['function']['name'] for t in schemas(guest)],
-                         ['load_skill', 'request_handoff', 'search_knowledge', 'search_skus', 'recommend_skus', 'get_conversation_memory', 'get_product_offer'])
+                         ['load_skill', 'request_handoff', 'search_knowledge', 'search_skus', 'recommend_skus', 'compare_skus', 'get_conversation_memory', 'get_product_offer'])
         self.assertEqual(schemas(guest, allowed=[]), [])
         with self.assertRaises(HTTPException):
             await invoke('propose_cancel', {'orderId': 'other'}, actor=guest, commerce=Mock(), store=Mock(), lease={})

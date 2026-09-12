@@ -12,6 +12,7 @@ import uuid
 
 from smartlect.events import canonical
 from smartlect.knowledge import KnowledgeStore, _merchant
+from smartlect.shopping_mission import empty_mission, normalize_mission
 from smartlect.state import SessionStore, StateError, _actor, _expiry, _integer, _json, _public, _text
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]")
@@ -302,7 +303,7 @@ class MemoryStore(SessionStore):
             MemoryStore._fence(cursor, conversation["conversation_id"])
             MemoryStore._memory(cursor, conversation["conversation_id"])
             cursor.execute("""UPDATE conversation_memory SET forgotten_before_sequence=%s,summary_json=NULL,
-                summary_sequence=0,version=version+1,updated_at=UTC_TIMESTAMP(6) WHERE conversation_id=%s""",
+                mission_json=NULL,summary_sequence=0,version=version+1,updated_at=UTC_TIMESTAMP(6) WHERE conversation_id=%s""",
                 (conversation["message_sequence"], conversation["conversation_id"]))
 
     def delete_preference(self, actor, key):
@@ -329,6 +330,34 @@ class MemoryStore(SessionStore):
             cursor.execute("""UPDATE user_preference SET value_json='null',evidence_ids_json='[]',deleted_at=UTC_TIMESTAMP(6),
                 version=version+1 WHERE subject_type=%s AND actor_id=%s AND execution_scope_id=%s""", _actor(actor))
         return {"cleared": True, "summary_references_revoked": True, "transaction_audit_preserved": True}
+
+    @staticmethod
+    def _mission_payload(memory):
+        raw = None if memory is None else memory.get('mission_json')
+        raw = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+        return normalize_mission(raw) if raw else empty_mission()
+
+    def mission(self, actor, conversation_id):
+        with self._transaction() as cursor:
+            self._conversation(cursor, actor, conversation_id)
+            return self._mission_payload(self._memory(cursor, conversation_id))
+
+    def put_mission(self, actor, conversation_id, mission, *, lease=None):
+        normalized = normalize_mission(mission)
+        with self._transaction() as cursor:
+            if lease is not None:
+                conversation, _ = self._locked(cursor, lease)
+                if (conversation['conversation_id'] != conversation_id or
+                        (conversation['subject_type'], conversation['actor_id'],
+                         conversation['execution_scope_id']) != _actor(actor)):
+                    raise StateError('conversation_not_found', 404)
+            else:
+                self._conversation(cursor, actor, conversation_id, lock=True)
+            self._memory(cursor, conversation_id)
+            cursor.execute("""UPDATE conversation_memory SET mission_json=%s,version=version+1,
+                updated_at=UTC_TIMESTAMP(6) WHERE conversation_id=%s""",
+                (canonical(normalized), conversation_id))
+            return normalized
 
     @staticmethod
     def _handoff(cursor, conversation_id):
@@ -362,6 +391,7 @@ class MemoryStore(SessionStore):
                 if summary:
                     summary["version"] = version
             return {"messages": messages, "summary": summary, "preferences": self._preferences(cursor, actor),
+                    "mission": self._mission_payload(memory),
                     "handoff": self._handoff(cursor, conversation_id), "memory_version": version,
                     "forgotten_before_sequence": memory["forgotten_before_sequence"]}
 

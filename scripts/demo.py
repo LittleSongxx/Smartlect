@@ -157,18 +157,10 @@ def transaction_scenario(seed):
 
 
 if __name__ == "__main__":
-    from final_demo import SCENARIOS, main as final_integration_demo
-    parser = argparse.ArgumentParser(description="Smartlect transaction regression and Final Integration demos")
-    parser.add_argument("--scenario", choices=["purchase_stockout", *SCENARIOS], default="purchase_stockout")
+    parser = argparse.ArgumentParser(description="Smartlect transaction regression demo")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--mode", choices=("configured", "live", "mock"), default="configured")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--progress", type=Path)
     args = parser.parse_args()
-    if args.scenario != "purchase_stockout":
-        raise SystemExit(final_integration_demo(args))
-    if args.mode != "configured" or args.progress:
-        parser.error("purchase_stockout is the existing transaction-only regression; --mode/--progress apply to Final Integration demos")
     if args.output and args.output.exists():
         parser.error("output already exists; preserve previous evidence")
     result = transaction_scenario(args.seed)

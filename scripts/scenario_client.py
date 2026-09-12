@@ -14,9 +14,7 @@ import uuid
 
 import httpx
 
-from check_f3 import proposal_from
-from check_f4 import login_merchant
-from demo import cents
+from eval_support import cents, login_merchant, proposal_from
 from runtime import ROOT, ENV_FILE, model_env, parse_env
 from smartlect.commerce import CommerceClient
 from smartlect.events import Ledger, connect_from_env
@@ -57,7 +55,7 @@ class ScenarioClient:
             'working_diff_sha256': hashlib.sha256(subprocess.check_output(
                 ['git', 'diff', '--binary', 'HEAD', '--', '.', ':(exclude)evals/rag_cases.jsonl'], cwd=ROOT)).hexdigest(),
             'driver_sha256': {name: hashlib.sha256((ROOT / 'scripts' / name).read_bytes()).hexdigest()
-                              for name in ('scenario_client.py', 'final_demo.py')}}
+                              for name in ('scenario_client.py',)}}
 
     def close(self):
         self.clients.close()
@@ -114,12 +112,14 @@ class ScenarioClient:
             cursor.execute(sql, params)
             return list(cursor.fetchall())
 
-    def setup(self, *, actor_ref=None):
+    def setup(self, *, actor_ref=None, product_count=2, initial_stock=5, user_count=3):
         if actor_ref not in {None, 'user_a', 'user_b', 'visitor'}:
             raise ValueError('unsupported_scenario_actor')
+        if type(product_count) is not int or not 1 <= product_count <= 20:
+            raise ValueError('invalid_scenario_product_count')
         self.stage('Java allocates a new owned demo scope and independent users/SKUs')
         request = {'scenarioRunId': self.evidence['run_id'], 'branchId': self.evidence['scenario'],
-                   'userCount': 3, 'productCount': 2, 'initialStock': 5}
+                   'userCount': user_count, 'productCount': product_count, 'initialStock': initial_stock}
         self.evidence['seed_request'] = request
         self.save()
         self.manifest = self.java.request('admin', '/internal/demo/scenario/seed', data=request)
@@ -220,12 +220,13 @@ class ScenarioClient:
     def require_model_mode(self, run):
         result, context = run.get('result') or {}, run.get('context') or {}
         self.check(result.get('model_mode') == self.mode, 'Run retains its actual requested model mode')
-        self.check(context.get('model_calls', 0) <= (4 if 'plan' in result else 6),
+        call_limit = int(self.config.get('SMARTLECT_MODEL_CALL_LIMIT') or 6)
+        self.check(context.get('model_calls', 0) <= (min(4, call_limit) if 'plan' in result else call_limit),
                    'Provider retries and repairs stay within the domain run attempt limit')
         if self.mode == 'live':
             self.check(any(a.get('status') == 'succeeded' and a.get('model_mode') == 'live'
-                           and a.get('model_id') in {'qwen3.7-plus', 'qwen3.7-plus-2026-05-26'}
-                           for a in context.get('model_attempts', [])), 'Live run includes an actual authorized qwen attempt')
+                           and a.get('model_id') in {'qwen3.7-plus', 'qwen3.7-plus-2026-05-26', 'glm-5.3'}
+                           for a in context.get('model_attempts', [])), 'Live run includes an actual authorized model attempt')
         else:
             self.check(context.get('model_calls', 0) == 0, 'Mock run makes no model request')
 
