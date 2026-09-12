@@ -480,6 +480,31 @@ def score_ads(playbook, observation):
                    ('rate:CVR', rates['CVR'] == documented['CVR']),
                    ('shortcut:no_summary_conversions', not observation.get('used_summary_payment_conversions')),
                    ('shortcut:no_recommendation_clicks', not observation.get('used_recommendation_clicks'))]
+    # Script playbooks add mechanism assertions (rank ordering under fatigue/pacing,
+    # budget-exhaustion rejections). Same denominator discipline: each scripted
+    # expectation is one assertion, named for attribution.
+    probes = observation.get('rank_probes') or []
+    rejections = observation.get('rejections') or []
+    status_probes = observation.get('status_probes') or []
+    script = playbook.get('script') or []
+    probe_steps = [step for step in script if step.get('op') == 'probe_rank']
+    reject_steps = [step for step in script if step.get('op') == 'reject']
+    status_steps = [step for step in script if step.get('op') == 'probe_status']
+    for index, step in enumerate(probe_steps):
+        observed = probes[index] if index < len(probes) else {}
+        assertions.append((f'rank:{index}.first', observed.get('observed_first') == step.get('expect_first')))
+        if type(step.get('expect_items')) is int:
+            assertions.append((f'rank:{index}.items', observed.get('observed_items') == step['expect_items']))
+    for index, step in enumerate(reject_steps):
+        observed = rejections[index] if index < len(rejections) else {}
+        assertions.append((f'reject:{index}.{step.get("http")}.{step.get("error")}',
+                           observed.get('observed_status') == 409
+                           and step.get('error') in str(observed.get('observed_error') or '')))
+    for index, step in enumerate(status_steps):
+        observed = status_probes[index] if index < len(status_probes) else {}
+        assertions.append((f'status:{index}.{step.get("slot")}',
+                           observed.get('observed_status') == step.get('expect_status')
+                           and observed.get('observed_pause_reason') == step.get('expect_pause_reason')))
     integrity = sum(1 for _, ok in assertions if ok) / len(assertions)
     passed = integrity == 1.0
     return {'line': 'ads', 'case_id': playbook['playbook_id'], 'outcome': 'pass' if passed else 'fail',
@@ -603,6 +628,80 @@ def validate_ads_playbooks(books, problems):
             problems.append(f'{pid}: attributed_payments_need_buy_target')
         if book.get('kind') == 'organic_payment' and counts['unknown_payments'] < 1:
             problems.append(f'{pid}: organic_payment_needs_unknown_payments')
+        if 'script' in book:
+            problems.extend(_validate_ads_script(book))
+
+
+def _validate_ads_script(book):
+    """Script playbooks (fatigue/pacing/budget mechanics): the script itself must
+    be internally consistent — counts derive from the script, ops reference real
+    slots, and dual-campaign books require same_sku (the relevance-tie precondition
+    that makes ordering deterministic)."""
+    pid = book['playbook_id']
+    issues = []
+    if 'traffic' in book:
+        issues.append(f'{pid}: script_playbook_cannot_also_define_traffic')
+    campaigns = book.get('campaigns') or []
+    if not campaigns:
+        issues.append(f'{pid}: script_playbook_needs_campaigns')
+    creative_slots = set()
+    for spec in campaigns:
+        slot = spec.get('slot')
+        budget, cpc = spec.get('budget_cents'), spec.get('cpc_cents')
+        if slot in {None, ''} or (isinstance(slot, str) and not slot.strip()):
+            issues.append(f'{pid}: campaign_slot_missing')
+            continue
+        if slot in creative_slots:
+            issues.append(f'{pid}: duplicate_campaign_slot:{slot}')
+        for creative in spec.get('creatives') or [slot]:
+            if creative in creative_slots:
+                issues.append(f'{pid}: duplicate_creative_slot:{creative}')
+            creative_slots.add(creative)
+        if type(budget) is not int or type(cpc) is not int or budget < cpc or cpc < 1:
+            issues.append(f'{pid}: campaign_budget_must_cover_cpc:{slot}')
+    if len(campaigns) > 1 and not book.get('same_sku'):
+        issues.append(f'{pid}: multi_campaign_requires_same_sku')
+    campaign_slots = {spec.get('slot') for spec in campaigns}
+    derived = {'impressions': 0, 'clicks': 0, 'payment_conversions': 0, 'unknown_payments': 0}
+    for index, step in enumerate(book.get('script') or []):
+        op = step.get('op')
+        label = f'{pid}.script[{index}]'
+        if op in ('expose', 'click'):
+            if step.get('slot') not in creative_slots:
+                issues.append(f'{label}: unknown_creative_slot:{step.get("slot")}')
+            if type(step.get('count')) is not int or not 1 <= step['count'] <= 50:
+                issues.append(f'{label}: count_out_of_range')
+            else:
+                derived['impressions' if op == 'expose' else 'clicks'] += step['count']
+        elif op == 'probe_rank':
+            expect = step.get('expect_first', '')
+            if expect is not None and expect not in creative_slots:
+                issues.append(f'{label}: expect_first_not_a_slot:{expect}')
+            if step.get('as_actor') not in {None, 'user_a', 'user_b'}:
+                issues.append(f'{label}: unsupported_probe_actor')
+            if type(step.get('expect_items')) is int and not 0 <= step['expect_items'] <= 4:
+                issues.append(f'{label}: expect_items_out_of_range')
+        elif op == 'reject':
+            if step.get('http') not in {'click', 'exposure'}:
+                issues.append(f'{label}: reject_http_unknown')
+            if step.get('slot') not in creative_slots:
+                issues.append(f'{label}: unknown_creative_slot:{step.get("slot")}')
+            if step.get('error') not in {'ads_not_active', 'ads_budget_exhausted'}:
+                issues.append(f'{label}: reject_error_unsupported')
+        elif op == 'probe_status':
+            if step.get('slot') not in campaign_slots:
+                issues.append(f'{label}: unknown_campaign_slot:{step.get("slot")}')
+            if step.get('expect_status') not in {'ACTIVE', 'EXHAUSTED'}:
+                issues.append(f'{label}: expect_status_unsupported')
+            if not isinstance(step.get('expect_pause_reason'), str) or not step['expect_pause_reason'].strip():
+                issues.append(f'{label}: expect_pause_reason_missing')
+        else:
+            issues.append(f'{label}: unknown_op:{op}')
+    expected = book['expected']['counts']
+    for key in ADS_COUNT_KEYS:
+        if expected[key] != derived[key]:
+            issues.append(f'{pid}: {key}_must_equal_script_totals:{expected[key]}!={derived[key]}')
+    return issues
 
 
 def dataset_paths(split='development'):
@@ -755,8 +854,22 @@ def synthetic_ads_observation(playbook):
     counts = dict(playbook['expected']['counts'])
     for key in ADS_COUNT_KEYS:
         counts.setdefault(key, 0)
+    # A perfect scripted trajectory: every probe sees its expected ordering and
+    # every expected rejection came back as the designed 409.
+    probes = [{'expect_first': step.get('expect_first'),
+               'observed_first': step.get('expect_first'),
+               'observed_items': step.get('expect_items', 2)}
+              for step in playbook.get('script') or [] if step.get('op') == 'probe_rank']
+    rejections = [{'op': step.get('http'), 'observed_status': 409,
+                   'observed_error': 'StateError:' + step.get('error', '')}
+                  for step in playbook.get('script') or [] if step.get('op') == 'reject']
+    status_probes = [{'slot': step.get('slot'),
+                      'observed_status': step.get('expect_status'),
+                      'observed_pause_reason': step.get('expect_pause_reason')}
+                     for step in playbook.get('script') or [] if step.get('op') == 'probe_status']
     return {'campaign_metrics': counts, 'used_summary_payment_conversions': False,
-            'used_recommendation_clicks': False}
+            'used_recommendation_clicks': False,
+            'rank_probes': probes, 'rejections': rejections, 'status_probes': status_probes}
 
 
 def self_check_scores():

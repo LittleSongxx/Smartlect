@@ -479,6 +479,135 @@ def pay_sku(client, sku):
     return pay_id
 
 
+def _ads_second_user_session(client):
+    """A user_b session inside the existing scenario (for viewer-isolation probes)."""
+    session = client.java.request('admin', '/internal/demo/scenario/session', data={
+        'executionScopeId': client.scope, 'userIndex': 1,
+        'password': client.config['SMARTLECT_DEMO_PASSWORD']})
+    import httpx
+    probe = httpx.Client(base_url=client.base, timeout=35, trust_env=False)
+    probe.cookies.set('token', session['token'])
+    auth = probe.get('/api/assistant/session')
+    auth.raise_for_status()
+    auth = auth.json()
+    return probe, {'Origin': client.base, 'X-CSRF-Token': auth['csrf_token']}
+
+
+def _ads_probe_rank(client, layout, step):
+    target, headers = client.user, client.uheaders
+    guest = None
+    if step.get('as_actor') == 'user_b':
+        guest = _ads_second_user_session(client)
+        target, headers = guest
+    try:
+        response = target.get('/api/assistant/ads/recommendations',
+                              params={'limit': 4}, headers=headers)
+        response.raise_for_status()
+        items = response.json().get('items') or []
+    finally:
+        if guest is not None:
+            guest[0].close()
+    by_creative = {row['creative_id']: slot for slot, row in layout['creative_slots'].items()}
+    observed_first = next((by_creative[row.get('creative_id')] for row in items
+                           if row.get('creative_id') in by_creative), None)
+    return {'expect_first': step.get('expect_first'), 'observed_first': observed_first,
+            'observed_items': len(items), 'as_actor': step.get('as_actor')}
+
+
+def _ads_expect_reject(client, layout, step, exposures_by_slot):
+    row = layout['creative_slots'][step['slot']]
+    if step['http'] == 'click':
+        exposure = exposures_by_slot[step['slot']].pop(0)
+        payload, path = {'click_id': uuid.uuid4().hex, 'exposure_id': exposure['exposure_id']}, 'ads/clicks'
+    else:
+        payload, path = {'exposure_id': uuid.uuid4().hex, 'creative_id': row['creative_id']}, 'ads/exposures'
+    result = client.request(path, payload, accepted=(200, 409))
+    status = result.get('http_status', 200) if isinstance(result, dict) else 200
+    error_text = json.dumps(result.get('body'), ensure_ascii=False) if status != 200 else ''
+    return {'op': step['http'], 'slot': step['slot'], 'expected_error': step['error'],
+            'observed_status': status, 'observed_error': error_text}
+
+
+def _run_scripted_book(client, book, ad_sku):
+    """Fatigue/pacing/budget playbooks: slot-prefixed ids keep rank ties breaking
+    in the scripted direction while a per-run hash keeps them globally unique
+    (campaign_id is a global primary key, so fixed ids would collide across runs);
+    every scripted expectation becomes one assertion."""
+    import hashlib
+    tag = hashlib.sha256(client.evidence['run_id'].encode()).hexdigest()
+    layout = {'creative_slots': {}, 'campaign_ids': []}
+    for spec in book['campaigns']:
+        slot = spec['slot']
+        campaign_id = slot[0] + tag[:31]
+        layout['campaign_ids'].append(campaign_id)
+        client.request('ads/campaigns', {'campaign_id': campaign_id,
+            'name': 'quality-v2 %s %s' % (book['playbook_id'], slot),
+            'product_id': ad_sku['productId'], 'sku_key': ad_sku['propertyValueIdHash'],
+            'budget_cents': spec['budget_cents'], 'cpc_cents': spec['cpc_cents']}, merchant=True)
+        for creative in spec.get('creatives') or [slot]:
+            creative_id = ('c' + creative + tag)[:32]
+            client.request('ads/creatives', {'creative_id': creative_id, 'campaign_id': campaign_id,
+                'copy_text': '模拟推广质量评测'}, merchant=True)
+            layout['creative_slots'][creative] = {'campaign_id': campaign_id, 'creative_id': creative_id}
+    snapshot = client.request('ads', merchant=True)
+    grant = client.request('ads/grants', {
+        'grant_id': uuid.uuid4().hex, 'initial_plan_id': uuid.uuid4().hex, 'initial_plan_version': 1,
+        'expected_campaign_versions': {row['campaign_id']: row['version'] for row in snapshot['campaigns']},
+        'expected_creative_versions': {row['creative_id']: row['version'] for row in snapshot.get('creatives', [])},
+        'envelope': ads_grant_envelope([ad_sku['productId']])}, merchant=True)
+    snapshot = client.request('ads', merchant=True)
+    grant_id = grant.get('grant_id') or (snapshot.get('account') or {}).get('grant_id')
+    if not grant_id:
+        raise ValueError('grant_id_missing')
+    for kind, key, id_field, version_of in (
+            ('activate_campaign', 'campaigns', 'campaign_id', 'campaign_id'),
+            ('activate_creative', 'creatives', 'creative_id', 'creative_id')):
+        for row in snapshot[key]:
+            key_id = uuid.uuid4().hex
+            action = {'action_id': key_id, 'idempotency_key': key_id, 'grant_id': grant_id,
+                      'plan_id': key_id, 'plan_version': 1, 'reason_code': 'quality_v2_activate',
+                      'evidence_ids': [], 'actions': [
+                          {'action_type': kind, id_field: row[id_field], 'expected_version': row['version']}]}
+            if kind == 'activate_creative':
+                action['actions'][0]['campaign_id'] = row['campaign_id']
+            client.request('ads/actions', action, merchant=True)
+    exposures_by_slot = {slot: [] for slot in layout['creative_slots']}
+    probes, rejections, status_probes = [], [], []
+    campaign_of_slot = {spec['slot']: slot[0] + tag[:31] for spec in book['campaigns']}
+    for step in book['script']:
+        op = step['op']
+        if op == 'expose':
+            row = layout['creative_slots'][step['slot']]
+            for _ in range(step['count']):
+                exposure = client.request('ads/exposures', {'exposure_id': uuid.uuid4().hex,
+                    'creative_id': row['creative_id']})
+                exposures_by_slot[step['slot']].append(exposure)
+        elif op == 'click':
+            for _ in range(step['count']):
+                exposure = exposures_by_slot[step['slot']].pop(0)
+                client.request('ads/clicks', {'click_id': uuid.uuid4().hex,
+                    'exposure_id': exposure['exposure_id']})
+        elif op == 'probe_rank':
+            probes.append(_ads_probe_rank(client, layout, step))
+        elif op == 'probe_status':
+            snapshot = client.request('ads', merchant=True)
+            campaign_id = campaign_of_slot[step['slot']]
+            row = next(item for item in snapshot['campaigns'] if item['campaign_id'] == campaign_id)
+            status_probes.append({'slot': step['slot'], 'observed_status': row.get('status'),
+                                  'observed_pause_reason': row.get('pause_reason')})
+        elif op == 'reject':
+            rejections.append(_ads_expect_reject(client, layout, step, exposures_by_slot))
+    totals = {key: 0 for key in ('impressions', 'clicks', 'payment_conversions')}
+    for campaign_id in layout['campaign_ids']:
+        metrics = campaign_metrics_from_growth(client, campaign_id)
+        for key in totals:
+            totals[key] += metrics.get(key) or 0
+    totals['unknown_payments'] = 0
+    return {'campaign_metrics': totals, 'used_summary_payment_conversions': False,
+            'used_recommendation_clicks': False, 'rank_probes': probes,
+            'rejections': rejections, 'status_probes': status_probes, 'ads_layout': layout}
+
+
 def run_ads_live(output, split='development'):
     from scenario_client import ScenarioClient
     from quality_v2 import dataset_paths
@@ -494,80 +623,85 @@ def run_ads_live(output, split='development'):
         try:
             client = ScenarioClient(evidence, save, requested_mode='configured')
             client.setup(actor_ref='user_a')
-            ad_sku = None if book['kind'] == 'organic_payment' else pick_live_sku(client)
-            buy_sku = None
-            if book['traffic']['payments']:
-                buy_sku = pick_live_sku(client, exclude_key=(
-                    ad_sku['productId'] + ':' + ad_sku['propertyValueIdHash']
-                    if book.get('buy') == 'other_sku' and ad_sku else None))
-            campaign_id = creative_id = None
-            if ad_sku is not None:
-                campaign_id, creative_id = uuid.uuid4().hex, uuid.uuid4().hex
-                client.request('ads/campaigns', {'campaign_id': campaign_id, 'name': 'quality-v2 ' + book['playbook_id'],
-                    'product_id': ad_sku['productId'], 'sku_key': ad_sku['propertyValueIdHash'],
-                    'budget_cents': 2000, 'cpc_cents': 10}, merchant=True)
-                client.request('ads/creatives', {'creative_id': creative_id, 'campaign_id': campaign_id,
-                    'copy_text': '模拟推广质量评测'}, merchant=True)
-                snapshot = client.request('ads', merchant=True)
-                grant = client.request('ads/grants', {
-                    'grant_id': uuid.uuid4().hex, 'initial_plan_id': uuid.uuid4().hex, 'initial_plan_version': 1,
-                    'expected_campaign_versions': {row['campaign_id']: row['version'] for row in snapshot['campaigns']},
-                    'expected_creative_versions': {row['creative_id']: row['version'] for row in snapshot.get('creatives', [])},
-                    'envelope': ads_grant_envelope([ad_sku['productId']])}, merchant=True)
-                snapshot = client.request('ads', merchant=True)
-                grant_id = grant.get('grant_id') or (snapshot.get('account') or {}).get('grant_id')
-                if not grant_id:
-                    raise ValueError('grant_id_missing')
-                campaign_version = next(row['version'] for row in snapshot['campaigns'] if row['campaign_id'] == campaign_id)
-                key = uuid.uuid4().hex
-                client.request('ads/actions', {
-                    'action_id': key, 'idempotency_key': key, 'grant_id': grant_id,
-                    'plan_id': key, 'plan_version': 1, 'reason_code': 'quality_v2_activate',
-                    'evidence_ids': [], 'actions': [
-                        {'action_type': 'activate_campaign', 'campaign_id': campaign_id,
-                         'expected_version': campaign_version}]}, merchant=True)
-                snapshot = client.request('ads', merchant=True)
-                creative_version = next(row['version'] for row in snapshot['creatives'] if row['creative_id'] == creative_id)
-                key = uuid.uuid4().hex
-                client.request('ads/actions', {
-                    'action_id': key, 'idempotency_key': key, 'grant_id': grant_id,
-                    'plan_id': key, 'plan_version': 1, 'reason_code': 'quality_v2_activate',
-                    'evidence_ids': [], 'actions': [
-                        {'action_type': 'activate_creative', 'campaign_id': campaign_id,
-                         'creative_id': creative_id, 'expected_version': creative_version}]}, merchant=True)
-            traffic = book['traffic']
-            exposures = []
-            if ad_sku is not None:
-                recs = client.request('ads/recommendations', params={'limit': 2})
-                creative = next((row for row in recs.get('items') or recs.get('recommendations') or []
-                                 if row.get('campaign_id') == campaign_id or row.get('creative_id') == creative_id), None)
-                if creative is None and (recs.get('items') or recs.get('recommendations')):
-                    creative = (recs.get('items') or recs.get('recommendations'))[0]
-                if creative is None:
-                    raise ValueError('no_ad_candidate')
-                for _ in range(traffic['impressions']):
-                    exposure = client.request('ads/exposures', {'exposure_id': uuid.uuid4().hex,
-                        'creative_id': creative.get('creative_id') or creative_id})
-                    exposures.append(exposure)
-                for index in range(traffic['clicks']):
-                    client.request('ads/clicks', {'click_id': uuid.uuid4().hex,
-                        'exposure_id': exposures[index]['exposure_id']})
-            if traffic['payments']:
-                pay_id = pay_sku(client, buy_sku)
-                attributed_campaign = wait_attribution_settled(client, pay_id)
-                evidence['payment_attribution_campaign_id'] = attributed_campaign
-            metrics = campaign_metrics_from_growth(client, campaign_id) if campaign_id else {
-                'impressions': 0, 'clicks': 0, 'payment_conversions': 0,
-                'unknown_payments': len(client.rows(
-                    "SELECT DISTINCT e.pay_order_id FROM commerce_event e "
-                    "LEFT JOIN commerce_attribution a USING(event_id) "
-                    "LEFT JOIN commerce_attribution_meta m USING(event_id) "
-                    "WHERE e.status='APPLIED' AND e.event_type='PAYMENT' "
-                    "AND COALESCE(a.execution_scope_id,m.execution_scope_id,'store')=%s "
-                    "AND (a.campaign_id IS NULL OR a.campaign_id='')", (client.scope,)))}
-            observation = {'campaign_metrics': metrics,
-                           'used_summary_payment_conversions': False, 'used_recommendation_clicks': False}
-            evidence['observation'] = observation
+            if 'script' in book:
+                observation = _run_scripted_book(client, book, pick_live_sku(client))
+                metrics = observation['campaign_metrics']
+                evidence['observation'] = observation
+            else:
+                ad_sku = None if book['kind'] == 'organic_payment' else pick_live_sku(client)
+                buy_sku = None
+                if book['traffic']['payments']:
+                    buy_sku = pick_live_sku(client, exclude_key=(
+                        ad_sku['productId'] + ':' + ad_sku['propertyValueIdHash']
+                        if book.get('buy') == 'other_sku' and ad_sku else None))
+                campaign_id = creative_id = None
+                if ad_sku is not None:
+                    campaign_id, creative_id = uuid.uuid4().hex, uuid.uuid4().hex
+                    client.request('ads/campaigns', {'campaign_id': campaign_id, 'name': 'quality-v2 ' + book['playbook_id'],
+                        'product_id': ad_sku['productId'], 'sku_key': ad_sku['propertyValueIdHash'],
+                        'budget_cents': 2000, 'cpc_cents': 10}, merchant=True)
+                    client.request('ads/creatives', {'creative_id': creative_id, 'campaign_id': campaign_id,
+                        'copy_text': '模拟推广质量评测'}, merchant=True)
+                    snapshot = client.request('ads', merchant=True)
+                    grant = client.request('ads/grants', {
+                        'grant_id': uuid.uuid4().hex, 'initial_plan_id': uuid.uuid4().hex, 'initial_plan_version': 1,
+                        'expected_campaign_versions': {row['campaign_id']: row['version'] for row in snapshot['campaigns']},
+                        'expected_creative_versions': {row['creative_id']: row['version'] for row in snapshot.get('creatives', [])},
+                        'envelope': ads_grant_envelope([ad_sku['productId']])}, merchant=True)
+                    snapshot = client.request('ads', merchant=True)
+                    grant_id = grant.get('grant_id') or (snapshot.get('account') or {}).get('grant_id')
+                    if not grant_id:
+                        raise ValueError('grant_id_missing')
+                    campaign_version = next(row['version'] for row in snapshot['campaigns'] if row['campaign_id'] == campaign_id)
+                    key = uuid.uuid4().hex
+                    client.request('ads/actions', {
+                        'action_id': key, 'idempotency_key': key, 'grant_id': grant_id,
+                        'plan_id': key, 'plan_version': 1, 'reason_code': 'quality_v2_activate',
+                        'evidence_ids': [], 'actions': [
+                            {'action_type': 'activate_campaign', 'campaign_id': campaign_id,
+                             'expected_version': campaign_version}]}, merchant=True)
+                    snapshot = client.request('ads', merchant=True)
+                    creative_version = next(row['version'] for row in snapshot['creatives'] if row['creative_id'] == creative_id)
+                    key = uuid.uuid4().hex
+                    client.request('ads/actions', {
+                        'action_id': key, 'idempotency_key': key, 'grant_id': grant_id,
+                        'plan_id': key, 'plan_version': 1, 'reason_code': 'quality_v2_activate',
+                        'evidence_ids': [], 'actions': [
+                            {'action_type': 'activate_creative', 'campaign_id': campaign_id,
+                             'creative_id': creative_id, 'expected_version': creative_version}]}, merchant=True)
+                traffic = book['traffic']
+                exposures = []
+                if ad_sku is not None:
+                    recs = client.request('ads/recommendations', params={'limit': 2})
+                    creative = next((row for row in recs.get('items') or recs.get('recommendations') or []
+                                     if row.get('campaign_id') == campaign_id or row.get('creative_id') == creative_id), None)
+                    if creative is None and (recs.get('items') or recs.get('recommendations')):
+                        creative = (recs.get('items') or recs.get('recommendations'))[0]
+                    if creative is None:
+                        raise ValueError('no_ad_candidate')
+                    for _ in range(traffic['impressions']):
+                        exposure = client.request('ads/exposures', {'exposure_id': uuid.uuid4().hex,
+                            'creative_id': creative.get('creative_id') or creative_id})
+                        exposures.append(exposure)
+                    for index in range(traffic['clicks']):
+                        client.request('ads/clicks', {'click_id': uuid.uuid4().hex,
+                            'exposure_id': exposures[index]['exposure_id']})
+                if traffic['payments']:
+                    pay_id = pay_sku(client, buy_sku)
+                    attributed_campaign = wait_attribution_settled(client, pay_id)
+                    evidence['payment_attribution_campaign_id'] = attributed_campaign
+                metrics = campaign_metrics_from_growth(client, campaign_id) if campaign_id else {
+                    'impressions': 0, 'clicks': 0, 'payment_conversions': 0,
+                    'unknown_payments': len(client.rows(
+                        "SELECT DISTINCT e.pay_order_id FROM commerce_event e "
+                        "LEFT JOIN commerce_attribution a USING(event_id) "
+                        "LEFT JOIN commerce_attribution_meta m USING(event_id) "
+                        "WHERE e.status='APPLIED' AND e.event_type='PAYMENT' "
+                        "AND COALESCE(a.execution_scope_id,m.execution_scope_id,'store')=%s "
+                        "AND (a.campaign_id IS NULL OR a.campaign_id='')", (client.scope,)))}
+                observation = {'campaign_metrics': metrics,
+                               'used_summary_payment_conversions': False, 'used_recommendation_clicks': False}
+                evidence['observation'] = observation
             scored = score_ads(book, observation)
             evidence['campaign_metrics'] = metrics
             evidence['scores'] = scored

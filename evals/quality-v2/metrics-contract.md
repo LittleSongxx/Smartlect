@@ -140,6 +140,8 @@
 
 五类剧本：仅曝光（CTR=`0.0`，CVR=`null`）；曝光+点击不支付（CVR=`0.0`）；同 SKU 归因支付（CVR>0）；点 A 买 B 仍归因；无活动付款进 `unknown_payments`（两率均 `null`）。
 
+**v6.1 增补（2026-09-13，T4 扩容）**：剧本 5→11，新增六本 **script 剧本**（疲劳/配速/预算耗尽机制族，`ads-d-06…11`）。`Attribution_integrity` 定义不变（断言级分母）；script 剧本的断言数 = 基础 8 条 + 脚本期望数：排序断言 `rank:N.first`/`rank:N.items`（`ad-fatigue-pacing-v1` 下的确定性次序：同 SKU 双活动 relevance 打平，槽位前缀 id 使平手按脚本方向破）、拒绝断言 `reject:N.<op>.<error>`（预算门 409）、状态断言 `status:N.<slot>`（预算扣满时 click 事务自动转 `EXHAUSTED/budget_exhausted`，后续操作 409 `ads_not_active` 且活动从推荐候选消失）。约束：script 剧本不得同时定义 `traffic`；计数必须由脚本推导（AnnotationError）；双活动剧本必须 `same_sku`（排序确定性的前提）。观众隔离（user_b 无疲劳史）与素材粒度疲劳分别由 `ads-d-07`/`ads-d-11` 覆盖。
+
 ---
 
 ## 留出与作弊

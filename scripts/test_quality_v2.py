@@ -419,7 +419,7 @@ class ReportTests(unittest.TestCase):
         shopping, support, ads = self_check_scores()
         self.assertEqual(len(shopping), 65)
         self.assertEqual(len(support), 62)
-        self.assertEqual(len(ads), 5)
+        self.assertEqual(len(ads), 11)
         self.assertTrue(all(row['outcome'] == 'pass' for row in shopping + support + ads))
         with tempfile.TemporaryDirectory() as folder:
             report = write_report(folder, shopping, support, ads, official=False)
@@ -663,6 +663,51 @@ class JudgeCalibrationTests(unittest.TestCase):
         import judge_quality_v2 as jq
         self.assertIsNone(jq.write_human_review('/tmp/unused-empty', [{'case': {'case_id': 'x'},
                                                                       'row': {}}]))
+
+
+class AdsScriptTests(unittest.TestCase):
+    def setUp(self):
+        self.books = {b['playbook_id']: b for b in load_json(ADS_PLAYBOOKS)['playbooks']}
+
+    def test_script_counts_must_derive_from_script(self):
+        from quality_v2 import _validate_ads_script
+        book = json.loads(json.dumps(self.books['ads-d-06']))
+        book['expected']['counts']['impressions'] += 1
+        issues = _validate_ads_script(book)
+        self.assertTrue(any('impressions_must_equal_script_totals' in i for i in issues))
+        self.assertFalse(_validate_ads_script(self.books['ads-d-06']))
+
+    def test_multi_campaign_requires_same_sku(self):
+        from quality_v2 import _validate_ads_script
+        book = json.loads(json.dumps(self.books['ads-d-08']))
+        book.pop('same_sku')
+        self.assertTrue(any('multi_campaign_requires_same_sku' in i
+                            for i in _validate_ads_script(book)))
+
+    def test_mechanism_assertions_score_and_name_failures(self):
+        book = self.books['ads-d-06']
+        observation = quality_v2.synthetic_ads_observation(book)
+        perfect = score_ads(book, observation)
+        self.assertEqual(perfect['Attribution_integrity'], 1.0)
+        self.assertEqual(len(perfect['failed_assertions']), 0)
+        observation['rank_probes'][1]['observed_first'] = 'a'  # fatigue should have demoted a
+        broken = score_ads(book, observation)
+        self.assertLess(broken['Attribution_integrity'], 1.0)
+        self.assertIn('rank:1.first', broken['failed_assertions'])
+        exhausted = self.books['ads-d-09']
+        observation = quality_v2.synthetic_ads_observation(exhausted)
+        observation['rejections'][0]['observed_status'] = 200  # gate must reject with 409
+        observation['status_probes'][0]['observed_status'] = 'ACTIVE'  # must have auto-exhausted
+        soft = score_ads(exhausted, observation)
+        self.assertIn('reject:0.click.ads_not_active', soft['failed_assertions'])
+        self.assertIn('status:0.a', soft['failed_assertions'])
+
+    def test_assertion_denominator_grows_with_script(self):
+        base = score_ads(self.books['ads-d-01'], quality_v2.synthetic_ads_observation(self.books['ads-d-01']))
+        scripted = score_ads(self.books['ads-d-06'], quality_v2.synthetic_ads_observation(self.books['ads-d-06']))
+        self.assertEqual(base['Attribution_integrity'], 1.0)  # 8 base assertions
+        # ads-d-06 adds 4 rank assertions (3 expect_first + 2 expect_items... = 5) over the base 8
+        self.assertEqual(scripted['Attribution_integrity'], 1.0)
 
 
 if __name__ == '__main__':

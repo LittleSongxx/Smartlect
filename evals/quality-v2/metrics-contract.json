@@ -143,7 +143,13 @@
       "impressions_only",
       "clicks_no_payment",
       "attributed_payment",
-      "organic_payment"
+      "organic_payment",
+      "fatigue_reorder",
+      "fatigue_viewer_isolation",
+      "pacing_partial_spend",
+      "budget_exhaustion_gate",
+      "pacing_near_exhaustion",
+      "fatigue_creative_granularity"
     ],
     "buy_targets": [
       "ad_sku",
@@ -161,7 +167,19 @@
         "shortcut:no_summary_conversions",
         "shortcut:no_recommendation_clicks"
       ],
-      "playbook_gate": "Pass@1 requires integrity == 1.0"
+      "playbook_gate": "Pass@1 requires integrity == 1.0",
+      "script_playbooks": {
+        "note": "v6.1 additive: mechanism playbooks ads-d-06..11 add assertions on top of the base 8",
+        "assertions": [
+          "rank:N.first",
+          "rank:N.items",
+          "reject:N.<op>.<error>",
+          "status:N.<slot>"
+        ],
+        "counts_derive_from_script": "AnnotationError on mismatch",
+        "multi_campaign_requires_same_sku": true,
+        "exhaustion_semantics": "final in-budget click auto-transitions campaign to EXHAUSTED/budget_exhausted; later ops 409 ads_not_active and the campaign leaves delivery candidates"
+      }
     },
     "ctr_cvr_are_diagnostics": true
   },
