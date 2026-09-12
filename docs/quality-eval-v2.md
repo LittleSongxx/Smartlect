@@ -7,12 +7,12 @@
 | 内容 | 路径 |
 |---|---|
 | 指标合同（操作定义，v6） | `evals/quality-v2/metrics-contract.md` / `.json` |
-| 导购开发集 / 商品快照 | `evals/quality-v2/shopping/dev.jsonl`（29 例）/ `catalog-snapshot.json`（20 SKU） |
-| 客服开发集 | `evals/quality-v2/support/dev.jsonl`（24 例，1 例 replay-only） |
+| 导购开发集 / 商品快照 | `evals/quality-v2/shopping/dev.jsonl`（39 例）/ `catalog-snapshot.json`（20 SKU） |
+| 客服开发集 | `evals/quality-v2/support/dev.jsonl`（62 例，T1 扩容后；1 例 replay-only） |
 | 广告剧本 | `evals/quality-v2/ads/playbooks.json`（5 剧本） |
 | 评分库 / runner | `scripts/quality_v2.py` / `scripts/eval_quality_v2.py` |
 | LLM judge（DeepSeek） | `scripts/judge_quality_v2.py`（判 Faithfulness 公开分 + CLI 抽检） |
-| 合同测试 | `scripts/test_quality_v2.py`（38 项）+ growth 全量 352 项 |
+| 合同测试 | `scripts/test_quality_v2.py`（48 项）+ growth 全量 360 项 |
 | 产物 | `artifacts/quality-v2/<run-id>/`，复跑台账 `artifacts/quality-v2/rerun-ledger.jsonl` |
 
 ## 公开表头（合同 v6，只用这些，不合成总分）
