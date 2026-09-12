@@ -106,10 +106,15 @@ def source_documents(manifest, case):
         documents.append({**source, 'body': body, 'title': body.splitlines()[0].lstrip('# '),
             'acl': 'PUBLIC', 'lifecycle': 'publish_before_question', 'checksum_sha256': source['sha256']})
     documents.extend(case.get('knowledge_setup', {}).get('additional_documents', []))
+    resolved = []
     for source in documents:
+        # Extra docs may reference their body by source_uri instead of inlining it.
+        if not source.get('body') and source.get('source_uri'):
+            source = {**source, 'body': (ROOT / source['source_uri']).read_text()}
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', source['doc_id']) or sha256(source['body'].encode()).hexdigest() != source['checksum_sha256']:
             raise ValueError('fixture_document_identity_or_checksum_mismatch')
-    return documents
+        resolved.append(source)
+    return resolved
 
 
 def setup_knowledge(client, evidence, save, manifest, case):
