@@ -18,6 +18,7 @@ class FakeCommerce:
         }
         self.prices = {key: Decimal('100.00') for key in self.products}
         self.stocks = {key: 10 for key in self.products}
+        self.specs = {key: '黑色' for key in self.products}
 
     async def request(self, service, path, *, data=None, **kwargs):
         self.calls.append((service, path, deepcopy(data)))
@@ -34,7 +35,8 @@ class FakeCommerce:
             return {'products': [deepcopy(self.products[key]) for key in keys],
                 'skus': [dict(productId=key, propertyValueIdHash='hash-' + key, propertyValueIds='v' + key,
                               price=self.prices[key], sort=0) for key in keys],
-                'propertyValues': [dict(productId=key, propertyValueId='v' + key, propertyName='颜色', propertyValue='黑色') for key in keys]}
+                'propertyValues': [dict(productId=key, propertyValueId='v' + key, propertyName='颜色',
+                                        propertyValue=self.specs.get(key, '黑色')) for key in keys]}
         if path.endswith('/getBatch'):
             return [dict(productId=row['productId'], propertyValueIdHash=row['propertyValueIdHash'],
                          stock=self.stocks[row['productId']]) for row in data]
@@ -92,14 +94,38 @@ class ShoppingRetrieveTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['diagnostics']['browse_newest'])
         self.assertIsNone(result['diagnostics']['empty_reason'])
 
-    async def test_exclude_only_does_not_browse_fill(self):
+    async def test_keyword_miss_with_hard_slots_relaxes_recall_gate_still_filters(self):
+        # Hard slots are post-filter predicates: empty-keyword recall plus the
+        # eligibility gate is filtered enumeration, never popular fill.
+        self.commerce.specs['new'] = '粉色'
+        result = await ShoppingRetrieve(self.commerce).recommend(
+            self.actor, {'query': '鼠标', 'excluded_terms': ['黑色']}, mission=empty_mission(),
+            product_scope=self.scope)
+        self.assertEqual([item['productId'] for item in result['items']], ['new'])
+        self.assertTrue(result['diagnostics']['recall_relaxed'])
+        self.assertFalse(result['diagnostics']['browse_newest'])
+        self.assertFalse(result['diagnostics']['popular_used'])
+        self.assertTrue(any((data or {}).get('keyword') == '' for _, path, data in self.commerce.calls
+                            if path.endswith('/searchOnSale')))
+
+    async def test_relaxed_recall_stays_empty_when_gate_removes_everything(self):
         result = await ShoppingRetrieve(self.commerce).recommend(
             self.actor, {'query': '鼠标', 'excluded_terms': ['黑色']}, mission=empty_mission(),
             product_scope=self.scope)
         self.assertEqual(result['items'], [])
         self.assertEqual(result['diagnostics']['empty_reason'], 'hard_constraint_unsatisfied')
-        self.assertFalse(any((data or {}).get('keyword') == '' for _, path, data in self.commerce.calls
-                            if path.endswith('/searchOnSale')))
+        self.assertFalse(result['diagnostics']['popular_used'])
+        self.assertFalse(any('popularProducts' in path or 'coPurchase' in path for _, path, _ in self.commerce.calls))
+
+    async def test_budget_only_hard_request_recalls_and_filters_by_price(self):
+        # "100元以内有什么": budget is hard, but recall must not be blocked by it.
+        self.commerce.prices['popular'] = Decimal('500.00')
+        result = await ShoppingRetrieve(self.commerce).recommend(
+            self.actor, {'max_price_cents': 20000}, mission=empty_mission(), product_scope=self.scope)
+        self.assertEqual(sorted(item['productId'] for item in result['items']), ['content', 'new'])
+        self.assertTrue(result['diagnostics']['recall_relaxed'])
+        self.assertIsNone(result['diagnostics']['empty_reason'])
+        self.assertFalse(result['diagnostics']['popular_used'])
 
 
 if __name__ == '__main__':

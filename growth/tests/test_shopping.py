@@ -1,8 +1,9 @@
 import unittest
 from unittest.mock import patch
 from smartlect.agents.shopping import (PROMPT_VERSION, SCHEMA_VERSION, PROPOSAL_CONFIRMATION, FinalAnswer,
-                                       attach_proposal_confirmation, bounded_messages,
-                                       knowledge_observation, product_observation, sku_observation, BudgetExceeded)
+                                       attach_proposal_confirmation, bounded_messages, close_degraded_turn,
+                                       knowledge_observation, product_observation,
+                                       proposal_intent_note, sku_observation, BudgetExceeded)
 from smartlect.business_skills import load_skill
 from smartlect.events import canonical
 from smartlect.privacy import redact_text
@@ -120,6 +121,33 @@ class ShoppingBoundaryTests(unittest.TestCase):
                          '退款须确认。\n' + PROPOSAL_CONFIRMATION)
         already = '说明\n' + PROPOSAL_CONFIRMATION
         self.assertEqual(attach_proposal_confirmation(already), already)
+
+    def test_intent_note_is_compiled_into_confirmation_and_degraded_closeout(self):
+        mission = {'quantity': 6}
+        short = proposal_intent_note({'parameters': {'orderList': [{'buyCount': 4}]}}, mission)
+        self.assertIn('6', short)
+        self.assertIn('4', short)
+        self.assertIsNone(proposal_intent_note({'parameters': {'orderList': [{'buyCount': 6}]}}, mission))
+        self.assertIsNone(proposal_intent_note({'parameters': {'orderList': [{'buyCount': 4}]}}, {}))
+        self.assertIsNone(proposal_intent_note({'parameters': {'orderList': [{'buyCount': 4}]}}, {'quantity': 1}))
+        self.assertIsNone(proposal_intent_note({'parameters': {}}, mission))
+        with_note = attach_proposal_confirmation('只剩4件。', intent_note=short)
+        self.assertIn(short, with_note)
+        self.assertIn(PROPOSAL_CONFIRMATION, with_note)
+        self.assertIn(short, attach_proposal_confirmation('', intent_note=short))
+        self.assertNotIn(short, attach_proposal_confirmation('全量提案。'))
+        degraded = close_degraded_turn('model_call_or_time_limit', citations={}, proposal={
+            'parameters': {'orderList': [{'buyCount': 4}]}}, proposal_note=short)
+        self.assertIn(short, degraded['answer'])
+        self.assertEqual(degraded['answer_status'], 'answered')
+
+    def test_sku_observation_carries_filter_report_attribution(self):
+        observed = sku_observation({'items': [], 'empty_reason': 'hard_constraint_unsatisfied',
+                                    'filter_report': {'eligible_skus': 0,
+                                                      'initial_filtered': {'stock_unavailable': 1}}})
+        self.assertEqual(observed['filter_report']['initial_filtered'], {'stock_unavailable': 1})
+        self.assertEqual(observed['empty_reason'], 'hard_constraint_unsatisfied')
+        self.assertNotIn('filter_report', sku_observation({'items': [], 'empty_reason': None}))
 
 
 if __name__ == '__main__':

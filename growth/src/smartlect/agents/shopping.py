@@ -21,8 +21,8 @@ from smartlect.decision_record import attach_shopping_audit
 from smartlect.catalog_gate import _fold
 from smartlect.shopping_mission import (MAX_REQUIRED, _unique, explicit_from_request, extract_mission,
                                         ground_tool_params, merge_mission, mission_retrieve_params,
-                                        requirement_slots, retrieve_matches_mission, shopping_request,
-                                        shopping_turn_changed)
+                                        normalize_mission, requirement_slots, retrieve_matches_mission,
+                                        shopping_request, shopping_turn_changed)
 from smartlect.shopping_retrieve import ShoppingRetrieve
 from smartlect.tools import Arguments, REGISTRY, ToolReceipt, invoke, schemas, tool_schema
 
@@ -146,13 +146,17 @@ def controller_fallback_result(reason, *, citations, legal_empty=False, utteranc
 
 
 def close_degraded_turn(reason, *, citations, legal_empty=False, utterance='', orders=None,
-                        proposal=None, handoff_result=None, acl_denied=False):
-    """Provider/budget/timeout closeout. A completed business decision stays; a bare fault escalates."""
+                        proposal=None, handoff_result=None, acl_denied=False, proposal_note=None):
+    """Provider/budget/timeout closeout. A completed business decision stays; a bare fault escalates.
+    A saved proposal with a compiled intent note keeps the note — degradation never
+    hides that the proposal departs from what the user asked for."""
     if handoff_result:
         return handoff_result
     if proposal:
-        return {'answer': '交易提案已保存，请核对后确认。模型当前未能继续回复。',
-                'answer_status': 'answered', 'proposal': proposal,
+        answer = '交易提案已保存，请核对后确认。模型当前未能继续回复。'
+        if proposal_note:
+            answer += '\n' + proposal_note
+        return {'answer': answer, 'answer_status': 'answered', 'proposal': proposal,
                 'citations': [], 'products': [], 'orders': orders or []}
     if acl_denied:
         decision = compile_decision('inquire_fact', 'acl_denied')
@@ -170,14 +174,39 @@ def close_degraded_turn(reason, *, citations, legal_empty=False, utterance='', o
             'handoff_origin': 'provider_fault', 'closeout': 'provider_fault'}
 
 
-def attach_proposal_confirmation(answer):
-    """Keep this-turn explanation; only append the confirmation the card still requires."""
+def attach_proposal_confirmation(answer, *, intent_note=None):
+    """Keep this-turn explanation; append the confirmation the card still requires.
+    A compiled intent note (quantity departed from what the user asked) is appended
+    by the controller and cannot be omitted by the model."""
     text = (answer or '').strip()
-    if not text:
-        return PROPOSAL_CONFIRMATION
-    if PROPOSAL_CONFIRMATION in text:
-        return text
-    return text + '\n' + PROPOSAL_CONFIRMATION
+    parts = [text] if text else []
+    if intent_note and intent_note not in text:
+        parts.append(intent_note)
+    if PROPOSAL_CONFIRMATION not in text:
+        parts.append(PROPOSAL_CONFIRMATION)
+    return '\n'.join(parts) if parts else PROPOSAL_CONFIRMATION
+
+
+def proposal_intent_note(proposal, mission):
+    """ADR-0002 for the trade path: proposing fewer/more units than the user asked
+    for is a legal partial fulfilment, but the departure is compiled into the
+    visible answer — the model can never silently change what the user asked to
+    buy. Only order proposals with an explicit multi-unit mission intent qualify."""
+    if not isinstance(proposal, dict) or not isinstance(proposal.get('parameters'), dict):
+        return None
+    wanted = (normalize_mission(mission) or {}).get('quantity') or 0
+    if wanted <= 1:
+        return None
+    total = 0
+    for item in proposal['parameters'].get('orderList') or []:
+        try:
+            total += int(item.get('buyCount') or 0)
+        except (TypeError, ValueError):
+            return None
+    if not total or total == wanted:
+        return None
+    return (f'注意：用户要求 {wanted} 件，本提案共 {total} 件，差额未满足；'
+            '请核对数量差异后再决定是否确认。')
 
 
 class FinalAnswer(Arguments):
@@ -287,7 +316,8 @@ def sku_observation(data):
               'price_cents', 'stock', 'specification', 'reasons') if key in item} for item in sku_items(data)]
     if not isinstance(data, dict):
         return cards
-    extra = {key: data[key] for key in ('empty_reason', 'comparison', 'comparison_complete', 'missing_targets')
+    extra = {key: data[key] for key in ('empty_reason', 'comparison', 'comparison_complete', 'missing_targets',
+                                        'filter_report')
              if key in data and data.get(key) not in ([], {})}
     return {**extra, 'items': cards}
 
@@ -420,6 +450,17 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
         }
         if diagnostics.get('empty_reason'):
             payload['empty_reason'] = diagnostics['empty_reason']
+        # Which constraint eliminated what: an unexplained empty set forces the model
+        # into blind parameter sweeps. Counts go to the model only on an empty result
+        # (non-empty items already tell the story) — the bounded 12k window has no
+        # headroom for per-observation extras on flows that already peak near it.
+        report = {}
+        if not (saved.get('items') or []):
+            report = {key: diagnostics[key] for key in ('eligible_skus', 'initial_filtered', 'final_filtered',
+                                                        'recall_relaxed')
+                      if diagnostics.get(key)}
+        if report:
+            payload['filter_report'] = report
         for key in ('comparison', 'comparison_complete', 'missing_targets'):
             if key in saved:
                 payload[key] = saved[key]
@@ -564,6 +605,8 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             orders = [data]
         elif name.startswith('propose_'):
             proposal = data
+            mission_state = await asyncio.to_thread(memory.mission, actor, conversation_id)
+            context['proposal_intent_note'] = proposal_intent_note(proposal, mission_state)
         elif name == 'request_handoff':
             handoff_result = {'answer': data['answer'] + '\n已建立本地客服工单，等待人工接管。',
                 'answer_status': 'needs_human', 'ticket': data['ticket'], 'handoff_origin': 'model_tool',
@@ -815,7 +858,11 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                 if context.get('comparison_missing_targets'):
                     result['missing_targets'] = context['comparison_missing_targets']
             if proposal:
-                result.update(answer=attach_proposal_confirmation(final.answer), answer_status='answered')
+                note = context.get('proposal_intent_note')
+                result.update(answer=attach_proposal_confirmation(final.answer, intent_note=note),
+                              answer_status='answered')
+                if note:
+                    result['proposal_intent_note'] = note
             elif decision['open_ticket']:
                 result['handoff_origin'] = 'compiled_decision'
             return {'result': result}
@@ -876,5 +923,5 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
         result = close_degraded_turn(
             reason, citations=citations, legal_empty=legal_empty, utterance=question,
             orders=orders, proposal=proposal, handoff_result=handoff_result,
-            acl_denied=bool(context.get('acl_denied')))
+            acl_denied=bool(context.get('acl_denied')), proposal_note=context.get('proposal_intent_note'))
         return await finish(result, 'mock' if mode == 'mock' else 'rule-fallback')

@@ -8,6 +8,32 @@ MISSION_VERSION = 1
 MAX_TERMS = 20
 MAX_REQUIRED = 16
 MAX_TARGETS = 4
+COUNT_MEASURE = '个只条台把张件套份支块'
+_CN_DIGITS = {'一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
+
+
+def _cn_count(raw):
+    """Arabic or simple Chinese numerals (through 百) to an int in [1, 999]."""
+    value = unicodedata.normalize('NFKC', str(raw or '').strip())
+    if not value:
+        return None
+    if value.isdigit():
+        number = int(value)
+        return number if 1 <= number <= 999 else None
+    total, number = 0, None
+    for char in value:
+        if char in _CN_DIGITS:
+            number = _CN_DIGITS[char]
+        elif char == '十':
+            total += (number or 1) * 10
+            number = None
+        elif char == '百':
+            total += (number or 1) * 100
+            number = None
+        else:
+            return None
+    total += number or 0
+    return total if 1 <= total <= 999 else None
 
 
 def empty_mission():
@@ -21,6 +47,7 @@ def empty_mission():
         'comparison_targets': [],
         'comparison_required': False,
         'query': '',
+        'quantity': None,
     }
 
 
@@ -55,6 +82,9 @@ def normalize_mission(value):
     minimum = data.get('min_price_cents')
     if minimum is not None:
         _integer(minimum, 'min_price_cents', 0, 100000000)
+    quantity = data.get('quantity')
+    if quantity is not None:
+        _integer(quantity, 'quantity', 1, 999)
     category = data.get('category_id')
     if category is not None:
         category = _text(category, 'category_id', 64)
@@ -69,6 +99,7 @@ def normalize_mission(value):
         'comparison_targets': _unique(data.get('comparison_targets') or [], MAX_TARGETS),
         'comparison_required': bool(data.get('comparison_required')),
         'query': query,
+        'quantity': quantity,
     }
 
 
@@ -82,6 +113,12 @@ def extract_mission(utterance):
         return extracted
     for match in re.finditer(r'预算\s*(\d+)\s*(?:元|块)?', text):
         extracted['budget_max_cents'] = int(match.group(1)) * 100
+    # Buy-count intent: purchase verb + count + measure word. Interrogatives without
+    # a count ("能买吗") and result-count asks ("推荐3个") stay outside.
+    for match in re.finditer(r'(?:买|购买|要|来)\s*([0-9０-９一二两三四五六七八九十百千]+)\s*[' + COUNT_MEASURE + ']', text):
+        count = _cn_count(match.group(1))
+        if count:
+            extracted['quantity'] = count
     for match in re.finditer(r'(\d+)\s*(?:元|块)\s*以内', text):
         extracted['budget_max_cents'] = int(match.group(1)) * 100
     for match in re.finditer(r'(\d+)\s*(?:元|块)\s*以上', text):
@@ -195,6 +232,12 @@ def merge_mission(previous, extracted, explicit=None):
         minimum = extracted['min_price_cents']
     else:
         minimum = previous['min_price_cents']
+    if explicit.get('quantity'):
+        quantity = explicit['quantity']
+    elif extracted.get('quantity'):
+        quantity = extracted['quantity']
+    else:
+        quantity = previous['quantity']
     if explicit.get('category_id') is not None:
         category = explicit['category_id']
     elif extracted.get('category_id') is not None:
@@ -237,6 +280,7 @@ def merge_mission(previous, extracted, explicit=None):
         'comparison_targets': targets,
         'comparison_required': comparison_required,
         'query': query,
+        'quantity': quantity,
     })
 
 
@@ -246,6 +290,8 @@ def explicit_from_request(params):
         explicit['budget_max_cents'] = params['max_price_cents']
     if (params.get('min_price_cents') or 0) > 0:
         explicit['min_price_cents'] = params['min_price_cents']
+    if params.get('quantity'):
+        explicit['quantity'] = params['quantity']
     if params.get('category_id') is not None:
         explicit['category_id'] = params['category_id']
     if 'excluded_terms' in params:
@@ -264,6 +310,7 @@ def has_hard_constraints(request, mission=None):
     return bool(
         request.get('max_price_cents') is not None
         or (request.get('min_price_cents') or 0) > 0
+        or (request.get('quantity') or 1) > 1
         or request.get('required_terms')
         or request.get('excluded_terms')
         or request.get('excluded_product_ids')
@@ -272,6 +319,7 @@ def has_hard_constraints(request, mission=None):
         or request.get('category_id')
         or mission.get('budget_max_cents') is not None
         or (mission.get('min_price_cents') or 0) > 0
+        or (mission.get('quantity') or 1) > 1
         or mission.get('category_id')
         or mission.get('excluded_terms')
         or mission.get('required_terms')
@@ -285,6 +333,8 @@ def apply_mission_to_request(request, mission):
         result['max_price_cents'] = mission['budget_max_cents']
     if (result.get('min_price_cents') or 0) <= 0 and (mission.get('min_price_cents') or 0) > 0:
         result['min_price_cents'] = mission['min_price_cents']
+    if (result.get('quantity') or 1) <= 1 and (mission.get('quantity') or 0) > 1:
+        result['quantity'] = mission['quantity']
     if result.get('category_id') is None and mission.get('category_id'):
         result['category_id'] = mission['category_id']
     if not str(result.get('query') or '').strip() and mission.get('query'):
@@ -335,6 +385,7 @@ def shopping_turn_changed(extracted, slots=()):
         or extracted.get('reversed_terms')
         or extracted.get('comparison_required')
         or extracted.get('comparison_targets')
+        or extracted.get('quantity')
         or slots
     )
 
@@ -347,6 +398,8 @@ def retrieve_matches_mission(request, mission):
     if mission['budget_max_cents'] is not None and request.get('max_price_cents') != mission['budget_max_cents']:
         return False
     if (mission['min_price_cents'] or 0) > 0 and request.get('min_price_cents') != mission['min_price_cents']:
+        return False
+    if (mission['quantity'] or 1) > 1 and (request.get('quantity') or 1) != mission['quantity']:
         return False
     if mission['category_id'] and request.get('category_id') != mission['category_id']:
         return False
@@ -369,6 +422,8 @@ def mission_retrieve_params(mission):
         params['max_price_cents'] = mission['budget_max_cents']
     if (mission['min_price_cents'] or 0) > 0:
         params['min_price_cents'] = mission['min_price_cents']
+    if (mission['quantity'] or 0) > 1:
+        params['quantity'] = mission['quantity']
     if mission['category_id']:
         params['category_id'] = mission['category_id']
     if mission['excluded_terms']:
@@ -427,4 +482,12 @@ def ground_tool_params(params, utterance, mission):
         if extracted.get(slot_key) != value and mission.get(slot_key) != value:
             dropped[param_key] = value
             filtered.pop(param_key)
+    # A model-supplied buy count must equal the count the user actually said (this
+    # turn or the stored mission); anything else is dropped and the mission count
+    # refills the request, so quietly shrinking quantity to dodge an empty set
+    # cannot pass the gate.
+    quantity = params.get('quantity')
+    if quantity is not None and quantity != extracted.get('quantity') and quantity != mission.get('quantity'):
+        dropped['quantity'] = quantity
+        filtered.pop('quantity', None)
     return filtered, dropped

@@ -158,5 +158,42 @@ class GroundingAndBuyFrameTests(unittest.TestCase):
 
 
 
+class QuantityIntentTests(unittest.TestCase):
+    def test_quantity_extracts_from_buy_frames_only(self):
+        self.assertEqual(extract_mission('帮我买6个桌面音箱，预算1000元')['quantity'], 6)
+        self.assertEqual(extract_mission('来两台音箱')['quantity'], 2)
+        self.assertEqual(extract_mission('买十二个')['quantity'], 12)
+        self.assertEqual(extract_mission('购买二十件')['quantity'], 20)
+        self.assertIsNone(extract_mission('灰色下架键盘也能买吗，按可售来')['quantity'])
+        self.assertIsNone(extract_mission('100元以内有什么')['quantity'])
+        self.assertIsNone(extract_mission('推荐3个键盘')['quantity'])  # result count, not buy count
+
+    def test_quantity_merges_persists_and_fills_request(self):
+        mission = merge_mission(empty_mission(), extract_mission('帮我买6个桌面音箱'))
+        self.assertEqual(mission['quantity'], 6)
+        carried = merge_mission(mission, extract_mission('还有别的吗'))
+        self.assertEqual(carried['quantity'], 6)
+        replaced = merge_mission(mission, extract_mission('买3个吧'))
+        self.assertEqual(replaced['quantity'], 3)
+        request = shopping_request({'query': '音箱'}, carried)
+        self.assertEqual(request['quantity'], 6)
+        self.assertTrue(has_hard_constraints(request, carried))
+        self.assertFalse(retrieve_matches_mission({'quantity': 1, 'max_price_cents': None}, carried))
+        self.assertEqual(mission_retrieve_params(carried)['quantity'], 6)
+        self.assertTrue(shopping_turn_changed(extract_mission('帮我买6个桌面音箱')))
+
+    def test_ground_tool_params_demotes_quantity_drift(self):
+        mission = merge_mission(empty_mission(), extract_mission('帮我买6个桌面音箱'))
+        kept, dropped = ground_tool_params({'quantity': 6}, '帮我买6个桌面音箱', mission)
+        self.assertEqual(kept.get('quantity'), 6)
+        self.assertNotIn('quantity', dropped)
+        shrunk, drift = ground_tool_params({'quantity': 1}, '帮我买6个桌面音箱', mission)
+        self.assertNotIn('quantity', shrunk)  # mission refills the request with 6
+        self.assertEqual(drift['quantity'], 1)
+        later, carried = ground_tool_params({'quantity': 6}, '再看看别的', mission)
+        self.assertEqual(later.get('quantity'), 6)  # mission-grounded survives later turns
+        self.assertNotIn('quantity', carried)
+
+
 if __name__ == '__main__':
     unittest.main()

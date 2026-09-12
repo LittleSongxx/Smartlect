@@ -13,8 +13,8 @@ from smartlect.shopping_mission import (empty_mission, has_hard_constraints, ret
                                         shopping_request, validate_sku_key)
 from smartlect.state import StateError, _actor
 
-STRATEGY_VERSION = 'shopping-constraint-v1'
-ALGORITHM_VERSION = 'shopping-constraint-retrieve-v1'
+STRATEGY_VERSION = 'shopping-constraint-v2'
+ALGORITHM_VERSION = 'shopping-constraint-retrieve-v2'
 SHOPPING_FEATURES = ('content', 'category', 'preference', 'affordability')
 
 
@@ -136,7 +136,7 @@ class ShoppingRetrieve:
         return ranked_keys, mode, rerank_error
 
     def _finish(self, selected, *, ranked, cards, mode, rerank_error, initial_removed, final_removed,
-                empty_reason, extras=None, variants=(), browse=False, errors=None):
+                empty_reason, extras=None, variants=(), browse=False, relaxed=False, errors=None):
         assignment_id = uuid.uuid4().hex
         observed_at = datetime.now(timezone.utc).isoformat()
         for position, card in enumerate(selected, 1):
@@ -149,7 +149,8 @@ class ShoppingRetrieve:
             'candidate_snapshot_hash': sha256(canonical([{'sku_key': card['sku_key'], 'price_cents': card['price_cents'],
                 'stock': card['stock']} for card in ranked]).encode()).hexdigest(),
             'diagnostics': {
-                'variants': list(variants), 'browse_newest': browse, 'popular_used': False, 'copurchase_used': False,
+                'variants': list(variants), 'browse_newest': browse, 'recall_relaxed': relaxed,
+                'popular_used': False, 'copurchase_used': False,
                 'route_errors': errors or {}, 'eligible_skus': len(cards),
                 'rerank_candidate_keys': [card['sku_key'] for card in ranked], 'rerank_error': rerank_error,
                 'initial_filtered': initial_removed, 'final_filtered': final_removed,
@@ -173,16 +174,22 @@ class ShoppingRetrieve:
             scope = (requested if scope[0] is None else scope[0] & requested, scope[1])
         hard = has_hard_constraints(request, mission)
         variants = retrieval_variants(request, mission)
-        errors, rows, browse = {}, [], False
+        errors, rows, browse, relaxed = {}, [], False, False
         if variants:
             for variant in variants:
                 rows.extend(await self._search_on_sale(request, scope, variant, category_id=request['category_id'], errors=errors))
         if not rows:
-            if not hard and not request['product_id'] and not request['category_id']:
-                browse = True
+            # Recall and eligibility are separate concerns. Every hard slot in this
+            # design is a post-filter predicate on the snapshot, so empty-keyword
+            # recall plus the eligibility gate is filtered enumeration — never
+            # popular fill. `hard` only names the empty_reason; it no longer blocks
+            # recall (budget-only requests used to be the one hard slot with no
+            # recall path at all).
+            if request['product_id'] or request['category_id']:
                 rows.extend(await self._search_on_sale(request, scope, '', category_id=request['category_id'], errors=errors))
-            elif request['product_id'] or request['category_id']:
-                rows.extend(await self._search_on_sale(request, scope, '', category_id=request['category_id'], errors=errors))
+            else:
+                browse, relaxed = not hard, hard
+                rows.extend(await self._search_on_sale(request, scope, '', errors=errors))
         product_ids = self._product_ids(rows, request)
         cards, initial_removed = await self._snapshot(product_ids, request, scope)
         if not cards and (request.get('required_terms') or request.get('category_id')):
@@ -194,7 +201,7 @@ class ShoppingRetrieve:
             return self._finish([], ranked=[], cards=cards, mode='content_rule', rerank_error=None,
                                 initial_removed=initial_removed, final_removed={},
                                 empty_reason='hard_constraint_unsatisfied' if hard else 'no_eligible_sku',
-                                variants=variants, browse=browse, errors=errors)
+                                variants=variants, browse=browse, relaxed=relaxed, errors=errors)
         ranked = rank_shopping_skus(cards, request, preferences)[:MAX_RERANK_SKUS]
         ranked_keys, mode, rerank_error = await self._rerank(ranked, request, semantic_rerank)
         refreshed, final_removed = await self._snapshot([card['productId'] for card in ranked], request, scope,
@@ -208,7 +215,7 @@ class ShoppingRetrieve:
                             rerank_error=rerank_error, initial_removed=initial_removed, final_removed=final_removed,
                             empty_reason='hard_constraint_unsatisfied' if hard and not selected else (
                                 None if selected else 'no_eligible_sku'),
-                            variants=variants, browse=browse, errors=errors)
+                            variants=variants, browse=browse, relaxed=relaxed, errors=errors)
 
     async def compare(self, actor, request, *, mission=None, preferences=(), product_scope=None, semantic_rerank=None):
         kind, _, _ = _actor(actor)
