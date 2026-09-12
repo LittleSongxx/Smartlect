@@ -14,13 +14,14 @@ class RecommendationRequest(BaseModel):
     query: str = Field(default='', max_length=200, description='名称/规格软匹配排序；资格门请用required_terms/excluded_terms/category_id/价格')
     product_id: str | None = Field(default=None, min_length=1, max_length=64, description='用户指定的真实商品ID；仅缩小授权范围')
     category_id: str | None = Field(default=None, min_length=1, max_length=64, description='用户点名的真实类目ID，如desk类目填desk；未知省略，不能猜')
-    max_price_cents: int | None = Field(default=None, ge=0, le=100000000)
+    max_price_cents: int | None = Field(default=None, ge=0, le=100000000, description='单价预算上限（分）')
     min_price_cents: int = Field(default=0, ge=0, le=100000000)
-    quantity: int = Field(default=1, ge=1, le=999)
+    quantity: int = Field(default=1, ge=1, le=999,
+        description='要买的数量；检索按它校验库存，勿为绕开空结果调小')
     limit: int = Field(default=4, ge=1, le=8)
     required_terms: list[str] = Field(default_factory=list, max_length=16,
-        description='名称/规格必须包含的文字，如金属、键盘、人体工学椅；只放query不会做资格过滤')
-    excluded_terms: list[str] = Field(default_factory=list, max_length=20)
+        description='名称/规格须逐项包含的文字；限定词（颜色/档位/型号/材质/品名）全部列入，少报会放行不合规商品')
+    excluded_terms: list[str] = Field(default_factory=list, max_length=20, description='名称/规格不得包含的文字')
     excluded_product_ids: list[str] = Field(default_factory=list, max_length=64)
     excluded_sku_keys: list[str] = Field(default_factory=list, max_length=64)
 

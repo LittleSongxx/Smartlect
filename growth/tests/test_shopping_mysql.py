@@ -556,7 +556,7 @@ class ShoppingMySQLTests(unittest.TestCase):
         result = asyncio.run(self.execute(provider, run, lease))
         self.assertEqual(provider.actual_attempts, 2)
         self.assertEqual(result['result']['tool_calls'], 1)
-        self.assertLessEqual(result['context']['context_upper_bound_tokens'], 12000)
+        self.assertLessEqual(result['context']['context_upper_bound_tokens'], 14400)
         self.assertIn('get_my_orders', provider.offered_tools[0])
         self.assertIn('search_knowledge', provider.offered_tools[0])
         self.assertEqual(result['result']['citations'][0]['doc_id'], 'synthetic-refund')

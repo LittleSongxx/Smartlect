@@ -260,7 +260,10 @@ def bounded_messages(messages, tool_schemas, question):
     def size():
         return estimate_text_tokens(canonical({'messages': result, 'tools': tool_schemas})) + 16 * len(result)
     def over_limit():
-        return size() > 12000 or len(canonical({'messages': result, 'tools': tool_schemas}).encode()) > 36000
+        # Window raised 12000->14400 (bytes 36000->43200) by decision 2026-09-12:
+        # five passing dev cases peaked within 110 tokens of the old cap, leaving no
+        # room for any prompt discipline; see ADR 0004 for the measured evidence.
+        return size() > 14400 or len(canonical({'messages': result, 'tools': tool_schemas}).encode()) > 43200
     current = max(i for i, message in enumerate(result) if message['role'] == 'user' and message['content'] == question)
     while over_limit() and current > 1:
         end = next((i for i in range(2, current + 1) if result[i]['role'] == 'user'), current)
@@ -343,6 +346,25 @@ def looks_like_irreconcilable_sources(text):
 def no_business_claim_has_store_conclusion(answer):
     """Availability or stock assertions are store facts, not chit-chat."""
     return bool(re.search(r'(?:库存|售罄|可售|下架|买得到|买不到|有货|没货|在售|缺货|现货)', answer or ''))
+
+
+def constraint_echo(request):
+    """The gate the retrieve actually applied, echoed next to the filter report so
+    a gap between the user's qualifiers and the declared gate is visible in situ."""
+    request = request or {}
+    echo = {}
+    for key in ('required_terms', 'excluded_terms'):
+        if request.get(key):
+            echo[key] = list(request[key])
+    if request.get('max_price_cents') is not None:
+        echo['max_price_cents'] = request['max_price_cents']
+    if (request.get('min_price_cents') or 0) > 0:
+        echo['min_price_cents'] = request['min_price_cents']
+    if (request.get('quantity') or 1) > 1:
+        echo['quantity'] = request['quantity']
+    if request.get('category_id'):
+        echo['category_id'] = request['category_id']
+    return echo
 
 
 def sku_obeys_request(item, request):
@@ -451,14 +473,17 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
         if diagnostics.get('empty_reason'):
             payload['empty_reason'] = diagnostics['empty_reason']
         # Which constraint eliminated what: an unexplained empty set forces the model
-        # into blind parameter sweeps. Counts go to the model only on an empty result
-        # (non-empty items already tell the story) — the bounded 12k window has no
-        # headroom for per-observation extras on flows that already peak near it.
+        # into blind parameter sweeps. Counts go to the model only on an empty result;
+        # the applied-gate echo goes along every constrained retrieve so under-declared
+        # qualifiers are visible where the selection decision is made.
         report = {}
         if not (saved.get('items') or []):
             report = {key: diagnostics[key] for key in ('eligible_skus', 'initial_filtered', 'final_filtered',
                                                         'recall_relaxed')
                       if diagnostics.get(key)}
+        applied = constraint_echo(context.get('shopping_request'))
+        if applied:
+            report['applied_constraints'] = applied
         if report:
             payload['filter_report'] = report
         for key in ('comparison', 'comparison_complete', 'missing_targets'):

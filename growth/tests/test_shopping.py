@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 from smartlect.agents.shopping import (PROMPT_VERSION, SCHEMA_VERSION, PROPOSAL_CONFIRMATION, FinalAnswer,
                                        attach_proposal_confirmation, bounded_messages, close_degraded_turn,
-                                       knowledge_observation, product_observation,
+                                       constraint_echo, knowledge_observation, product_observation,
                                        proposal_intent_note, sku_observation, BudgetExceeded)
 from smartlect.business_skills import load_skill
 from smartlect.events import canonical
@@ -15,7 +15,7 @@ class ShoppingBoundaryTests(unittest.TestCase):
         self.assertEqual(PROMPT_VERSION, 'shopping-react-v24')
         self.assertEqual(SCHEMA_VERSION, 'shopping-answer-v5')
         advice = load_skill('shopping_advice')
-        self.assertEqual(advice['version'], '1.12.0')
+        self.assertEqual(advice['version'], '1.13.0')
         self.assertIn('list_my_coupons', advice['tools'])
         self.assertIn('compare_skus', advice['tools'])
         self.assertIn('search_skus 或 recommend_skus', advice['instructions'])
@@ -45,8 +45,8 @@ class ShoppingBoundaryTests(unittest.TestCase):
                     {'role': 'assistant', 'content': 'old reply'}, *current]
         selected, size = bounded_messages(messages, [], question)
         self.assertEqual(selected, [messages[0], *current])
-        self.assertLessEqual(size, 12000)
-        current[-1]['content'] = 'x' * 37000
+        self.assertLessEqual(size, 14400)
+        current[-1]['content'] = 'x' * 45000
         with self.assertRaises(BudgetExceeded):
             bounded_messages([messages[0], *current], [], question)
 
@@ -148,6 +148,15 @@ class ShoppingBoundaryTests(unittest.TestCase):
         self.assertEqual(observed['filter_report']['initial_filtered'], {'stock_unavailable': 1})
         self.assertEqual(observed['empty_reason'], 'hard_constraint_unsatisfied')
         self.assertNotIn('filter_report', sku_observation({'items': [], 'empty_reason': None}))
+
+    def test_constraint_echo_names_the_gate_the_retrieve_applied(self):
+        self.assertEqual(constraint_echo({'required_terms': ['白色'], 'quantity': 1}),
+                         {'required_terms': ['白色']})
+        self.assertEqual(constraint_echo({'max_price_cents': 10000, 'min_price_cents': 0}),
+                         {'max_price_cents': 10000})
+        self.assertEqual(constraint_echo({'quantity': 6, 'category_id': 'desk', 'excluded_terms': ['塑料']}),
+                         {'quantity': 6, 'category_id': 'desk', 'excluded_terms': ['塑料']})
+        self.assertEqual(constraint_echo({}), {})
 
 
 if __name__ == '__main__':
