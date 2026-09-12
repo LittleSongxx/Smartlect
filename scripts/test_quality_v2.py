@@ -11,8 +11,8 @@ from quality_v2 import (ADS_PLAYBOOKS, CONTRACT_JSON, SHOPPING_CATALOG, SHOPPING
                         campaign_rates, catalog_index, catalog_overlay_plan, last_real_search,
                         live_support_cases, load_json, load_jsonl, refuse_holdout, remap_observation,
                         score_ads, score_faithfulness, score_shopping, score_support,
-                        self_check_scores, sku_satisfies, validate_dev_sets, validate_support_case,
-                        validate_shopping_case, write_report)
+                        self_check_scores, sku_satisfies, trial_table, validate_dev_sets,
+                        validate_support_case, validate_shopping_case, wilson_ci, write_report)
 from runtime import ROOT
 
 
@@ -474,6 +474,102 @@ class ReportTests(unittest.TestCase):
         problems = []
         validate_support_case(case, problems)
         self.assertTrue(any('chitchat_cannot_have_relevant_docs' in item for item in problems))
+
+
+class TrialsAndCITests(unittest.TestCase):
+    def test_wilson_interval_known_values(self):
+        # 5/10 and 8/8 are textbook Wilson 95% values.
+        self.assertEqual(wilson_ci(0.5, 10), [0.2366, 0.7634])
+        self.assertEqual(wilson_ci(1.0, 8), [0.6756, 1.0])
+        self.assertIsNone(wilson_ci(None, 10))
+        self.assertIsNone(wilson_ci(0.5, 0))
+
+    def test_k1_aggregation_keeps_legacy_semantics(self):
+        rows = [{'case_id': 'a', 'outcome': 'pass', 'Precision@4': 0.5, 'Pass@1': 1},
+                {'case_id': 'b', 'outcome': 'fail', 'Precision@4': 0.0, 'Pass@1': 0},
+                {'case_id': 'c', 'outcome': 'pass', 'Precision@4': None, 'Pass@1': 1}]
+        summary = aggregate_line('shopping', rows, ('Precision@4', 'Pass@1'))
+        self.assertEqual(summary['Precision@4'], 0.25)
+        self.assertEqual(summary['Pass@1'], 2 / 3)
+        self.assertEqual(summary['denominators']['Precision@4'], 2)
+        self.assertEqual(summary['denominators']['Pass@1'], 3)
+        self.assertEqual(summary['ci95_wilson']['Pass@1'], wilson_ci(2 / 3, 3))
+        self.assertNotIn('trials', summary)
+        self.assertNotIn('pass^k', summary)
+        self.assertNotIn('n_cases', summary)
+
+    def test_k1_report_has_no_trial_blocks(self):
+        with tempfile.TemporaryDirectory() as folder:
+            report = write_report(folder, [], [], [], official=False)
+        self.assertEqual(report['trials'], 1)
+        self.assertNotIn('per_case_trials', report)
+        self.assertNotIn('trials', report['shopping'])
+
+    def test_trials_aggregation_pass_at_k_macro_headline_and_flips(self):
+        def row(case, trial, outcome, precision=0.5):
+            return {'case_id': case, 'line': 'shopping', 'trial': trial, 'outcome': outcome,
+                    'Pass@1': 1 if outcome == 'pass' else 0, 'Precision@4': precision}
+        rows = ([row('case-a', t, 'pass') for t in (1, 2, 3)]
+                + [row('case-b', 1, 'pass'), row('case-b', 2, 'fail'), row('case-b', 3, 'pass')]
+                + [row('case-c', 1, 'setup_failed', None), row('case-c', 2, 'pass'), row('case-c', 3, 'pass')])
+        summary = aggregate_line('shopping', rows, ('Precision@4', 'Pass@1'))
+        self.assertEqual(summary['trials'], 3)
+        self.assertEqual(summary['n_cases'], 3)
+        self.assertEqual(summary['n_scored'], 8)  # trials, not cases
+        # Macro headline: per-case trial means keep every case at equal weight.
+        self.assertAlmostEqual(summary['Pass@1'], (1 + 2 / 3 + 1) / 3)
+        self.assertEqual(summary['denominators']['Pass@1'], 8)
+        # pass^k eligibility excludes case-c (one setup_failed trial).
+        self.assertEqual(summary['pass^k'], {'k': 3, 'n_eligible': 2, 'n_all_pass': 1, 'value': 0.5})
+        self.assertEqual(summary['flip_cases'], ['case-b'])
+        table = trial_table(rows)
+        self.assertEqual(table['n_cases'], 3)
+        self.assertEqual(table['n_flipped'], 1)
+        entry = next(item for item in table['cases'] if item['case_id'] == 'case-b')
+        self.assertEqual(entry['pass_rate'], 2 / 3)
+        self.assertTrue(entry['flipped'])
+        with tempfile.TemporaryDirectory() as folder:
+            report = write_report(folder, rows, [], [], official=False, trials=3)
+        self.assertEqual(report['trials'], 3)
+        self.assertIn('case-b', report['per_case_trials']['shopping']['cases'][1]['case_id'])
+        self.assertNotIn('support', report['per_case_trials'])
+
+    def test_rerun_ledger_groups_trials_per_case(self):
+        with tempfile.TemporaryDirectory() as artifacts:
+            artifacts = Path(artifacts)
+            run_dir = artifacts / 'run-t'
+            run_dir.mkdir()
+            report = {'cases': {'shopping': [
+                {'case_id': 'shop-d-01', 'line': 'shopping', 'trial': 1, 'outcome': 'setup_failed'},
+                {'case_id': 'shop-d-01', 'line': 'shopping', 'trial': 2, 'outcome': 'pass', 'Pass@1': 1},
+                {'case_id': 'shop-d-01', 'line': 'shopping', 'trial': 3, 'outcome': 'pass', 'Pass@1': 1},
+                {'case_id': 'shop-d-02', 'line': 'shopping', 'trial': 1, 'outcome': 'fail', 'Pass@1': 0}],
+                'support': [], 'ads': []}}
+            entries = append_rerun_ledger(artifacts / 'run-t', report, artifacts_dir=artifacts)
+            self.assertEqual(len(entries), 1)  # one entry per case, not per trial
+            self.assertEqual(entries[0]['case_id'], 'shop-d-01')
+            self.assertEqual(entries[0]['current_outcome'], 'partial_setup_failed')
+            self.assertEqual(entries[0]['status'], 'pending_rerun')
+            self.assertEqual([item['outcome'] for item in entries[0]['trial_outcomes']],
+                             ['setup_failed', 'pass', 'pass'])
+            ledger = (artifacts / 'rerun-ledger.jsonl').read_text().strip().splitlines()
+            self.assertEqual(len(ledger), 1)
+
+    def test_judge_targets_exact_trial_rows(self):
+        from unittest.mock import patch
+        import judge_quality_v2 as jq
+        case = {'case_id': 'x', 'checkable_claims': [{'id': 'a', 'text': '模拟支付', 'scope': 'essential'}],
+                'expected_retrieval': True, 'expected_handoff': False, 'relevant_doc_ids': []}
+        row1 = {'case_id': 'x', 'trial': 1, 'outcome': 'pass'}
+        row2 = {'case_id': 'x', 'trial': 2, 'outcome': 'pass'}
+        verdicts = [{'supported': 1, 'total': 1, 'verdicts': {'a': 'supported'}, 'summary': ''},
+                    {'supported': 0, 'total': 1, 'verdicts': {'a': 'absent'}, 'summary': ''}]
+        with patch.object(jq, 'judge_case', side_effect=verdicts):
+            jq.apply_judge_faithfulness([row1, row2],
+                                        [(case, {'answer': 'a'}, row1), (case, {'answer': 'b'}, row2)],
+                                        {})
+        self.assertEqual(row1['Faithfulness'], 1.0)
+        self.assertEqual(row2['Faithfulness'], 0.0)  # same case_id, different trial rows
 
 
 if __name__ == '__main__':

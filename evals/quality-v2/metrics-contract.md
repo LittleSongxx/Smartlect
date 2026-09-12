@@ -1,6 +1,6 @@
 # Smartlect 质量评测合同（quality-v2）
 
-日期：2026-09-12（v4 修订：claims 分级 essential/peripheral——Faithfulness 只算问题直接要求的 essential 命题，peripheral 进 `Peripheral_coverage` 诊断；新增 RAGAS 语义对照列 `Faithfulness_answer_side`（分解答案自身断言验证支撑，不进公开主报）；数量题 Precision 采用 demand-fill 语义（单个满足 SKU×数量填满对应槽位）；导购集几何重设计使 12/20 案例金标≥4。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。三条主线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
+日期：2026-09-12（v5 修订：新增多次试验与置信区间一节——`--trials N` 每题独立 k 次试验、逐题通过率与 `pass^k`、每指标 Wilson 95% CI；所有指标定义与主数语义不变，k=1 输出与 v4 一致。v4 修订：claims 分级 essential/peripheral——Faithfulness 只算问题直接要求的 essential 命题，peripheral 进 `Peripheral_coverage` 诊断；新增 RAGAS 语义对照列 `Faithfulness_answer_side`（分解答案自身断言验证支撑，不进公开主报）；数量题 Precision 采用 demand-fill 语义（单个满足 SKU×数量填满对应槽位）；导购集几何重设计使 12/20 案例金标≥4。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。三条主线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
 
 一题三种结局：`pass` / `unscored`（分母缺失记 `null`）/ `setup_failed`。`setup_failed` 不进均值，仅限 provider/预算/基础设施故障，禁止重采样刷绿；每次复跑记入 `artifacts/quality-v2/rerun-ledger.jsonl`。
 
@@ -9,6 +9,18 @@
 分层：先机器可判，再引用级 Faithfulness（能规则就规则），LLM judge 只抽检（仅开发集、固定种子、不进公开总分）。
 
 汇总报告每个指标旁印分母（`denominators`），1.0 over 10 不得冒充 1.0 over 24。
+
+---
+
+## 多次试验与置信区间（v5 生效，全部主线共用）
+
+- **`--trials N`**：同题独立跑 N 次，每次全新场景（新 actor 会话、目录 overlay 各自应用并恢复、独立 run_id）；模型采样不播种——要测的正是这个采样方差。导购/客服适用；广告为确定性模拟，只跑单次。
+- **逐题报告**：`per_case_trials` 列每题 k 次试验的结局、通过次数与通过率；翻转题（同题既有 pass 又有 fail）在 `flip_cases` 显式列出，不得让均值吞掉翻转。
+- **`pass^k`** = 全部 k 次试验都通过的题数 / k 次全部有效计分的题数（HumanEval 语义在 n=k 时的形式）。任何一次 `setup_failed` 的题不进该指标分母，按复跑台账补齐后重算。
+- **主数语义不变**：line 级指标仍是按题均值（macro，每题等权——该题取其试验均值）；k=1 的输出与 v4 完全一致，可与 v6 基线直接对话。
+- **`ci95_wilson`**：每指标旁印 Wilson 95% 置信区间，n=该指标非空观测数（试验级）。`Pass@1` 为二项、区间精确；`Precision@4`/`Recall@8`/`Faithfulness` 等分数值为 [0,1] 有界均值的 score-interval 近似——CI 不替代逐题方差表，两者并排印。
+- **setup_failed 试验**照旧只限 provider/基础设施并进台账；一题多试验时台账按题记一条，附 `trial_outcomes`。
+- **留出不适用**：留出首测已烧毁，`--trials` 只用于开发集。
 
 ---
 

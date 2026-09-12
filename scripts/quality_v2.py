@@ -478,6 +478,22 @@ def mean(values):
     return sum(numbers) / len(numbers)
 
 
+def wilson_ci(value, n, *, z=1.96):
+    """Wilson score interval for a [0,1] mean over n observations.
+
+    Exact for binary outcomes (Pass@1). For fractional metrics (Precision@4,
+    Recall@8, Faithfulness, ...) it is the documented score-interval
+    approximation on the pooled observations; dispersion is additionally
+    visible in per-case trial tables, never hidden inside the CI."""
+    if value is None or not n:
+        return None
+    p = min(max(value, 0.0), 1.0)
+    denominator = 1 + z * z / n
+    center = (p + z * z / (2 * n)) / denominator
+    spread = z * ((p * (1 - p) + z * z / (4 * n)) / n) ** 0.5 / denominator
+    return [round(center - spread, 4), round(center + spread, 4)]
+
+
 def _corpus_for(case):
     parts = []
     for doc_id in case.get('visible_doc_ids') or []:
@@ -609,12 +625,60 @@ def aggregate_line(name, rows, metric_names):
     setup_failed = [row for row in rows if row.get('outcome') == 'setup_failed']
     summary = {'line': name, 'n': len(rows), 'n_scored': len(scored), 'n_setup_failed': len(setup_failed),
                'n_pass': sum(1 for row in scored if row.get('outcome') == 'pass')}
-    for metric in metric_names:
-        summary[metric] = mean(row.get(metric) for row in scored)
+    by_case = {}
+    for row in rows:
+        by_case.setdefault(row.get('case_id'), []).append(row)
+    trial_numbers = [row['trial'] for row in rows if row.get('trial') is not None]
+    if trial_numbers:
+        # k-trial run: every row is one trial, so n/n_scored count trials. The
+        # headline keeps every case at equal weight via that case's trial mean.
+        summary['trials'] = max(trial_numbers)
+        summary['n_cases'] = len(by_case)
+        scored_by_case = {case_id: [row for row in case_rows if row.get('outcome') != 'setup_failed']
+                          for case_id, case_rows in by_case.items()}
+        k = summary['trials']
+        eligible = [case_rows for case_rows in scored_by_case.values() if len(case_rows) == k]
+        all_pass = sum(1 for case_rows in eligible
+                       if all(row.get('outcome') == 'pass' for row in case_rows))
+        summary['pass^k'] = {'k': k, 'n_eligible': len(eligible), 'n_all_pass': all_pass,
+                             'value': all_pass / len(eligible) if eligible else None}
+        summary['flip_cases'] = sorted(case_id for case_id, case_rows in scored_by_case.items()
+                                       if len({row.get('outcome') for row in case_rows}) > 1)
+    else:
+        scored_by_case = {None: scored}
     # Denominators next to every headline so a 1.0 over 10 cases can't pose as 1.0 over all.
     summary['denominators'] = {metric: sum(1 for row in scored if row.get(metric) is not None)
                                for metric in metric_names}
+    for metric in metric_names:
+        summary[metric] = mean(mean(row.get(metric) for row in case_rows)
+                               for case_rows in scored_by_case.values())
+    summary['ci95_wilson'] = {metric: wilson_ci(summary[metric], summary['denominators'][metric])
+                              for metric in metric_names}
     return summary
+
+
+def trial_table(rows):
+    """Per-case k-trial outcomes: pass rate per case, flips made visible."""
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row['case_id'], []).append(row)
+    cases = []
+    for case_id in sorted(grouped):
+        case_rows = sorted(grouped[case_id], key=lambda row: row.get('trial') or 1)
+        scored = [row for row in case_rows if row.get('outcome') != 'setup_failed']
+        passes = sum(1 for row in scored if row.get('outcome') == 'pass')
+        cases.append({
+            'case_id': case_id,
+            'trials': [{'trial': row.get('trial') or 1, 'outcome': row.get('outcome')}
+                       for row in case_rows],
+            'n_scored': len(scored),
+            'passes': passes,
+            'pass_rate': passes / len(scored) if scored else None,
+            'flipped': len({row.get('outcome') for row in scored}) > 1,
+        })
+    return {'n_cases': len(cases),
+            'n_flipped': sum(1 for row in cases if row['flipped']),
+            'cases': cases}
 
 
 def synthetic_shopping_observation(case, catalog=None):
@@ -711,20 +775,37 @@ def prior_setup_failures(exclude_dir=None, *, artifacts_dir=None):
 
 
 def append_rerun_ledger(output_dir, report, *, artifacts_dir=None):
-    """Durable ledger: every setup_failed case and every rerun that resolves it."""
+    """Durable ledger: every setup_failed case and every rerun that resolves it.
+    With k trials a case logs one entry, carrying its per-trial outcomes."""
     output_dir = Path(output_dir)
     run_id = output_dir.name
     prior = prior_setup_failures(output_dir, artifacts_dir=artifacts_dir)
-    entries = []
+    grouped = {}
     for row in _iter_case_rows(report):
-        history = prior.get(row['case_id'])
-        if history:
-            entries.append({'run_id': run_id, 'case_id': row['case_id'], 'line': row.get('line'),
-                            **history, 'current_outcome': row.get('outcome')})
-        elif row.get('outcome') == 'setup_failed':
-            entries.append({'run_id': run_id, 'case_id': row['case_id'], 'line': row.get('line'),
-                            'prior_run': None, 'prior_reason': None,
-                            'current_outcome': 'setup_failed', 'status': 'pending_rerun'})
+        grouped.setdefault(row['case_id'], []).append(row)
+    entries = []
+    for case_id, case_rows in grouped.items():
+        setup_failed = [row for row in case_rows if row.get('outcome') == 'setup_failed']
+        history = prior.get(case_id)
+        if not history and not setup_failed:
+            continue
+        if len(setup_failed) == len(case_rows):
+            current = 'setup_failed'
+        elif setup_failed:
+            current = 'partial_setup_failed'
+        else:
+            distinct = {row.get('outcome') for row in case_rows}
+            current = next(iter(distinct)) if len(distinct) == 1 else 'mixed'
+        entry = {'run_id': run_id, 'case_id': case_id, 'line': case_rows[0].get('line'),
+                 'prior_run': history['prior_run'] if history else None,
+                 'prior_reason': history['prior_reason'] if history else None,
+                 'current_outcome': current}
+        if not history and setup_failed:
+            entry['status'] = 'pending_rerun'
+        if any(row.get('trial') is not None for row in case_rows):
+            entry['trial_outcomes'] = [{'trial': row.get('trial'), 'outcome': row.get('outcome')}
+                                       for row in case_rows]
+        entries.append(entry)
     if entries:
         ledger = Path(artifacts_dir) / 'rerun-ledger.jsonl' if artifacts_dir else LEDGER_PATH
         ledger.parent.mkdir(parents=True, exist_ok=True)
@@ -736,18 +817,22 @@ def append_rerun_ledger(output_dir, report, *, artifacts_dir=None):
     return entries
 
 
-def write_report(output_dir, shopping, support, ads, *, official=False, partial=False, synthetic=False):
+def write_report(output_dir, shopping, support, ads, *, official=False, partial=False, synthetic=False,
+                 trials=1):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     report = {
-        'schema_version': 'quality-v2-report-v1',
+        'schema_version': 'quality-v2-report-v2',
         'official': official,
         'partial': partial,
         'synthetic': synthetic,
+        'trials': trials,
         'composite_score': None,
         'note': '三条主线分开展示，不合成总分。模拟广告比率不是效果或因果。'
                 + (' 本 run 仅重跑部分案例，不是完整开发集成绩。' if partial else '')
-                + (' 合成观测自检，只验证评分链路，不是系统成绩。' if synthetic else ''),
+                + (' 合成观测自检，只验证评分链路，不是系统成绩。' if synthetic else '')
+                + (f' 导购/客服每题独立 {trials} 次试验（各自 fresh scenario）；'
+                   f'pass^k=全部 k 次试验都通过的题占比；ads 为确定性模拟跑单次。' if trials > 1 else ''),
         'provenance': provenance(),
         'shopping': aggregate_line('shopping', shopping, ('Precision@4', 'Precision@4_ceiling', 'Pass@1')),
         'support': aggregate_line('support', support, ('Recall@8', 'Faithfulness',
@@ -756,6 +841,11 @@ def write_report(output_dir, shopping, support, ads, *, official=False, partial=
         'ads': aggregate_line('ads', ads, ('CTR', 'CVR', 'Pass@1')),
         'cases': {'shopping': shopping, 'support': support, 'ads': ads},
     }
+    if trials > 1:
+        report['per_case_trials'] = {name: trial_table(rows)
+                                     for name, rows in (('shopping', shopping), ('support', support),
+                                                        ('ads', ads))
+                                     if any(row.get('trial') is not None for row in rows)}
     path = output_dir / 'summary.json'
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
     return report

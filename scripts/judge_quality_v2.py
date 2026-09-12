@@ -105,19 +105,24 @@ def judge_case(case, result, config):
 def apply_judge_faithfulness(scores, pairs, config, *, errors=None):
     """Fill the public Faithfulness field from judge verdicts.
 
+    pairs entries are (case, result) or (case, result, score_row); the
+    three-tuple form targets an exact trial row instead of a case_id lookup,
+    so k trials of one case never overwrite each other.
+
     Faithfulness counts essential claims only (the propositions the question
     directly requires); peripheral doc-related-but-unasked claims become the
     Peripheral_coverage diagnostic. Cases whose judge call fails keep
     Faithfulness null (missing denominator), never a borrowed rule value."""
     by_id = {score['case_id']: score for score in scores}
-    for case, result in pairs:
+    for item in pairs:
+        case, result = item[0], item[1]
+        score = item[2] if len(item) > 2 else by_id[case['case_id']]
         try:
             verdict = judge_case(case, result, config)
         except (JudgeUnavailable, json.JSONDecodeError, KeyError) as error:
             (errors if errors is not None else []).append({'case_id': case['case_id'],
                                                            'reason': str(error)})
             continue
-        score = by_id[case['case_id']]
         claims = case.get('checkable_claims') or []
         essential = [c for c in claims if c.get('scope', 'essential') == 'essential']
         peripheral = [c for c in claims if c.get('scope') == 'peripheral']
@@ -172,14 +177,15 @@ def judge_answer_side(case, result, config):
 
 def apply_judge_answer_side(scores, pairs, config, *, errors=None):
     by_id = {score['case_id']: score for score in scores}
-    for case, result in pairs:
+    for item in pairs:
+        case, result = item[0], item[1]
+        score = item[2] if len(item) > 2 else by_id[case['case_id']]
         try:
             verdict = judge_answer_side(case, result, config)
         except (JudgeUnavailable, json.JSONDecodeError, KeyError) as error:
             (errors if errors is not None else []).append({'case_id': case['case_id'],
                                                            'reason': str(error)})
             continue
-        score = by_id[case['case_id']]
         if verdict is None:
             score['Faithfulness_answer_side'] = None
             score['answer_side_statements'] = 0

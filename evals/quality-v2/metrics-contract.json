@@ -1,5 +1,5 @@
 {
-  "schema_version": "quality-v2-metrics-contract-v4",
+  "schema_version": "quality-v2-metrics-contract-v5",
   "dataset_family": "quality-v2",
   "public_headers_only": [
     "Precision@4",
@@ -19,6 +19,23 @@
   "setup_failed_scope": "provider_or_budget_or_infrastructure_only",
   "annotation_error_aborts_run": true,
   "denominators_printed_per_metric": true,
+  "trials_and_ci": {
+    "trials_flag": "--trials N",
+    "independence": "fresh scenario per trial (new actor session, overlay applied+restored, new run_id); model sampling unseeded",
+    "applies_to": [
+      "shopping",
+      "support"
+    ],
+    "ads_note": "deterministic simulation, single pass",
+    "headline_semantics_unchanged": true,
+    "headline_is_macro_case_mean": true,
+    "pass_at_k": "share of cases whose all k scored trials pass; cases with any setup_failed trial leave its denominator until ledger rerun",
+    "ci95_wilson": "per-metric Wilson 95% interval, n = pooled non-null trial observations; exact for binary Pass@1, score-interval approximation for fractional metrics",
+    "per_case_trials_table": true,
+    "flip_cases_listed": true,
+    "k1_output_backward_compatible": true,
+    "holdout_excluded": true
+  },
   "resample_forbidden": true,
   "rerun_ledger": "artifacts/quality-v2/rerun-ledger.jsonl",
   "holdout": {

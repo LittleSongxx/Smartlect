@@ -1,12 +1,12 @@
 # quality-v2 质量评测索引
 
-更新 2026-09-12（v3）。三条主线（导购选品 / 政策客服 / 广告投放）的公开指标评测体系。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
+更新 2026-09-12（v4：合同 v5 新增 `--trials N` 多次试验、`pass^k` 与每指标 Wilson 95% CI——指标定义与主数语义不变）。三条主线（导购选品 / 政策客服 / 广告投放）的公开指标评测体系。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
 
 ## 位置
 
 | 内容 | 路径 |
 |---|---|
-| 指标合同（操作定义，v3） | `evals/quality-v2/metrics-contract.md` / `.json` |
+| 指标合同（操作定义，v5） | `evals/quality-v2/metrics-contract.md` / `.json` |
 | 导购开发集 / 商品快照 | `evals/quality-v2/shopping/dev.jsonl`（29 例）/ `catalog-snapshot.json`（20 SKU） |
 | 客服开发集 | `evals/quality-v2/support/dev.jsonl`（24 例，1 例 replay-only） |
 | 广告剧本 | `evals/quality-v2/ads/playbooks.json`（5 剧本） |
@@ -32,6 +32,9 @@ python test_quality_v2.py                        # 合同测试（系统 python 
 python eval_quality_v2.py validate               # 开发集标注自洽性校验（离线）
 python eval_quality_v2.py self-check             # 合成观测全链路自检（无 judge）
 python eval_quality_v2.py run --official         # live 全量（含 judge 判分，需栈健康 + JUDGE env）
+python eval_quality_v2.py run --official --trials 3 --line shopping
+                                                 # 每题独立 3 次试验：逐题通过率、pass^k、
+                                                 # Wilson 95% CI（v5；ads 确定性模拟只跑单次）
 python eval_quality_v2.py run --case shop-d-01   # 复跑单例（报告标 partial）
 python eval_quality_v2.py judge --output <run目录> # judge 抽检报告（默认全量 claims 题）
 python eval_quality_v2.py freeze                 # 冻结开发集摘要；出题仍需人工

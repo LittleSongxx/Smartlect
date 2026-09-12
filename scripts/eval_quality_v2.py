@@ -267,49 +267,54 @@ def apply_shopping_catalog(client, evidence):
     return restore
 
 
-def run_shopping_live(output, wanted=None, split='development'):
+def run_shopping_live(output, wanted=None, split='development', trials=1):
     from scenario_client import ScenarioClient
     from quality_v2 import dataset_paths
     catalog = load_json(SHOPPING_CATALOG)
     rows = []
     for case in selected_cases(load_jsonl(dataset_paths(split)['shopping']), wanted):
-        evidence = {'case_id': case['case_id'], 'line': 'shopping', 'status': 'SETUP_RUNNING',
-                    'run_id': 'qv2-shop-' + uuid.uuid4().hex, 'scenario': 'quality-v2-shopping', 'seed': 42}
-        path = output / 'shopping' / (case['case_id'] + '.json')
-        save = lambda: write(path, evidence)
-        save()
-        client = None
-        try:
-            client = ScenarioClient(evidence, save, requested_mode='live')
-            client.setup(actor_ref='user_a', product_count=len(catalog['skus']))
-            restore = apply_shopping_catalog(client, evidence)
-            try:
-                result, tools, channel_failed = run_turns(client, case['user_turns'])
-                observation = observation_from_agent(result, tools, model_channel_failed=channel_failed,
-                                                     gold_mode='snapshot',
-                                                     setup_failed=channel_failed, setup_reason='provider_or_budget' if channel_failed else None)
-                evidence['observation'] = observation
-                evidence['scores'] = score_shopping(case, observation)
-                evidence['status'] = 'SCORED'
-            finally:
-                restore(evidence)
-        except AnnotationError:
-            raise
-        except Exception as error:
-            evidence['status'] = 'SETUP_FAILED'
-            evidence['error'] = type(error).__name__
-            evidence['error_text'] = str(error)[:500]
-            evidence['scores'] = score_shopping(case, {'setup_failed': True, 'setup_reason': type(error).__name__})
-        finally:
-            if client is not None:
-                client.close()
-            evidence['finished_at'] = now()
+        for trial in range(1, trials + 1):
+            evidence = {'case_id': case['case_id'], 'line': 'shopping', 'status': 'SETUP_RUNNING',
+                        'run_id': 'qv2-shop-' + uuid.uuid4().hex, 'scenario': 'quality-v2-shopping', 'seed': 42}
+            if trials > 1:
+                evidence['trial'] = trial
+            path = output / 'shopping' / (case['case_id'] + ('.t%d' % trial if trials > 1 else '') + '.json')
+            save = lambda: write(path, evidence)
             save()
-        rows.append(evidence['scores'])
+            client = None
+            try:
+                client = ScenarioClient(evidence, save, requested_mode='live')
+                client.setup(actor_ref='user_a', product_count=len(catalog['skus']))
+                restore = apply_shopping_catalog(client, evidence)
+                try:
+                    result, tools, channel_failed = run_turns(client, case['user_turns'])
+                    observation = observation_from_agent(result, tools, model_channel_failed=channel_failed,
+                                                         gold_mode='snapshot',
+                                                         setup_failed=channel_failed, setup_reason='provider_or_budget' if channel_failed else None)
+                    evidence['observation'] = observation
+                    evidence['scores'] = score_shopping(case, observation)
+                    evidence['status'] = 'SCORED'
+                finally:
+                    restore(evidence)
+            except AnnotationError:
+                raise
+            except Exception as error:
+                evidence['status'] = 'SETUP_FAILED'
+                evidence['error'] = type(error).__name__
+                evidence['error_text'] = str(error)[:500]
+                evidence['scores'] = score_shopping(case, {'setup_failed': True, 'setup_reason': type(error).__name__})
+            finally:
+                if client is not None:
+                    client.close()
+                if trials > 1 and evidence.get('scores') is not None:
+                    evidence['scores']['trial'] = trial
+                evidence['finished_at'] = now()
+                save()
+            rows.append(evidence['scores'])
     return rows
 
 
-def run_support_live(output, wanted=None, split='development'):
+def run_support_live(output, wanted=None, split='development', trials=1):
     from eval_support import setup_knowledge
     from scenario_client import ScenarioClient
     from judge_quality_v2 import (apply_judge_answer_side, apply_judge_faithfulness,
@@ -317,73 +322,80 @@ def run_support_live(output, wanted=None, split='development'):
     from quality_v2 import dataset_paths
     cases = live_support_cases(load_jsonl(dataset_paths(split)['support']))
     rows = []
-    judge_pairs = []
+    judge_targets = []  # {'case','result','row','path'}: one entry per scored trial
     for case in selected_cases(cases, wanted):
-        evidence = {'case_id': case['case_id'], 'line': 'support', 'status': 'SETUP_RUNNING',
-                    'run_id': 'qv2-sup-' + uuid.uuid4().hex, 'scenario': 'quality-v2-support', 'seed': 42, 'documents': []}
-        path = output / 'support' / (case['case_id'] + '.json')
-        save = lambda: write(path, evidence)
-        save()
-        client = None
-        try:
-            client = ScenarioClient(evidence, save, requested_mode='live')
-            client.setup(actor_ref=case.get('actor') or 'user_a')
-            setup = case.get('knowledge_setup') or {}
-            rag_case = {'knowledge_setup': {'additional_documents': []}}
-            for doc_id in case.get('visible_doc_ids') or []:
-                body = (ROOT / 'fixtures/knowledge' / (doc_id + '.md')).read_text()
-                rag_case['knowledge_setup']['additional_documents'].append({
-                    'doc_id': doc_id, 'version': 1, 'title': body.splitlines()[0].lstrip('# '),
-                    'source_uri': 'fixtures/knowledge/' + doc_id + '.md', 'body': body, 'acl': 'PUBLIC',
-                    'lifecycle': 'publish_before_question',
-                    'checksum_sha256': __import__('hashlib').sha256(body.encode()).hexdigest()})
-            for extra in setup.get('additional_documents') or []:
-                rag_case['knowledge_setup']['additional_documents'].append(extra)
-            for extra in setup.get('documents') or []:
-                body = (ROOT / extra['source_uri']).read_text()
-                rag_case['knowledge_setup']['additional_documents'].append({
-                    **extra, 'body': extra.get('body') or body,
-                    'title': extra.get('title') or body.splitlines()[0].lstrip('# '),
-                    'acl': extra.get('acl') or 'PUBLIC',
-                    'checksum_sha256': extra.get('checksum_sha256') or __import__('hashlib').sha256(body.encode()).hexdigest()})
-            empty_manifest = {'base_corpus': {'documents': []}}
-            setup_knowledge(client, evidence, save, empty_manifest, rag_case)
-            result, tools, channel_failed = run_turns(client, case['user_turns'])
-            ticket = result.get('ticket')
-            observation = {'result': result, 'tool_calls': [{'tool_name': row['tool_name'],
-                           'arguments_json': row.get('arguments_json'), 'receipt_json': row.get('receipt_json')}
-                          for row in tools], 'ticket': ticket,
-                           'setup_failed': channel_failed, 'model_channel_failed': channel_failed}
-            evidence['observation'] = observation
-            evidence['scores'] = score_support(case, observation)
-            evidence['status'] = 'SCORED'
-            if not channel_failed and case.get('checkable_claims'):
-                judge_pairs.append((case, result))
-        except AnnotationError:
-            raise
-        except Exception as error:
-            evidence['status'] = 'SETUP_FAILED'
-            evidence['error'] = type(error).__name__
-            evidence['error_text'] = str(error)[:800]
-            evidence['scores'] = score_support(case, {'setup_failed': True})
-        finally:
-            if client is not None:
-                client.close()
-            evidence['finished_at'] = now()
+        for trial in range(1, trials + 1):
+            evidence = {'case_id': case['case_id'], 'line': 'support', 'status': 'SETUP_RUNNING',
+                        'run_id': 'qv2-sup-' + uuid.uuid4().hex, 'scenario': 'quality-v2-support', 'seed': 42, 'documents': []}
+            if trials > 1:
+                evidence['trial'] = trial
+            path = output / 'support' / (case['case_id'] + ('.t%d' % trial if trials > 1 else '') + '.json')
+            save = lambda: write(path, evidence)
             save()
-        rows.append(evidence['scores'])
-    if judge_pairs:
+            client = None
+            try:
+                client = ScenarioClient(evidence, save, requested_mode='live')
+                client.setup(actor_ref=case.get('actor') or 'user_a')
+                setup = case.get('knowledge_setup') or {}
+                rag_case = {'knowledge_setup': {'additional_documents': []}}
+                for doc_id in case.get('visible_doc_ids') or []:
+                    body = (ROOT / 'fixtures/knowledge' / (doc_id + '.md')).read_text()
+                    rag_case['knowledge_setup']['additional_documents'].append({
+                        'doc_id': doc_id, 'version': 1, 'title': body.splitlines()[0].lstrip('# '),
+                        'source_uri': 'fixtures/knowledge/' + doc_id + '.md', 'body': body, 'acl': 'PUBLIC',
+                        'lifecycle': 'publish_before_question',
+                        'checksum_sha256': __import__('hashlib').sha256(body.encode()).hexdigest()})
+                for extra in setup.get('additional_documents') or []:
+                    rag_case['knowledge_setup']['additional_documents'].append(extra)
+                for extra in setup.get('documents') or []:
+                    body = (ROOT / extra['source_uri']).read_text()
+                    rag_case['knowledge_setup']['additional_documents'].append({
+                        **extra, 'body': extra.get('body') or body,
+                        'title': extra.get('title') or body.splitlines()[0].lstrip('# '),
+                        'acl': extra.get('acl') or 'PUBLIC',
+                        'checksum_sha256': extra.get('checksum_sha256') or __import__('hashlib').sha256(body.encode()).hexdigest()})
+                empty_manifest = {'base_corpus': {'documents': []}}
+                setup_knowledge(client, evidence, save, empty_manifest, rag_case)
+                result, tools, channel_failed = run_turns(client, case['user_turns'])
+                ticket = result.get('ticket')
+                observation = {'result': result, 'tool_calls': [{'tool_name': row['tool_name'],
+                               'arguments_json': row.get('arguments_json'), 'receipt_json': row.get('receipt_json')}
+                              for row in tools], 'ticket': ticket,
+                               'setup_failed': channel_failed, 'model_channel_failed': channel_failed}
+                evidence['observation'] = observation
+                evidence['scores'] = score_support(case, observation)
+                evidence['status'] = 'SCORED'
+                if not channel_failed and case.get('checkable_claims'):
+                    judge_targets.append({'case': case, 'result': result, 'row': evidence['scores'],
+                                          'path': path})
+            except AnnotationError:
+                raise
+            except Exception as error:
+                evidence['status'] = 'SETUP_FAILED'
+                evidence['error'] = type(error).__name__
+                evidence['error_text'] = str(error)[:800]
+                evidence['scores'] = score_support(case, {'setup_failed': True})
+            finally:
+                if client is not None:
+                    client.close()
+                if trials > 1 and evidence.get('scores') is not None:
+                    evidence['scores']['trial'] = trial
+                evidence['finished_at'] = now()
+                save()
+            rows.append(evidence['scores'])
+    if judge_targets:
         errors = []
-        apply_judge_faithfulness(rows, judge_pairs, judge_config(), errors=errors)
-        apply_judge_answer_side(rows, judge_pairs, judge_config(), errors=errors)
-        for case, _ in judge_pairs:
-            path = output / 'support' / (case['case_id'] + '.json')
-            if path.exists():
-                evidence = json.loads(path.read_text())
-                evidence['scores'] = next(row for row in rows if row['case_id'] == case['case_id'])
-                if errors:
-                    evidence['judge_errors'] = [item for item in errors if item['case_id'] == case['case_id']]
-                write(path, evidence)
+        pairs = [(target['case'], target['result'], target['row']) for target in judge_targets]
+        apply_judge_faithfulness(rows, pairs, judge_config(), errors=errors)
+        apply_judge_answer_side(rows, pairs, judge_config(), errors=errors)
+        for target in judge_targets:
+            if not target['path'].exists():
+                continue
+            evidence = json.loads(target['path'].read_text())
+            evidence['scores'] = target['row']
+            if errors:
+                evidence['judge_errors'] = [item for item in errors if item['case_id'] == target['case']['case_id']]
+            write(target['path'], evidence)
         if errors:
             print('judge_errors:', json.dumps(errors, ensure_ascii=False))
     return rows
@@ -621,11 +633,15 @@ def main():
     parser.add_argument('--run-id', default=None)
     parser.add_argument('--output', default=None)
     parser.add_argument('--official', action='store_true')
+    parser.add_argument('--trials', type=int, default=1,
+                        help='每题独立试验次数（各自 fresh scenario；导购/客服适用，ads 为确定性模拟只跑单次）')
     parser.add_argument('--sample', type=int, default=None,
                         help='judge: sample N cases per line; default judges every claim case (dev only)')
     parser.add_argument('--case', action='append', default=[],
                         help='optional case_id; repeat or comma-separate to rerun a subset')
     args = parser.parse_args()
+    if args.trials < 1:
+        raise SystemExit('--trials must be >= 1')
     refuse_holdout(args.split)
     if args.split == 'holdout':
         from quality_v2 import holdout_ready
@@ -661,13 +677,13 @@ def main():
         validate_dev_sets(lines, split=args.split)
         shopping, support, ads = [], [], []
         if 'shopping' in lines:
-            shopping = run_shopping_live(output, args.case, split=args.split)
+            shopping = run_shopping_live(output, args.case, split=args.split, trials=args.trials)
         if 'support' in lines:
-            support = run_support_live(output, args.case, split=args.split)
+            support = run_support_live(output, args.case, split=args.split, trials=args.trials)
         if 'ads' in lines:
             ads = run_ads_live(output, split=args.split)
         report = write_report(output, shopping, support, ads,
-                              official=args.official, partial=bool(args.case))
+                              official=args.official, partial=bool(args.case), trials=args.trials)
         append_rerun_ledger(output, report)
         print_lines(report)
         return
