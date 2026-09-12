@@ -14,11 +14,17 @@ HOLDOUT_DIR = CONTRACT_DIR / 'holdout'
 FREEZE_MANIFEST = HOLDOUT_DIR / 'freeze-manifest.json'
 SHOPPING_CATALOG = CONTRACT_DIR / 'shopping/catalog-snapshot.json'
 SHOPPING_DEV = CONTRACT_DIR / 'shopping/dev.jsonl'
+SHOPPING_HOLDOUT = CONTRACT_DIR / 'shopping/holdout.jsonl'
 SHOPPING_MANIFEST = CONTRACT_DIR / 'shopping/manifest.json'
 SUPPORT_DEV = CONTRACT_DIR / 'support/dev.jsonl'
+SUPPORT_HOLDOUT = CONTRACT_DIR / 'support/holdout.jsonl'
 SUPPORT_MANIFEST = CONTRACT_DIR / 'support/manifest.json'
 ADS_PLAYBOOKS = CONTRACT_DIR / 'ads/playbooks.json'
+ADS_HOLDOUT_PLAYBOOKS = CONTRACT_DIR / 'ads/holdout-playbooks.json'
 ADS_MANIFEST = CONTRACT_DIR / 'ads/manifest.json'
+HOLDOUT_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout-manifest.json',
+                     'support': CONTRACT_DIR / 'support/holdout-manifest.json',
+                     'ads': CONTRACT_DIR / 'ads/holdout-manifest.json'}
 ARTIFACTS_DIR = ROOT / 'artifacts/quality-v2'
 LEDGER_PATH = ARTIFACTS_DIR / 'rerun-ledger.jsonl'
 
@@ -487,13 +493,13 @@ def _corpus_for(case):
     return '\n'.join(parts)
 
 
-def validate_shopping_case(case, skus, problems):
+def validate_shopping_case(case, skus, problems, split='development'):
     cid = case.get('case_id')
     if not cid:
         problems.append('shopping: case_id_missing')
         return
-    if case.get('split') != 'development':
-        problems.append(f'{cid}: split_not_development')
+    if case.get('split') != split:
+        problems.append(f'{cid}: split_mismatch:{case.get("split")}')
     for key in case.get('satisfaction_set') or []:
         if key not in skus:
             problems.append(f'{cid}: satisfaction_key_missing:{key}')
@@ -510,13 +516,13 @@ def validate_shopping_case(case, skus, problems):
         problems.append(f'{cid}: expected_pass_not_boolean')
 
 
-def validate_support_case(case, problems):
+def validate_support_case(case, problems, split='development'):
     cid = case.get('case_id')
     if not cid:
         problems.append('support: case_id_missing')
         return
-    if case.get('split') != 'development':
-        problems.append(f'{cid}: split_not_development')
+    if case.get('split') != split:
+        problems.append(f'{cid}: split_mismatch:{case.get("split")}')
     if case.get('expected_retrieval') is False and case.get('relevant_doc_ids'):
         problems.append(f'{cid}: chitchat_cannot_have_relevant_docs')
     if set(case.get('forbidden_doc_ids') or []) & set(case.get('relevant_doc_ids') or []):
@@ -565,20 +571,36 @@ def validate_ads_playbooks(books, problems):
             problems.append(f'{pid}: organic_payment_needs_unknown_payments')
 
 
-def validate_dev_sets(lines=('shopping', 'support', 'ads')):
+def dataset_paths(split='development'):
+    if split == 'development':
+        return {'shopping': SHOPPING_DEV, 'support': SUPPORT_DEV, 'ads': ADS_PLAYBOOKS}
+    if split == 'holdout':
+        return {'shopping': SHOPPING_HOLDOUT, 'support': SUPPORT_HOLDOUT, 'ads': ADS_HOLDOUT_PLAYBOOKS}
+    raise ValueError('unknown_split:' + split)
+
+
+def validate_dev_sets(lines=('shopping', 'support', 'ads'), split='development'):
     """Upfront annotation consistency. A wrong dataset fails the run, never the case."""
     problems = []
+    paths = dataset_paths(split)
     if 'shopping' in lines:
         skus = catalog_index()
-        for case in load_jsonl(SHOPPING_DEV):
-            validate_shopping_case(case, skus, problems)
+        for case in load_jsonl(paths['shopping']):
+            validate_shopping_case(case, skus, problems, split)
     if 'support' in lines:
-        for case in load_jsonl(SUPPORT_DEV):
-            validate_support_case(case, problems)
+        for case in load_jsonl(paths['support']):
+            validate_support_case(case, problems, split)
     if 'ads' in lines:
-        validate_ads_playbooks(load_json(ADS_PLAYBOOKS)['playbooks'], problems)
+        validate_ads_playbooks(load_json(paths['ads'])['playbooks'], problems)
     if problems:
-        raise AnnotationError('dev_set_annotation_error\n' + '\n'.join(problems))
+        raise AnnotationError(f'{split}_set_annotation_error\n' + '\n'.join(problems))
+    return True
+
+
+def holdout_ready(lines=('shopping', 'support', 'ads')):
+    missing = [line for line in lines if not HOLDOUT_MANIFESTS[line].exists()]
+    if missing:
+        raise ValueError('holdout_questions_not_authored:' + ','.join(missing))
     return True
 
 

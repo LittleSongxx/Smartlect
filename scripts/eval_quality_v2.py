@@ -267,11 +267,12 @@ def apply_shopping_catalog(client, evidence):
     return restore
 
 
-def run_shopping_live(output, wanted=None):
+def run_shopping_live(output, wanted=None, split='development'):
     from scenario_client import ScenarioClient
+    from quality_v2 import dataset_paths
     catalog = load_json(SHOPPING_CATALOG)
     rows = []
-    for case in selected_cases(load_jsonl(SHOPPING_DEV), wanted):
+    for case in selected_cases(load_jsonl(dataset_paths(split)['shopping']), wanted):
         evidence = {'case_id': case['case_id'], 'line': 'shopping', 'status': 'SETUP_RUNNING',
                     'run_id': 'qv2-shop-' + uuid.uuid4().hex, 'scenario': 'quality-v2-shopping', 'seed': 42}
         path = output / 'shopping' / (case['case_id'] + '.json')
@@ -308,14 +309,16 @@ def run_shopping_live(output, wanted=None):
     return rows
 
 
-def run_support_live(output, wanted=None):
+def run_support_live(output, wanted=None, split='development'):
     from eval_support import setup_knowledge
     from scenario_client import ScenarioClient
     from judge_quality_v2 import (apply_judge_answer_side, apply_judge_faithfulness,
                                   judge_config)
+    from quality_v2 import dataset_paths
+    cases = live_support_cases(load_jsonl(dataset_paths(split)['support']))
     rows = []
     judge_pairs = []
-    for case in selected_cases(live_support_cases(), wanted):
+    for case in selected_cases(cases, wanted):
         evidence = {'case_id': case['case_id'], 'line': 'support', 'status': 'SETUP_RUNNING',
                     'run_id': 'qv2-sup-' + uuid.uuid4().hex, 'scenario': 'quality-v2-support', 'seed': 42, 'documents': []}
         path = output / 'support' / (case['case_id'] + '.json')
@@ -461,9 +464,10 @@ def pay_sku(client, sku):
     return pay_id
 
 
-def run_ads_live(output):
+def run_ads_live(output, split='development'):
     from scenario_client import ScenarioClient
-    playbooks = load_json(ADS_PLAYBOOKS)['playbooks']
+    from quality_v2 import dataset_paths
+    playbooks = load_json(dataset_paths(split)['ads'])['playbooks']
     rows = []
     for book in playbooks:
         evidence = {'playbook_id': book['playbook_id'], 'line': 'ads', 'status': 'SETUP_RUNNING',
@@ -623,6 +627,9 @@ def main():
                         help='optional case_id; repeat or comma-separate to rerun a subset')
     args = parser.parse_args()
     refuse_holdout(args.split)
+    if args.split == 'holdout':
+        from quality_v2 import holdout_ready
+        holdout_ready(() if args.line == 'all' else (args.line,))
     run_id = args.run_id or (args.command + '-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
     output = Path(args.output) if args.output else ARTIFACT / run_id
     lines = ('shopping', 'support', 'ads') if args.line == 'all' else (args.line,)
@@ -633,8 +640,8 @@ def main():
         print_lines(report)
         return
     if args.command == 'validate':
-        validate_dev_sets(lines)
-        print('dev_sets_ok:', ','.join(lines))
+        validate_dev_sets(lines, split=args.split)
+        print(f'{args.split}_sets_ok:', ','.join(lines))
         return
     if args.command == 'freeze':
         freeze_holdout()
@@ -651,14 +658,14 @@ def main():
     if args.command == 'run':
         if not growth_up():
             raise SystemExit('growth_not_healthy; use self-check or start an isolated stack')
-        validate_dev_sets(lines)
+        validate_dev_sets(lines, split=args.split)
         shopping, support, ads = [], [], []
         if 'shopping' in lines:
-            shopping = run_shopping_live(output, args.case)
+            shopping = run_shopping_live(output, args.case, split=args.split)
         if 'support' in lines:
-            support = run_support_live(output, args.case)
+            support = run_support_live(output, args.case, split=args.split)
         if 'ads' in lines:
-            ads = run_ads_live(output)
+            ads = run_ads_live(output, split=args.split)
         report = write_report(output, shopping, support, ads,
                               official=args.official, partial=bool(args.case))
         append_rerun_ledger(output, report)

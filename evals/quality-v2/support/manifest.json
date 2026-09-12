@@ -1,6 +1,6 @@
 {
   "dataset_id": "quality-v2-support-v3-dev",
-  "schema_version": "quality-v2-support-v3",
+  "schema_version": "quality-v2-support-v4",
   "split": "development",
   "holdout": {
     "sealed": true,
@@ -9,14 +9,14 @@
     "freeze_command": "scripts/eval_quality_v2.py freeze"
   },
   "checksums": {
-    "evals/quality-v2/support/dev.jsonl": "f4f92d6d417c48598f55115727bc40f6ce3d222b7158cd8d461cfec0a593e6e0",
+    "evals/quality-v2/support/dev.jsonl": "5a34daef6fe1f309651dfcc47863a6467a08d19f74b963ff5bf931b1f4978e47",
     "evals/quality-v2/metrics-contract.json": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae"
   },
   "metrics": [
     "Recall@8",
     "Faithfulness"
   ],
-  "case_count": 24,
+  "case_count": 32,
   "case_ids": [
     "sup-d-01",
     "sup-d-02",
@@ -41,7 +41,15 @@
     "sup-d-21",
     "sup-d-22",
     "sup-d-23",
-    "sup-d-24"
+    "sup-d-24",
+    "sup-d-25",
+    "sup-d-26",
+    "sup-d-27",
+    "sup-d-28",
+    "sup-d-29",
+    "sup-d-30",
+    "sup-d-31",
+    "sup-d-32"
   ],
   "live_skip": [
     "sup-d-24"

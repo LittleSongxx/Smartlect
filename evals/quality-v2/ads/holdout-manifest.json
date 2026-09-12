@@ -1,0 +1,15 @@
+{
+  "schema_version": "quality-v2-holdout-manifest-v1",
+  "line": "ads",
+  "stamped_at": "2026-09-12T12:56:40.910271+00:00",
+  "rule": "首测即终测：盖章后题目文件不得修改；跑过一次后不得按结果调整题目或系统。",
+  "validated": "eval_quality_v2.py validate --split holdout 通过（2026-09-12）",
+  "digest_sha256": "0875251783569400512ef9a5c454600b6dc732c1bb5e828b9f2bb27b1571df60",
+  "case_count": 4,
+  "case_ids": [
+    "ads-h-01",
+    "ads-h-02",
+    "ads-h-03",
+    "ads-h-04"
+  ]
+}

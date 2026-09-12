@@ -1,6 +1,6 @@
 {
   "dataset_id": "quality-v2-shopping-v3-dev",
-  "schema_version": "quality-v2-shopping-v3",
+  "schema_version": "quality-v2-shopping-v4",
   "split": "development",
   "holdout": {
     "sealed": true,
@@ -9,7 +9,7 @@
     "freeze_command": "scripts/eval_quality_v2.py freeze"
   },
   "checksums": {
-    "evals/quality-v2/shopping/dev.jsonl": "35c7fc85bff092bd4ec91e7d2d4e725c7249c1ffa7bb118e2ee35311bc06d2c5",
+    "evals/quality-v2/shopping/dev.jsonl": "b329baca737bf7a07676f5852e7c0296e075246dfaa1ede623823ab1e86381fc",
     "evals/quality-v2/shopping/catalog-snapshot.json": "c6c5d26130758bd48173a38b75084be232b0e3a2579e71654f20ea15ef643583",
     "evals/quality-v2/metrics-contract.json": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae"
   },
@@ -17,7 +17,7 @@
     "Precision@4",
     "Pass@1"
   ],
-  "case_count": 29,
+  "case_count": 39,
   "case_ids": [
     "shop-d-01",
     "shop-d-02",
@@ -47,6 +47,16 @@
     "shop-d-26",
     "shop-d-27",
     "shop-d-28",
-    "shop-d-29"
+    "shop-d-29",
+    "shop-d-30",
+    "shop-d-31",
+    "shop-d-32",
+    "shop-d-33",
+    "shop-d-34",
+    "shop-d-35",
+    "shop-d-36",
+    "shop-d-37",
+    "shop-d-38",
+    "shop-d-39"
   ]
 }
