@@ -14,7 +14,7 @@ from quality_v2 import (ADS_PLAYBOOKS, CONTRACT_JSON, FREEZE_MANIFEST, HOLDOUT_D
                         live_support_cases, load_json, load_jsonl, observation_from_agent, provenance,
                         refuse_holdout, score_ads, score_shopping, score_support, self_check_scores,
                         validate_dev_sets, write_report)
-from judge_quality_v2 import run_llm_judge
+from judge_quality_v2 import run_calibration, run_llm_judge, write_human_review
 from runtime import ENV_FILE, ROOT, parse_env
 
 ARTIFACT = ROOT / 'artifacts/quality-v2'
@@ -398,6 +398,9 @@ def run_support_live(output, wanted=None, split='development', trials=1):
             write(target['path'], evidence)
         if errors:
             print('judge_errors:', json.dumps(errors, ensure_ascii=False))
+        sampled = write_human_review(output, judge_targets)
+        if sampled:
+            print('judge_human_review_sampled:', sampled)
     return rows
 
 
@@ -627,7 +630,8 @@ def freeze_holdout():
 
 def main():
     parser = argparse.ArgumentParser(description='quality-v2 development evaluation')
-    parser.add_argument('command', choices=('self-check', 'validate', 'freeze', 'judge', 'run', 'report', 'score'))
+    parser.add_argument('command', choices=('self-check', 'validate', 'freeze', 'judge',
+                                            'judge-calibrate', 'run', 'report', 'score'))
     parser.add_argument('--line', choices=('shopping', 'support', 'ads', 'all'), default='all')
     parser.add_argument('--split', default='development')
     parser.add_argument('--run-id', default=None)
@@ -637,6 +641,8 @@ def main():
                         help='每题独立试验次数（各自 fresh scenario；导购/客服适用，ads 为确定性模拟只跑单次）')
     parser.add_argument('--sample', type=int, default=None,
                         help='judge: sample N cases per line; default judges every claim case (dev only)')
+    parser.add_argument('--pro-model', default='deepseek-v4-pro',
+                        help='judge-calibrate: second judge model for cross-judging')
     parser.add_argument('--case', action='append', default=[],
                         help='optional case_id; repeat or comma-separate to rerun a subset')
     args = parser.parse_args()
@@ -664,6 +670,9 @@ def main():
         return
     if args.command == 'judge':
         run_llm_judge(output, lines, sample=args.sample)
+        return
+    if args.command == 'judge-calibrate':
+        run_calibration(output, pro_model=args.pro_model)
         return
     if args.command == 'report':
         summary = load_json(output / 'summary.json') if (output / 'summary.json').exists() else None

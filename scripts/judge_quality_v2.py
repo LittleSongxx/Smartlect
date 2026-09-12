@@ -22,6 +22,10 @@ DEFAULT_JUDGE_MODEL = 'deepseek-flash'
 SAMPLE_SEED = 20260912
 JUDGE_PROMPT_VERSION = 'qv2-judge-faith-v3'
 SUPPORTED_VERDICTS = ('supported', 'absent', 'contradicted', 'unsupported')
+CALIBRATION_PATH = ROOT / 'evals/quality-v2/support/judge-calibration.jsonl'
+CALIBRATION_PASS_THRESHOLD = 0.90
+HUMAN_REVIEW_SEED = 20260913
+HUMAN_REVIEW_SIZE = 20
 
 
 class JudgeUnavailable(RuntimeError):
@@ -87,6 +91,7 @@ def judge_messages(case, result):
 def judge_case(case, result, config):
     verdict = _chat(config, judge_messages(case, result))
     judged = {}
+    quotes = {}
     for item in verdict.get('claims') or []:
         claim_id, verdict_text = item.get('claim_id'), item.get('verdict')
         quote = str(item.get('quote') or '')
@@ -94,11 +99,12 @@ def judge_case(case, result, config):
             verdict_text = 'unsupported'  # a "supported" without a real answer quote does not count
         if verdict_text in SUPPORTED_VERDICTS:
             judged[claim_id] = verdict_text
+            quotes[claim_id] = quote
     total = len(case.get('checkable_claims') or [])
     if total and len(judged) != total:
         raise JudgeUnavailable('judge_missing_verdicts:%d/%d' % (len(judged), total))
     supported = sum(1 for value in judged.values() if value == 'supported')
-    return {'supported': supported, 'total': total, 'verdicts': judged,
+    return {'supported': supported, 'total': total, 'verdicts': judged, 'quotes': quotes,
             'summary': str(verdict.get('summary') or '')[:160]}
 
 
@@ -139,6 +145,7 @@ def apply_judge_faithfulness(scores, pairs, config, *, errors=None):
         else:
             score['Peripheral_coverage'] = None
         score['judge_verdicts'] = verdict['verdicts']
+        score['judge_quotes'] = verdict['quotes']
         score['judge_summary'] = verdict['summary']
     return scores
 
@@ -194,6 +201,174 @@ def apply_judge_answer_side(scores, pairs, config, *, errors=None):
             score['answer_side_statements'] = verdict['total']
             score['answer_side_summary'] = verdict['summary']
     return scores
+
+
+def cohens_kappa(labels_a, labels_b):
+    """Cohen's kappa for two raters over the same items (None on empty input)."""
+    if len(labels_a) != len(labels_b) or not labels_a:
+        return None
+    categories = sorted(set(labels_a) | set(labels_b))
+    n = len(labels_a)
+    observed = sum(1 for x, y in zip(labels_a, labels_b) if x == y) / n
+    count_a, count_b = {}, {}
+    for value in labels_a:
+        count_a[value] = count_a.get(value, 0) + 1
+    for value in labels_b:
+        count_b[value] = count_b.get(value, 0) + 1
+    expected = sum(count_a.get(c, 0) * count_b.get(c, 0) for c in categories) / (n * n)
+    if expected == 1:
+        return 1.0 if observed == 1 else 0.0
+    return (observed - expected) / (1 - expected)
+
+
+def load_calibration_pairs(path=CALIBRATION_PATH):
+    pairs = [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
+    for pair in pairs:
+        corpus = _corpus_for({'visible_doc_ids': pair['visible_doc_ids']})
+        if _fold(pair['claim']['text']) not in _fold(corpus):
+            raise ValueError('calibration_claim_not_in_corpus:' + pair['pair_id'])
+        if pair['expect_verdict'] not in SUPPORTED_VERDICTS:
+            raise ValueError('calibration_bad_expect:' + pair['pair_id'])
+    return pairs
+
+
+def _calibration_pseudo_case(pair):
+    return {'case_id': pair['pair_id'], 'user_turns': pair['user_turns'],
+            'visible_doc_ids': pair['visible_doc_ids'], 'checkable_claims': [pair['claim']]}
+
+
+def run_calibration(output_dir, *, pro_model='deepseek-v4-pro'):
+    """Judge calibration: known-verdict pairs through both judges.
+
+    Reports per-model agreement with the constructed gold, Cohen's kappa
+    between the two judges, and a human-review list of every disagreement.
+    Gold is binary (supported vs not) because only 'supported' earns public
+    Faithfulness credit; the 4-way verdicts stay as diagnostics."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    base_config = judge_config()
+    pro_config = {**base_config, 'SMARTLECT_JUDGE_MODEL': pro_model}
+    pairs = load_calibration_pairs()
+    rows, errors = [], []
+    for pair in pairs:
+        case = _calibration_pseudo_case(pair)
+        result = {'answer': pair['agent_answer'], 'citations': []}
+        entry = {'pair_id': pair['pair_id'], 'category': pair['category'],
+                 'expect_verdict': pair['expect_verdict'],
+                 'claim': pair['claim']['text'], 'agent_answer': pair['agent_answer']}
+        for name, config in (('flash', base_config), ('pro', pro_config)):
+            try:
+                verdict = judge_case(case, result, config)
+                claim_key = pair['claim'].get('id') or pair['claim']['text'][:12]
+                entry[name + '_verdict'] = verdict['verdicts'].get(claim_key)
+                entry[name + '_quote'] = verdict['quotes'].get(claim_key, '')
+            except (JudgeUnavailable, json.JSONDecodeError, KeyError) as error:
+                entry[name + '_verdict'] = None
+                entry[name + '_quote'] = ''
+                errors.append({'pair_id': pair['pair_id'], 'judge': name, 'reason': str(error)})
+        rows.append(entry)
+
+    judged = [r for r in rows if r['flash_verdict'] and r['pro_verdict']]
+    gold = [r['expect_verdict'] for r in judged]
+    credit_gold = [v == 'supported' for v in gold]
+
+    def _agreement(key):
+        hits = [r[key] for r in judged]
+        credit = [v == 'supported' for v in hits]
+        return sum(1 for a, b in zip(credit, credit_gold) if a == b) / len(judged) if judged else None
+
+    flash_agreement, pro_agreement = _agreement('flash_verdict'), _agreement('pro_verdict')
+    flash_labels = [r['flash_verdict'] for r in judged]
+    pro_labels = [r['pro_verdict'] for r in judged]
+    cross_agreement = (sum(1 for a, b in zip(flash_labels, pro_labels) if a == b) / len(judged)
+                       if judged else None)
+    by_category = {}
+    for category in sorted({r['category'] for r in judged}):
+        subset = [r for r in judged if r['category'] == category]
+        by_category[category] = {
+            'n': len(subset),
+            'flash_agreement': sum(1 for r in subset
+                                   if (r['flash_verdict'] == 'supported') == (r['expect_verdict'] == 'supported')) / len(subset)}
+
+    disagreements = [r for r in judged
+                     if (r['flash_verdict'] == 'supported') != (r['expect_verdict'] == 'supported')
+                     or (r['pro_verdict'] == 'supported') != (r['expect_verdict'] == 'supported')
+                     or r['flash_verdict'] != r['pro_verdict']]
+    report = {
+        'schema_version': 'quality-v2-judge-calibration-v1',
+        'generated_at': datetime.now(timezone.utc).isoformat(),
+        'n_pairs': len(pairs), 'n_judged': len(judged), 'errors': errors,
+        'judge_flash_model': base_config.get('SMARTLECT_JUDGE_MODEL') or DEFAULT_JUDGE_MODEL,
+        'judge_pro_model': pro_model,
+        'judge_prompt_version': JUDGE_PROMPT_VERSION,
+        'flash_agreement_with_gold': flash_agreement,
+        'pro_agreement_with_gold': pro_agreement,
+        'flash_pro_agreement': cross_agreement,
+        'cohens_kappa_binary': cohens_kappa(['supported' if v == 'supported' else 'not'
+                                             for v in flash_labels],
+                                            ['supported' if v == 'supported' else 'not'
+                                             for v in pro_labels]),
+        'cohens_kappa_4way': cohens_kappa(flash_labels, pro_labels),
+        'flash_agreement_by_category': by_category,
+        'flash_passes_90': flash_agreement is not None and flash_agreement >= CALIBRATION_PASS_THRESHOLD,
+        'disagreement_count': len(disagreements),
+    }
+    (output_dir / 'calibration-report.json').write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+    lines = ['# Judge 校准分歧人工复核清单', '',
+             '- run: %s' % output_dir,
+             '- gold 判定由构造方式决定（直引/忠实改述=supported；否定翻转/编造=非 supported；跑题/半说=absent/unsupported）',
+             '- 复核列请人工填写：判定是否同意 flash/pro 的判定，并注明理由', '',
+             '| pair | 类别 | 金标 | flash | pro | flash quote | claim | 答案摘录 | 人工结论 |', '|---|---|---|---|---|---|---|---|---|']
+    for r in disagreements:
+        lines.append('| %s | %s | %s | %s | %s | %s | %s | %s |  |' % (
+            r['pair_id'], r['category'], r['expect_verdict'], r['flash_verdict'], r['pro_verdict'],
+            (r['flash_quote'] or '')[:40].replace('|', '/'), r['claim'][:36].replace('|', '/'),
+            r['agent_answer'][:48].replace('|', '/').replace('\n', ' ')))
+    (output_dir / 'calibration-disagreements.md').write_text('\n'.join(lines) + '\n')
+    print(json.dumps({k: report[k] for k in (
+        'n_pairs', 'n_judged', 'flash_agreement_with_gold', 'pro_agreement_with_gold',
+        'flash_pro_agreement', 'cohens_kappa_binary', 'flash_passes_90', 'disagreement_count')},
+        ensure_ascii=False, indent=2))
+    if errors:
+        print('judge_errors:', json.dumps(errors, ensure_ascii=False))
+    return report
+
+
+def write_human_review(run_dir, targets):
+    """Sample judged claims from a completed run into a human-review checklist.
+
+    Every official run auto-samples HUMAN_REVIEW_SIZE judged claims (with the
+    judge quote) so Faithfulness keeps a standing human audit trail."""
+    pool = []
+    for target in targets:
+        case, row = target['case'], target['row']
+        verdicts, quotes = row.get('judge_verdicts') or {}, row.get('judge_quotes') or {}
+        for claim in case.get('checkable_claims') or []:
+            key = claim.get('id') or claim['text'][:12]
+            if key in verdicts:
+                pool.append({'case_id': case['case_id'], 'trial': row.get('trial'),
+                             'claim_id': key, 'claim_text': claim['text'], 'scope': claim.get('scope'),
+                             'verdict': verdicts[key], 'quote': quotes.get(key, '')})
+    if not pool:
+        return None
+    rng = random.Random(HUMAN_REVIEW_SEED)
+    sampled = rng.sample(pool, min(HUMAN_REVIEW_SIZE, len(pool)))
+    out = Path(run_dir) / 'judge'
+    out.mkdir(parents=True, exist_ok=True)
+    with open(out / 'human-review.jsonl', 'w', encoding='utf-8') as handle:
+        for item in sampled:
+            handle.write(json.dumps(item, ensure_ascii=False) + '\n')
+    lines = ['# Judge 判定人审清单（自动抽样 %d 条）' % len(sampled), '',
+             '- seed: %d（同池复现同抽样）' % HUMAN_REVIEW_SEED,
+             '- 复核列请人工填写：agree / disagree + 理由', '',
+             '| # | case | trial | claim (scope) | verdict | quote | 人工结论 |', '|---|---|---|---|---|---|---|']
+    for index, item in enumerate(sampled, 1):
+        lines.append('| %d | %s | %s | %s (%s) | %s | %s |  |' % (
+            index, item['case_id'], item['trial'] or '-', item['claim_text'][:40].replace('|', '/'),
+            item['scope'], item['verdict'], (item['quote'] or '')[:40].replace('|', '/')))
+    (out / 'human-review.md').write_text('\n'.join(lines) + '\n')
+    return len(sampled)
 
 
 def _load_result(run_dir, case_id):

@@ -301,7 +301,8 @@ class SupportScoreTests(unittest.TestCase):
             'expected_retrieval': True, 'expected_handoff': False, 'relevant_doc_ids': []}
         scores = [{'case_id': 'x', 'outcome': 'pass'}]
         fake = {'supported': 1, 'total': 2,
-                'verdicts': {'a': 'supported', 'b': 'absent'}, 'summary': ''}
+                'verdicts': {'a': 'supported', 'b': 'absent'},
+                'quotes': {'a': '模拟支付', 'b': ''}, 'summary': ''}
         with patch.object(jq, 'judge_case', return_value=fake):
             jq.apply_judge_faithfulness(scores, [(case, {'answer': 'x', 'citations': []})], {})
         self.assertEqual(scores[0]['Faithfulness'], 1.0)      # essential only
@@ -600,14 +601,68 @@ class TrialsAndCITests(unittest.TestCase):
                 'expected_retrieval': True, 'expected_handoff': False, 'relevant_doc_ids': []}
         row1 = {'case_id': 'x', 'trial': 1, 'outcome': 'pass'}
         row2 = {'case_id': 'x', 'trial': 2, 'outcome': 'pass'}
-        verdicts = [{'supported': 1, 'total': 1, 'verdicts': {'a': 'supported'}, 'summary': ''},
-                    {'supported': 0, 'total': 1, 'verdicts': {'a': 'absent'}, 'summary': ''}]
+        verdicts = [{'supported': 1, 'total': 1, 'verdicts': {'a': 'supported'}, 'quotes': {'a': '模拟支付'}, 'summary': ''},
+                    {'supported': 0, 'total': 1, 'verdicts': {'a': 'absent'}, 'quotes': {'a': ''}, 'summary': ''}]
         with patch.object(jq, 'judge_case', side_effect=verdicts):
             jq.apply_judge_faithfulness([row1, row2],
                                         [(case, {'answer': 'a'}, row1), (case, {'answer': 'b'}, row2)],
                                         {})
         self.assertEqual(row1['Faithfulness'], 1.0)
         self.assertEqual(row2['Faithfulness'], 0.0)  # same case_id, different trial rows
+        self.assertEqual(row1['judge_quotes'], {'a': '模拟支付'})  # quotes retained for human review
+
+
+class JudgeCalibrationTests(unittest.TestCase):
+    def test_calibration_pairs_valid(self):
+        import judge_quality_v2 as jq
+        pairs = jq.load_calibration_pairs()
+        self.assertGreaterEqual(len(pairs), 28)
+        self.assertLessEqual(len(pairs), 40)
+        categories = {pair['category'] for pair in pairs}
+        self.assertTrue({'verbatim', 'paraphrase', 'negation_flip', 'fabrication',
+                         'boundary_absent', 'boundary_partial'} <= categories)
+        gold_credit = sum(1 for pair in pairs if pair['expect_verdict'] == 'supported')
+        self.assertGreater(gold_credit, len(pairs) * 0.3)   # both classes meaningfully represented
+        self.assertLess(gold_credit, len(pairs) * 0.7)
+        for pair in pairs:  # loader already enforces substring + verdict taxonomy; assert shape too
+            self.assertTrue(pair['user_turns'] and pair['agent_answer'])
+            self.assertIn(pair['claim']['text'], pair['claim']['text'])  # id/text present
+            self.assertTrue(pair['claim'].get('id'))
+
+    def test_cohens_kappa_known_values(self):
+        from judge_quality_v2 import cohens_kappa
+        self.assertEqual(cohens_kappa(['a', 'a', 'b', 'b'], ['a', 'a', 'b', 'b']), 1.0)
+        self.assertAlmostEqual(cohens_kappa(['a', 'a', 'b', 'b'], ['a', 'b', 'a', 'b']), 0.0)
+        self.assertLess(cohens_kappa(['a', 'a', 'a', 'b'], ['b', 'b', 'b', 'a']), 0.0)
+        self.assertIsNone(cohens_kappa([], []))
+
+    def test_human_review_sampling_deterministic_and_capped(self):
+        import judge_quality_v2 as jq
+        claims = [{'id': 'c%d' % i, 'text': '命题%d' % i, 'scope': 'essential'} for i in range(30)]
+        targets = [{'case': {'case_id': 'sup-x', 'checkable_claims': claims},
+                    'row': {'judge_verdicts': {('c%d' % i): ('supported' if i % 2 else 'absent')
+                                               for i in range(30)},
+                            'judge_quotes': {('c%d' % i): ('原句%d' % i) for i in range(30)}}}
+                   ]  # 30 judged claims -> sample capped at 20
+        with tempfile.TemporaryDirectory() as folder:
+            first = jq.write_human_review(folder, targets)
+            lines_a = (Path(folder) / 'judge' / 'human-review.jsonl').read_text()
+            markdown_a = (Path(folder) / 'judge' / 'human-review.md').read_text()
+            second = jq.write_human_review(folder, targets)
+            lines_b = (Path(folder) / 'judge' / 'human-review.jsonl').read_text()
+        self.assertEqual(first, 20)
+        self.assertEqual(second, 20)
+        self.assertEqual(lines_a, lines_b)  # same seed -> same sample
+        rows = [json.loads(line) for line in lines_a.splitlines()]
+        self.assertEqual(len(rows), 20)
+        self.assertTrue(all(row['quote'] for row in rows))
+        self.assertIn('人工结论', markdown_a)
+        self.assertEqual(markdown_a.count('\n| '), 21)  # header row + 20 sampled rows
+
+    def test_human_review_skips_empty_pool(self):
+        import judge_quality_v2 as jq
+        self.assertIsNone(jq.write_human_review('/tmp/unused-empty', [{'case': {'case_id': 'x'},
+                                                                      'row': {}}]))
 
 
 if __name__ == '__main__':

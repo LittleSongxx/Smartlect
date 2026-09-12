@@ -11,7 +11,7 @@
 | 客服开发集 | `evals/quality-v2/support/dev.jsonl`（62 例，T1 扩容后；1 例 replay-only） |
 | 广告剧本 | `evals/quality-v2/ads/playbooks.json`（5 剧本） |
 | 评分库 / runner | `scripts/quality_v2.py` / `scripts/eval_quality_v2.py` |
-| LLM judge（DeepSeek） | `scripts/judge_quality_v2.py`（判 Faithfulness 公开分 + CLI 抽检） |
+| LLM judge（DeepSeek） | `scripts/judge_quality_v2.py`（判 Faithfulness 公开分 + CLI 抽检 + `judge-calibrate` 校准与双 judge 交叉）；校准集 `support/judge-calibration.jsonl`（32 对已知判定） |
 | 合同测试 | `scripts/test_quality_v2.py`（48 项）+ growth 全量 360 项 |
 | 产物 | `artifacts/quality-v2/<run-id>/`，复跑台账 `artifacts/quality-v2/rerun-ledger.jsonl` |
 
