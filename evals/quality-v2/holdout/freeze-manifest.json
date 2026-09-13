@@ -1,6 +1,6 @@
 {
   "schema_version": "quality-v2-holdout-freeze-v1",
-  "frozen_at": "2026-09-13T15:38:21.953307+00:00",
+  "frozen_at": "2026-09-13T15:38:40.270859+00:00",
   "frozen_by": "scripts/eval_quality_v2.py freeze",
   "note": "冻结开发集形态。留出题目尚未出；出题后以其自身 manifest 为准，禁止用留出调系统。",
   "dev_digests": {
@@ -17,7 +17,7 @@
       "quality_v2.py": "d442f2b95a402c32e6888da9c5266bb6f12f1d56323a65a0395e8d681fb14e89",
       "eval_quality_v2.py": "c204c77ef9839fae953b364276f8267c02e81040b30b976f245d6e4454d509c6"
     },
-    "git_head": "cb6612f7e1506060709c15459ca0bd48e1650b1b",
-    "working_diff_sha256": "ca29e7cad7a9447f49ac4ac322658ef528a04f80726ed06d5b803dc0d8f3f7b5"
+    "git_head": "6dd5de5e62a3cdaefe2b9d5255363d8cbb74feef",
+    "working_diff_sha256": "bd61c939f21d8f4a1c1d96144c61670bfb995e0385c220db3c8ce723c92e2900"
   }
 }
