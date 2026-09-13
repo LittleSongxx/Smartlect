@@ -10,7 +10,7 @@
   },
   "checksums": {
     "evals/quality-v2/support/dev.jsonl": "d9dadd39b00719f7432a4da6ec22f8fe891b51c6f0ecf0c9d16d364b662dd7c1",
-    "evals/quality-v2/metrics-contract.json": "83a0999d16b8c1bd608cae8ebf81de92e86ae9335c9e0a2dde4382c74041f39f"
+    "evals/quality-v2/metrics-contract.json": "30eda529892fbe4a462f79f281536a17c00f0f75c3ea75a864f436205001429a"
   },
   "metrics": [
     "Recall@8",

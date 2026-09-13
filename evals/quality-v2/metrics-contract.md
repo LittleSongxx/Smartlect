@@ -127,6 +127,7 @@ v6.2 起按此原则回标：essential claims 65→57（10 条翻转），与 v1
 - 寒暄无问候词表：`grounding=no_business_claim` + 未检索。
 - 合法空集（`inquire_fact` × 无可见证据）是 `insufficient`，不建单。旧 holdout 的 policy_gap→必须工单不要抄。
 - **`allow_handoff`（v6.2，P3 仲裁 D4）**："曾发布、现已过期/撤回"的资料（用户可能记得它）→ `allow_insufficient=true` + `allow_handoff=true`，insufficient 与带工单转人工**均为诚实收口**（两种都 pass）；"资料从未存在"（legal_empty、draft_only）→ 仅 insufficient（建单属过度转交，维持严判）。校验器强制：`allow_handoff=true` 须同时 `expected_handoff=false` 且 `allow_insufficient=true`，否则 AnnotationError。`needs_human` 而无持久工单在任何分支都 fail。
+- **人工接管终结会话（v6.2）**：多轮题中任一轮以开放工单收尾时，会话进入人工接管，后续轮次被业务性拒绝（409 `human_control_active`）——这不是 provider/基础设施故障，**不得记 `setup_failed`**；以最后一个已完成轮的结果计分（金标期望建单→该行为本身即满足；不期望→判 fail）。证据记 `handoff_ended_conversation`（完成轮数/未问轮数）。
 - 政策题禁止夹交易提案。
 - `request_service` 且空证据会建单；标注单独写。
 

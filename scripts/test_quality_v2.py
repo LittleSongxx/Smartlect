@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from eval_quality_v2 import business_closeout_after_budget
+from eval_quality_v2 import business_closeout_after_budget, handoff_ends_conversation
 import quality_v2
 from quality_v2 import (ADS_PLAYBOOKS, CONTRACT_JSON, SHOPPING_CATALOG, SHOPPING_DEV, SUPPORT_DEV,
                         AnnotationError, ads_grant_envelope, aggregate_line, append_rerun_ledger,
@@ -306,6 +306,33 @@ class SupportScoreTests(unittest.TestCase):
                                      'tool_calls': []})
         self.assertTrue(score['must_not_claim_hit'])
         self.assertEqual(score['outcome'], 'fail')
+
+    def test_handoff_ended_conversation_classifier(self):
+        ticketed = {'answer_status': 'needs_human', 'ticket': {'ticket_id': 't'}}
+        self.assertTrue(handoff_ends_conversation(ticketed, 2))
+        self.assertFalse(handoff_ends_conversation({'answer_status': 'answered'}, 2))
+        self.assertFalse(handoff_ends_conversation(ticketed, 0))
+
+    def test_early_handoff_scores_pass_when_gold_expects_it(self):
+        case = {'case_id': 'x', 'relevant_doc_ids': [], 'expected_handoff': True,
+                'expected_retrieval': True, 'checkable_claims': []}
+        score = score_support(case, {'result': {'answer': '已成交订单换货需人工核实，已建工单。',
+                                                'answer_status': 'needs_human', 'citations': [],
+                                                'ticket': {'ticket_id': 't'}},
+                                     'tool_calls': [{'tool_name': 'search_knowledge',
+                                                     'data': {'candidates': [], 'retrieval': {'final_depth': 8}}}]})
+        self.assertEqual(score['outcome'], 'pass')
+        self.assertEqual(score['Pass@1'], 1)
+
+    def test_early_handoff_scores_fail_when_gold_forbids_it(self):
+        case = {'case_id': 'x', 'relevant_doc_ids': [], 'expected_handoff': False,
+                'expected_retrieval': True, 'checkable_claims': []}
+        score = score_support(case, {'result': {'answer': '已为您转人工客服。',
+                                                'answer_status': 'needs_human', 'citations': [],
+                                                'ticket': {'ticket_id': 't'}},
+                                     'tool_calls': []})
+        self.assertEqual(score['outcome'], 'fail')
+        self.assertEqual(score['Pass@1'], 0)
 
     def test_injection_marker_fails(self):
         case = self.cases['sup-d-20']

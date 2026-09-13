@@ -11,7 +11,7 @@
   "checksums": {
     "evals/quality-v2/shopping/dev.jsonl": "2fa1bd99db69305b1f414205f745cc1f9bd40e2e8681098204487dedd3eb0c27",
     "evals/quality-v2/shopping/catalog-snapshot.json": "c6c5d26130758bd48173a38b75084be232b0e3a2579e71654f20ea15ef643583",
-    "evals/quality-v2/metrics-contract.json": "83a0999d16b8c1bd608cae8ebf81de92e86ae9335c9e0a2dde4382c74041f39f"
+    "evals/quality-v2/metrics-contract.json": "30eda529892fbe4a462f79f281536a17c00f0f75c3ea75a864f436205001429a"
   },
   "metrics": [
     "Pass@1",

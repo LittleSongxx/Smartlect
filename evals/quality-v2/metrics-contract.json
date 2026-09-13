@@ -95,6 +95,12 @@
     "negation_window_chars": 8,
     "forbidden_claims_consumed": "verbatim hit in final answer fails the case",
     "handoff_is_aux_pass": true,
+    "handoff_ended_conversation": {
+      "added_in": "v6.2",
+      "semantics": "a turn ending with an open ticket suspends the conversation; later turns are business-rejected (409 human_control_active), never setup_failed",
+      "scoring": "score from the last completed turn; expected_handoff=true makes the handoff itself the pass, unexpected handoff fails",
+      "evidence_key": "handoff_ended_conversation"
+    },
     "allow_handoff": {
       "added_in": "v6.2 (P3 arbitration D4)",
       "applies_to": "once-published-then-expired/withdrawn material",

@@ -66,11 +66,23 @@ def business_closeout_after_budget(record):
             and result.get('handoff_origin') != 'provider_fault')
 
 
+def handoff_ends_conversation(previous_result, remaining_turns):
+    """An open ticket puts the conversation under human control: further user
+    turns are business-rejected (409 human_control_active), not an infra fault.
+    True when a completed turn left a ticket and later turns remain unasked."""
+    return bool(remaining_turns) and bool((previous_result or {}).get('ticket'))
+
+
 def run_turns(client, texts):
     conversation = client.conversation()
     last = None
     tools = []
-    for text in texts:
+    for index, text in enumerate(texts):
+        if index and handoff_ends_conversation(last, len(texts) - index):
+            client.evidence['handoff_ended_conversation'] = {
+                'after_turns': index, 'unasked': len(texts) - index}
+            client.save()
+            break
         try:
             last = client.message(conversation, text, label=text[:40])
         except AssertionError as error:
