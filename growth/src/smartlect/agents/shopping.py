@@ -330,7 +330,10 @@ def looks_like_service_request(text):
     value = str(text or '')
     if re.search(r'(?:规则|范围|条件|流程).{0,16}(?:是什么|如何|怎么)|(?:是什么|如何|怎么).{0,16}(?:规则|范围|条件)', value):
         return False
-    return bool(re.search(r'(?:请|帮我|给我|麻烦)\s*(?:现在)?\s*(?:帮我|给我)?\s*(?:预约|办理|安排|申请)', value))
+    if re.search(r'(?:怎么|如何|咋)[^，。！？]{0,6}(?:换|退|补寄|报修|取消)', value):
+        return True
+    return bool(re.search(r'(?:请|帮我|给我|麻烦)\s*(?:现在)?\s*(?:帮我|给我)?\s*'
+                          r'(?:预约|办理|安排|申请|查|查一下|查查|换|退|补寄|报修)', value))
 
 
 def looks_like_irreconcilable_sources(text):
@@ -345,6 +348,21 @@ def looks_like_irreconcilable_sources(text):
 
 _STORE_FACT_WORDS = r'(?:库存|售罄|可售|下架|买得到|买不到|有货|没货|在售|缺货|现货)'
 _SEARCH_OFFER_CUE = r'(?:检索|查询|搜索|找找|找一找|看看|确认|核实|推荐|查到|查一下|筛选)'
+_HUMAN_NECESSITY = re.compile(r'(?:需要|建议|应当|必须|须)[^，。；！？]{0,14}人工(?:客服)?[^，。；！？]{0,6}(?:核实|处理|判断|介入|跟进)')
+_HUMAN_OFFER = re.compile(r'我[^，。；！？]{0,12}(?:转交人工|转人工|创建工单|帮您转)')
+
+
+def answer_offers_human_transfer(answer):
+    """The model itself volunteers to transfer/create a ticket (first person).
+    Strong intent: no policy citation is required to compile it into action."""
+    return bool(_HUMAN_OFFER.search(answer or ''))
+
+
+def answer_states_human_necessity(answer):
+    """The answer asserts human verification is needed. Weaker signal — a trailing
+    hedge can produce it — so compiling it additionally requires the cited policy
+    itself to mention human handling."""
+    return bool(_HUMAN_NECESSITY.search(answer or ''))
 
 
 def no_business_claim_has_store_conclusion(answer):
@@ -862,6 +880,19 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             request_kind = final.request_kind
             if looks_like_service_request(question) and request_kind == 'inquire_fact':
                 request_kind = 'request_service'
+            # Option A (user decision 2026-09-13): a service-request turn whose own
+            # answer concedes human verification compiles into an actual ticket —
+            # asking "需要我帮您转人工吗?" defers an action store policy performs
+            # on the condition itself. A first-person transfer offer compiles
+            # directly; a bare necessity statement additionally requires the cited
+            # policy to mention human handling (visitor-scope answers hedge too).
+            cited_human_policy = any('人工' in (row.get('content') or '')
+                                     for row in citations.values())
+            if (request_kind == 'request_service' and not final.handoff_requested
+                    and (answer_offers_human_transfer(final.answer)
+                         or (answer_states_human_necessity(final.answer) and cited_human_policy))):
+                final.handoff_requested = True
+                context['handoff_compiled_from_answer'] = True
             if looks_like_irreconcilable_sources(question) and request_kind not in EXCEPTION_KINDS:
                 request_kind = 'request_handoff'
             evidence_kind = classify_evidence({

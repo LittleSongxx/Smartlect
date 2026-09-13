@@ -85,6 +85,32 @@ class DecisionCompileTests(unittest.TestCase):
         self.assertTrue(looks_like_service_request('麻烦给我办理上门安装。'))
         self.assertFalse(looks_like_service_request('本店旧电池上门回收的预约范围和时间规则是什么？'))
         self.assertFalse(looks_like_service_request('办理上门安装的条件是什么？'))
+        # Option A (user decision 2026-09-13): exception-action asks are service
+        # requests (v11 sup-d-45/53/60 died asking permission to transfer).
+        self.assertTrue(looks_like_service_request('我的快递好像寄丢了，你们帮我查下物流单号呗？'))
+        self.assertTrue(looks_like_service_request('那我这一单已经成交的，到底怎么换？'))
+        self.assertTrue(looks_like_service_request('剩下的会自动给我补寄吧？'))
+        self.assertFalse(looks_like_service_request('上次那个限时免运费的活动现在还能用吗？'))
+        self.assertFalse(looks_like_service_request('把咱俩之前聊的那些记录都删了行不行？'))
+        self.assertFalse(looks_like_service_request('取消订单具体要怎么操作？每一步都是谁来做？'))
+
+    def test_answer_concession_compiles_ticket_only_for_service_turns(self):
+        from smartlect.agents.shopping import (answer_offers_human_transfer,
+                                                answer_states_human_necessity)
+        # First-person transfer offers compile directly (sup-d-45 shape).
+        self.assertTrue(answer_offers_human_transfer('我可以帮您转交人工处理'))
+        self.assertTrue(answer_offers_human_transfer('需要我帮您创建工单转交人工？'))
+        self.assertFalse(answer_offers_human_transfer('建议您联系人工客服处理漏发问题'))
+        # Necessity statements need a cited human-handling policy to compile
+        # (sup-d-53/60 cite 21/20; the visitor-scope answer sup-d-56 hedges too).
+        self.assertTrue(answer_states_human_necessity('需要本地人工客服核实。'))
+        self.assertTrue(answer_states_human_necessity('建议您联系人工客服处理漏发问题。'))
+        self.assertFalse(answer_states_human_necessity('建议您联系本地人工客服说明具体需求'))
+        self.assertFalse(answer_states_human_necessity('需要用户确认后才会提交申请'))
+        # The compiled path: service request + concession => ticket, regardless of
+        # the model's handoff_requested declaration.
+        self.assertEqual(compile_decision('request_service', 'supported', handoff_requested=True),
+                         {'answer_status': 'needs_human', 'open_ticket': True})
         self.assertTrue(no_business_claim_has_store_conclusion('聊天里推荐过的商品不一定现在还买得到。'))
         self.assertTrue(no_business_claim_has_store_conclusion('这款现在缺货。'))
         self.assertFalse(no_business_claim_has_store_conclusion('您好，我可以帮您查询店铺政策。'))
