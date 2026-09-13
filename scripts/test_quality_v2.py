@@ -739,5 +739,41 @@ class Holdout2SealTests(unittest.TestCase):
         quality_v2.validate_dev_sets(split='holdout2')  # offline check only
 
 
+class FrozenReportTests(unittest.TestCase):
+    def test_report_frozen_sections_and_no_composite(self):
+        import tempfile
+        from eval_quality_v2 import write_frozen_report
+        block = {'n': 3, 'n_scored': 3, 'n_setup_failed': 0, 'n_pass': 2,
+                 'Pass@1': 2 / 3, 'denominators': {'Pass@1': 3},
+                 'ci95_wilson': {'Pass@1': [0.2, 0.9]},
+                 'pass^k': {'k': 3, 'n_eligible': 1, 'n_all_pass': 1, 'value': 1.0},
+                 'flip_cases': []}
+        summary = {'schema_version': 'quality-v2-report-v2', 'official': True, 'partial': False,
+                   'trials': 3, 'composite_score': None, 'note': 'x',
+                   'provenance': {'git_head': 'deadbeef', 'contract_sha256': 'c0ffee'},
+                   'shopping': {**block, 'Precision@4/ceiling': 1.0, 'Precision@4': 0.5,
+                                'denominators': {'Pass@1': 3, 'Precision@4': 3, 'Precision@4/ceiling': 3}},
+                   'support': {**block}, 'ads': {**block, 'Attribution_integrity': 1.0},
+                   'cases': {'shopping': [
+                       {'case_id': 'shop-x', 'trial': 1, 'outcome': 'fail',
+                        'selected': ['a', 'b'], 'hits': 1},
+                       {'case_id': 'shop-x', 'trial': 2, 'outcome': 'pass', 'selected': ['a'], 'hits': 1}],
+                       'support': [], 'ads': []},
+                   'per_case_trials': {}}
+        with tempfile.TemporaryDirectory() as folder:
+            run_dir = Path(folder) / 'run-x'
+            run_dir.mkdir()
+            (run_dir / 'summary.json').write_text(json.dumps(summary))
+            report = write_frozen_report(run_dir)
+            text = (run_dir / 'report.md').read_text()
+        self.assertIn('指标↔设计↔归因层映射表', text)
+        self.assertIn('Wilson 95% CI', text)
+        self.assertIn('选品越金标（hits 1/2）', text)      # 线感知的失败归因
+        self.assertIn('pass^3', text)
+        self.assertIn('qv2', report)                        # 映射表内容在场
+        self.assertNotIn('composite_score', text)           # 不合成总分也不复述它
+        self.assertIn('模拟 CTR/CVR 非因果', text)
+
+
 if __name__ == '__main__':
     unittest.main()

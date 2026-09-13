@@ -724,6 +724,170 @@ def run_ads_live(output, split='development'):
     return rows
 
 
+# 指标↔设计↔归因层映射（P6，用户点名）：每个公开指标测的是哪层设计、失败时到哪里归因。
+METRIC_DESIGN_MAP = [
+    ('Pass@1（导购）',
+     '硬约束编译链：购买帧/价格/类目抽取（shopping_mission）→ 溯源守卫 ground_tool_params → 资格门 sku_satisfies → 选择纪律（预算内/金标内）',
+     'case 文件 scores（outcome/hits/selected）+ 检索回执 filter_report.applied_constraints'),
+    ('Precision@4/ceiling（导购）',
+     '检索两段排序（BM25+dense→RRF 合并→精排取 8、展示 4）与必含词完整性纪律',
+     'per-case P@4 与 hits/selected 差集；required_terms 缺词看 filter_report.term_constraint'),
+    ('Recall@8（客服）',
+     '知识检索 FINAL_DEPTH=8 召回面（两段排序+空集放宽 recall_relaxed）',
+     '检索回执 candidates vs 金标 relevant_doc_ids，逐 doc 核对'),
+    ('Faithfulness（客服）',
+     '答案引用纪律（quote 门控：supported 必须附答案原句）+ DeepSeek judge 独立判分（与主模型不同源，温度 0）',
+     'scores.judge_verdicts/judge_quotes + judge/human-review 人审清单'),
+    ('Attribution_integrity（广告）',
+     '记账四桶+两率算术+禁捷径（v6.1 增疲劳/配速/预算耗尽机制断言：rank/reject/status）',
+     'scores.failed_assertions 逐条列名；机制断言失败即对应投放层行为'),
+    ('pass^k（三线）',
+     '模型采样方差（不播种的 k 次独立试验）',
+     'flip_cases 与 per_case_trials 逐题 k 次结局表'),
+]
+
+
+def _fmt_ci(value, ci):
+    if value is None:
+        return '—'
+    low, high = (ci or [None, None])
+    if low is None:
+        return '%.4f' % value
+    return '%.4f [%.3f, %.3f]' % (value, low, high)
+
+
+def _latest_calibration():
+    import glob
+    reports = sorted(glob.glob(str(ARTIFACT / 'judge-calibrate*' / 'calibration-report.json')),
+                     key=lambda p: __import__('os').path.getmtime(p))
+    if not reports:
+        return None
+    try:
+        return json.loads(Path(reports[-1]).read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def write_frozen_report(run_dir):
+    """P6 冻结报告：把一个已完成 run 的 summary 渲染成人读 markdown。只读，不改数。"""
+    run_dir = Path(run_dir)
+    summary = json.loads((run_dir / 'summary.json').read_text())
+    out = ['# quality-v2 冻结报告：%s' % run_dir.name, '']
+    gen_at = datetime.now(timezone.utc).isoformat()
+    prov = summary.get('provenance') or {}
+    out += ['- 生成时间：%s' % gen_at,
+            '- 官方：%s | partial：%s | 每题试验数：%s' % (summary.get('official'), summary.get('partial'), summary.get('trials')),
+            '- git_head：`%s` | 合同 sha：`%s`' % (prov.get('git_head'), str(prov.get('contract_sha256'))[:16]),
+            '- 判据：metrics-contract v6/v6.1；不合成总分；模拟 CTR/CVR 非因果（仅诊断）。', '']
+
+    out += ['## 成绩总览（值 [Wilson 95% CI]，分母并排）', '',
+            '| 线 | 指标 | 值 [CI] | 分母 |', '|---|---|---|---|']
+    for line, metrics in (
+            ('导购', [('Pass@1（公开）', 'Pass@1'), ('Precision@4/ceiling（公开）', 'Precision@4/ceiling'),
+                      ('raw Precision@4（诊断）', 'Precision@4'), ('Precision@4_ceiling（诊断）', 'Precision@4_ceiling')]),
+            ('客服', [('Recall@8（公开）', 'Recall@8'), ('Recall@4（诊断）', 'Recall@4_diagnostic'),
+                      ('Faithfulness（公开，judge）', 'Faithfulness'), ('Faithfulness_rule（诊断）', 'Faithfulness_rule'),
+                      ('Faithfulness_answer_side（诊断）', 'Faithfulness_answer_side'), ('Peripheral_coverage（诊断）', 'Peripheral_coverage')]),
+            ('广告', [('Attribution_integrity（公开）', 'Attribution_integrity'), ('CTR（诊断，模拟非因果）', 'CTR'),
+                      ('CVR（诊断，模拟非因果）', 'CVR')])):
+        block = summary.get(line_key := {'导购': 'shopping', '客服': 'support', '广告': 'ads'}[line]) or {}
+        ci = block.get('ci95_wilson') or {}
+        dens = block.get('denominators') or {}
+        for label, key in metrics:
+            if key in block:
+                out.append('| %s | %s | %s | %s |' % (line, label, _fmt_ci(block.get(key), ci.get(key)), dens.get(key, '—')))
+    out.append('')
+
+    out += ['## 可靠性（k 次试验）', '']
+    for line, key in (('导购', 'shopping'), ('客服', 'support'), ('广告', 'ads')):
+        block = summary.get(key) or {}
+        pk = block.get('pass^k') or {}
+        if pk:
+            out.append('- %s：pass^%d = %.3f（%d/%d 题全过）；翻转题：%s' % (
+                line, pk.get('k', 0), pk.get('value', 0), pk.get('n_all_pass', 0), pk.get('n_eligible', 0),
+                ', '.join(block.get('flip_cases') or []) or '无'))
+        out.append('- %s：计分 %s / setup_failed %s' % (line, block.get('n_scored'), block.get('n_setup_failed')))
+    out.append('')
+
+    out += ['## Judge 与校准', '']
+    calib = _latest_calibration()
+    if calib:
+        out.append('- 判分模型：`%s`；prompt 版本：`%s`（校准执行时口径）' % (
+            calib.get('judge_flash_model'), calib.get('judge_prompt_version')))
+        out.append('- 校准一致率：flash 对金标 %.3f、deepseek-v4-pro 对金标 %.3f、双 judge 二元 Cohen\'s κ=%.3f（证据 %s）' % (
+            calib.get('flash_agreement_with_gold') or 0, calib.get('pro_agreement_with_gold') or 0,
+            calib.get('cohens_kappa_binary') or 0, calib.get('generated_at', '')[:10]))
+    else:
+        out.append('- 未找到 judge 校准报告（judge-calibrate-*）。')
+    review = run_dir / 'judge' / 'human-review.md'
+    try:
+        review_label = '已生成 `%s`' % review.resolve().relative_to(ROOT) if review.exists() else '本 run 未生成'
+    except ValueError:
+        review_label = '已生成（run 目录在仓库外）' if review.exists() else '本 run 未生成'
+    out.append('- 20 条判定人审清单：%s' % review_label)
+    out.append('')
+
+    out += ['## 失败结构（outcome != pass）', '']
+    cases = summary.get('cases') or {}
+    failures = {'shopping': [], 'support': [], 'ads': []}
+    for line, rows in cases.items():
+        for row in rows or []:
+            if row.get('outcome') == 'pass':
+                continue
+            reason = (row.get('reason')
+                      or ('、'.join(row.get('failed_assertions') or []) or None)
+                      or ('must_not_claim:' + '、'.join(row.get('must_not_claim_hit') or []) if row.get('must_not_claim_hit') else None)
+                      or ('forbidden_leak' if row.get('forbidden_leak') else None))
+            if not reason and line == 'shopping' and isinstance(row.get('selected'), list):
+                selected, hits = row['selected'], row.get('hits')
+                if isinstance(hits, int) and hits < len(selected):
+                    reason = '选品越金标（hits %d/%d）' % (hits, len(selected))
+                elif row.get('handoff'):
+                    reason = '意外转人工'
+                else:
+                    reason = '收口纪律（约束回显/数量披露）'
+            if not reason and row.get('handoff'):
+                reason = 'handoff 与金标不符'
+            if not reason:
+                reason = row.get('outcome')
+            failures[line].append((row.get('case_id'), row.get('trial'), row.get('outcome'), reason))
+    names = {'shopping': '导购', 'support': '客服', 'ads': '广告'}
+    for line, rows in failures.items():
+        out.append('**%s（%d 个失败试验）**' % (names[line], len(rows)))
+        if rows:
+            out.append('')
+            out.append('| 题 | 试验 | 结局 | 归因 |')
+            out.append('|---|---|---|---|')
+            for cid, trial, outcome, reason in rows:
+                out.append('| %s | %s | %s | %s |' % (cid, trial or '—', outcome, str(reason)[:80]))
+        out.append('')
+    pct = summary.get('per_case_trials') or {}
+    out.append('**逐题 k 次方差（非满分题）**')
+    out.append('')
+    for line, block in pct.items():
+        imperfect = [c for c in (block.get('cases') or [])
+                     if (c.get('n_pass') if 'n_pass' in c else c.get('passes', 0)) < (c.get('n_scored') or c.get('scored') or 0)
+                     or any(t.get('outcome') != 'pass' for t in c.get('trials') or [])]
+        if imperfect:
+            out.append('- %s：%s' % (names.get(line, line), ', '.join(
+                '%s(%s)' % (c.get('case_id'), '/'.join(t.get('outcome', '?')[:4] for t in c.get('trials') or []))
+                for c in imperfect)))
+    out.append('')
+
+    out += ['## 指标↔设计↔归因层映射表', '',
+            '| 指标 | 测量的设计层 | 失败归因路径 |', '|---|---|---|']
+    for metric, design, attribution in METRIC_DESIGN_MAP:
+        out.append('| %s | %s | %s |' % (metric, design, attribution))
+    out.append('')
+
+    out += ['## Provenance', '']
+    out += ['- ' + k + '：`' + str(v)[:64] + '`' for k, v in prov.items()]
+    out.append('')
+    report = '\n'.join(out)
+    (run_dir / 'report.md').write_text(report)
+    return report
+
+
 def print_lines(report):
     print(json.dumps({
         'official': report['official'],
@@ -765,7 +929,7 @@ def freeze_holdout():
 def main():
     parser = argparse.ArgumentParser(description='quality-v2 development evaluation')
     parser.add_argument('command', choices=('self-check', 'validate', 'freeze', 'judge',
-                                            'judge-calibrate', 'run', 'report', 'score'))
+                                            'judge-calibrate', 'run', 'report', 'report-frozen', 'score'))
     parser.add_argument('--line', choices=('shopping', 'support', 'ads', 'all'), default='all')
     parser.add_argument('--split', default='development')
     parser.add_argument('--run-id', default=None)
@@ -816,6 +980,16 @@ def main():
         if summary is None:
             raise SystemExit('missing_summary; run self-check or run first')
         print_lines(summary)
+        return
+    if args.command == 'report-frozen':
+        if not (output / 'summary.json').exists():
+            raise SystemExit('missing_summary; report-frozen needs a completed run directory')
+        write_frozen_report(output)
+        try:
+            label = str((output / 'report.md').resolve().relative_to(ROOT))
+        except ValueError:
+            label = str(output / 'report.md')
+        print(json.dumps({'report_written': label, 'run_dir': str(output)}, ensure_ascii=False))
         return
     if args.command == 'run':
         if not growth_up():
