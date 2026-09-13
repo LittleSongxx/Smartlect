@@ -492,6 +492,25 @@ def _squash(text):
     return re.sub(r'[\W_]+', '', _fold(text))
 
 
+def _mentions_amount(utterance, yuan):
+    """The user named this exact amount this turn without a marker word
+    ("300 买不到就 600 吧") - Arabic digit run not followed by a measure word,
+    or the simple CJK round-hundred/thousand form. A count frame ("买2个")
+    never mentions an amount."""
+    text = str(utterance or '')
+    if re.search(r'(?:^|[^0-9])' + str(int(yuan)) + r'(?!\s*[0-9个只条台把张件套支块])', text):
+        return True
+    hundreds = {'1': '一', '2': '二', '3': '三', '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '9': '九'}
+    digits = str(int(yuan))
+    if len(digits) == 3 and digits.endswith('00'):
+        cjk = hundreds[digits[0]] + '百'
+        return cjk in text and not re.search(cjk + r'[一二两三四五六七八九]?[十百千万个只条台把张件套支]', text)
+    if len(digits) == 4 and digits[1:] == '000':
+        cjk = hundreds[digits[0]] + '千'
+        return cjk in text and not re.search(cjk + r'[一二两三四五六七八九]?[十百千万个只条台把张件套支]', text)
+    return False
+
+
 def ground_tool_params(params, utterance, mission):
     """Model-declared hard slots must trace back to user words — this turn's utterance
     or the stored conversation mission. Untraceable slots are demoted (dropped from the
@@ -525,6 +544,11 @@ def ground_tool_params(params, utterance, mission):
         if value is None or (param_key == 'min_price_cents' and not value):
             continue
         if extracted.get(slot_key) != value and mission.get(slot_key) != value:
+            # A marker-less amount the user actually named this turn ("就600吧")
+            # grounds the model's declaration; without this the stale mission
+            # budget overwrites the user's latest instruction (v12 shop-d-50).
+            if value % 100 == 0 and _mentions_amount(utterance, value // 100):
+                continue
             dropped[param_key] = value
             filtered.pop(param_key)
     # A model-supplied buy count must equal the count the user actually said (this

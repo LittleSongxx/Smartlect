@@ -145,6 +145,24 @@ class GroundingAndBuyFrameTests(unittest.TestCase):
         self.assertEqual(requirement_slots('灰色下架键盘也能买吗，按可售来'), [])
         self.assertEqual(requirement_slots('不买塑料的'), [])
 
+    def test_markerless_amount_grounds_model_budget_declaration(self):
+        # v12 shop-d-50: "300 买不到就 600 吧" - the marker-less raise must ground
+        # the model's 60000 instead of letting the stale mission 30000 win.
+        filtered, dropped = ground_tool_params(
+            {'max_price_cents': 60000}, '300 买不到就 600 吧', {'budget_max_cents': 30000})
+        self.assertEqual(filtered.get('max_price_cents'), 60000)
+        self.assertNotIn('max_price_cents', dropped)
+        filtered, dropped = ground_tool_params(
+            {'max_price_cents': 60000}, '三百不行就六百吧', {'budget_max_cents': 30000})
+        self.assertEqual(filtered.get('max_price_cents'), 60000)
+        # Count frames never mention amounts, whatever the spacing.
+        for utterance in ('帮我买 2 个键盘', '买2个键盘', '来三把人体工学椅'):
+            filtered, dropped = ground_tool_params({'max_price_cents': 200}, utterance, {})
+            self.assertIsNone(filtered.get('max_price_cents'), utterance)
+        # Numbers the user never said stay dropped.
+        filtered, dropped = ground_tool_params({'max_price_cents': 99000}, '预算300元', {})
+        self.assertIsNone(filtered.get('max_price_cents'))
+
     def test_ground_tool_params_demotes_untraceable_hard_slots(self):
         mission = {'required_terms': ['金属'], 'category_id': None,
                    'budget_max_cents': 30000, 'min_price_cents': None,
