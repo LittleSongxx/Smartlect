@@ -1,6 +1,6 @@
 # quality-v2 质量评测索引
 
-更新 2026-09-13（v5：合同 v6 公开表头名实对齐——导购 `Precision@4/ceiling` 贴满率（NDCG 式正规化，raw P@4 与 ceiling 留诊断列）、广告单指标 `Attribution_integrity` 归因完整性（断言级分母，CTR/CVR 降诊断）；v4：合同 v5 的 `--trials N` 多次试验、`pass^k` 与 Wilson 95% CI）。三条主线（导购选品 / 政策客服 / 广告投放）的公开指标评测体系。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
+更新 2026-09-13（扩容与修复阶段收官：三线 65/62/11、judge 校准与双 judge κ、五项类级修复+方案 A、v12 基线、holdout-1/2 均已首测即终测烧毁、P6 冻结报告、P5 放弃；v6：公开表头名实对齐——导购 `Precision@4/ceiling` 贴满率、广告单指标 `Attribution_integrity` 断言级分母；v5：`--trials N`、`pass^k` 与 Wilson 95% CI）。三条主线（导购选品 / 政策客服 / 广告投放）的公开指标评测体系。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
 
 ## 位置
 
@@ -12,7 +12,7 @@
 | 广告剧本 | `evals/quality-v2/ads/playbooks.json`（5 剧本） |
 | 评分库 / runner | `scripts/quality_v2.py` / `scripts/eval_quality_v2.py` |
 | LLM judge（DeepSeek） | `scripts/judge_quality_v2.py`（判 Faithfulness 公开分 + CLI 抽检 + `judge-calibrate` 校准与双 judge 交叉）；校准集 `support/judge-calibration.jsonl`（32 对已知判定） |
-| 合同测试 | `scripts/test_quality_v2.py`（48 项）+ growth 全量 360 项 |
+| 合同测试 | `scripts/test_quality_v2.py`（60 项）+ growth 全量 364 项 |
 | 产物 | `artifacts/quality-v2/<run-id>/`，复跑台账 `artifacts/quality-v2/rerun-ledger.jsonl` |
 
 ## 公开表头（合同 v6，只用这些，不合成总分）
@@ -37,12 +37,15 @@ python eval_quality_v2.py run --official --trials 3 --line shopping
                                                  # Wilson 95% CI（v5；ads 确定性模拟只跑单次）
 python eval_quality_v2.py run --case shop-d-01   # 复跑单例（报告标 partial）
 python eval_quality_v2.py judge --output <run目录> # judge 抽检报告（默认全量 claims 题）
-python eval_quality_v2.py freeze                 # 冻结开发集摘要；出题仍需人工
+python eval_quality_v2.py judge-calibrate        # 32 对已知判定校准 + 双 judge κ（P2）
+python eval_quality_v2.py report-frozen --output <run目录>
+                                                 # 冻结报告 report.md（P6：指标↔设计↔归因映射表）
+python eval_quality_v2.py freeze                 # 冻结开发集摘要
 ```
 
 ## 留出状态
 
-未出题。`freeze` 只盖开发集摘要（`evals/quality-v2/holdout/freeze-manifest.json`）并解锁 `--split holdout` 的加载资格；留出题目必须人工另写，禁止用留出调系统。
+**holdout-1 与 holdout-2 均已"首测即终测"烧毁**（分别 2026-09-12 `official-holdout1-20260912`、2026-09-13 `official-holdout2-20260913`），文件与 manifest 只存证不改动、不得按其调系统。**当前不存在独立留出**——下一份独立留出（holdout-3）须待 P3 复标与后续系统工作稳定后重新密封出题。`holdout2` split 的门禁保留（manifest 在即放行，其运行历史已成终测记录）。
 
 ## v3 修订要点（相对 v2）
 
