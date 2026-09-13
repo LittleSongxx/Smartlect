@@ -223,6 +223,41 @@ class ShoppingMySQLTests(unittest.TestCase):
                 self.assertEqual([r['reason'] for r in context['answer_rejections']], [reason])
                 self.assertEqual(context['declared_grounding'], 'no_business_claim')
 
+    def test_state_tool_self_answer_requires_a_policy_search_first(self):
+        # v13 sup-d-28/33/39/45: the agent read conversation-memory/order/coupon state and
+        # closed the turn as user_facts with zero retrieval — the policy facet of the
+        # question silently vanished (Recall 0, graded propositions never expressed).
+        # One bounded repair must force the search before the answer is accepted.
+        self.conversation = self.store.create_conversation(self.actor)['conversation_id']
+        provider = FakeProvider([
+            tool('get_conversation_memory', {'limit': 4}),
+            tool('finish_answer', {'answer': '您没有进行中的退款申请。', 'answer_status': 'answered',
+                                   'grounding': 'user_facts'}),
+            tool('search_knowledge', {'query': '退款确认'}),
+            grounded])
+        run, lease = self.begin('我的退款到哪一步了？')
+        result = asyncio.run(self.execute(provider, run, lease))['result']
+        self.assertEqual(result['grounding'], 'store_policy')
+        self.assertTrue(result['citations'])
+        context = self.store.get_run(self.actor, run['agent_run_id'])['context']
+        self.assertIn('state_answer_requires_policy_evidence', context['answer_rejections'][0]['reason'])
+        self.assertGreaterEqual(context['retrieval_calls'], 1)
+
+    def test_state_answer_with_policy_search_needs_no_repair(self):
+        # The gate targets the self-answer shape only: once the turn also retrieved
+        # policy, a user_facts closeout is legitimate and costs no repair round.
+        self.conversation = self.store.create_conversation(self.actor)['conversation_id']
+        provider = FakeProvider([
+            tool('get_conversation_memory', {'limit': 4}),
+            tool('search_knowledge', {'query': '偏好 查看'}),
+            tool('finish_answer', {'answer': '目前没有记录您的任何偏好；按政策，登录用户可以查看并更正。',
+                                   'answer_status': 'answered', 'grounding': 'user_facts'})])
+        run, lease = self.begin('我想看看你们记住了我哪些选购偏好？')
+        result = asyncio.run(self.execute(provider, run, lease))['result']
+        self.assertEqual(result['grounding'], 'user_facts')
+        context = self.store.get_run(self.actor, run['agent_run_id'])['context']
+        self.assertNotIn('answer_rejections', context)
+
     def test_a_greeting_needs_no_evidence_without_any_phrase_list(self):
         # The removed guard needed a whitelist of five greetings; an unlisted one failed. The
         # basis is now declared, so any wording works and none of them is special-cased.

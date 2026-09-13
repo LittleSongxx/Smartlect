@@ -34,6 +34,13 @@ PROVIDER_FAULT_ANSWER = '本轮模型通道未能完成回答，已转人工核�
 PROPOSAL_CONFIRMATION = '已生成待确认交易提案。请核对商品、数量和金额；确认后才会执行。'
 REQUEST_KINDS = ('inquire_fact', 'request_service', 'request_exception', 'request_handoff', 'clarify')
 EXCEPTION_KINDS = ('request_exception', 'request_handoff')
+# Read tools that report the user's own inventory-style state. Answering from them
+# satisfies the account facet of a question while silently dropping its policy facet
+# (v13 sup-d-28/33/39/45: coupon balance / order list / conversation memory closed as
+# user_facts with zero retrieval). Deliberately narrow: the transactional status tools
+# (order/refund/payment status) also serve legitimate shopping flows, and the full
+# state set measurably collateral-damages shopping turns.
+STATE_SELF_ANSWER_TOOLS = frozenset({'get_conversation_memory', 'get_my_orders', 'list_my_coupons'})
 
 
 def classify_evidence(context):
@@ -873,6 +880,13 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                     raise ValueError('store_policy_grounding_requires_this_turn_citation')
             if final.grounding == 'user_facts' and not context.get('fact_observed'):
                 raise ValueError('user_facts_grounding_requires_this_turn_tool_observation')
+            if (final.grounding == 'user_facts' and not context.get('retrieval_calls')
+                    and STATE_SELF_ANSWER_TOOLS & set(context.get('accepted_tools') or [])):
+                # The skill already forbids concluding store matters without retrieval;
+                # this makes it mechanical for the state-self-answer shape.
+                raise ValueError('state_answer_requires_policy_evidence: '
+                                 '本轮以本人状态收口但全程未取政策证据；请先 search_knowledge 检索相关政策，'
+                                 '再把本人状态与政策依据合并作答；政策确实无相关内容时按资料不足收口')
             if final.grounding == 'no_business_claim' and (final.citation_chunk_ids or final.selected_sku_keys):
                 raise ValueError('no_business_claim_cannot_carry_evidence')
             if final.grounding == 'no_business_claim' and no_business_claim_has_store_conclusion(final.answer):
