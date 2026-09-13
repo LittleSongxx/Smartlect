@@ -189,6 +189,29 @@
         "CTR": 0.0,
         "CVR": null
       }
+    },
+    {
+      "playbook_id": "ads-d-12",
+      "kind": "dual_exhaustion_gate",
+      "same_sku": true,
+      "campaigns": [
+        {"slot": "b", "budget_cents": 40, "cpc_cents": 8},
+        {"slot": "a", "budget_cents": 4000, "cpc_cents": 8}
+      ],
+      "script": [
+        {"op": "expose", "slot": "b", "count": 10},
+        {"op": "click", "slot": "b", "count": 5},
+        {"op": "reject", "http": "click", "slot": "b", "error": "ads_not_active"},
+        {"op": "reject", "http": "exposure", "slot": "b", "error": "ads_not_active"},
+        {"op": "probe_status", "slot": "b", "expect_status": "EXHAUSTED", "expect_pause_reason": "budget_exhausted"},
+        {"op": "probe_rank", "expect_first": "a", "expect_items": 1}
+      ],
+      "note": "双活动小额预算耗尽：预算 40/cpc 8——第 5 击扣满时 click 事务把 b 转 EXHAUSTED/budget_exhausted，此后点击与曝光 409、b 从推荐候选消失而 a 独存；耗尽槽位故意放在 campaigns 非末位，兼作 probe_status 槽位解析的活体金丝雀（holdout-2 ads-h2-02 的 status 断言失败经查为 runner 槽位解析 bug 的测量伪影，系统状态机实际正确）",
+      "expected": {
+        "counts": {"impressions": 10, "clicks": 5, "payment_conversions": 0, "unknown_payments": 0},
+        "CTR": 0.5,
+        "CVR": 0.0
+      }
     }
   ]
 }

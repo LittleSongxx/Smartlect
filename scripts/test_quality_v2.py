@@ -419,7 +419,7 @@ class ReportTests(unittest.TestCase):
         shopping, support, ads = self_check_scores()
         self.assertEqual(len(shopping), 65)
         self.assertEqual(len(support), 62)
-        self.assertEqual(len(ads), 11)
+        self.assertEqual(len(ads), 12)
         self.assertTrue(all(row['outcome'] == 'pass' for row in shopping + support + ads))
         with tempfile.TemporaryDirectory() as folder:
             report = write_report(folder, shopping, support, ads, official=False)

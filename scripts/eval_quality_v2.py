@@ -536,9 +536,11 @@ def _run_scripted_book(client, book, ad_sku):
     import hashlib
     tag = hashlib.sha256(client.evidence['run_id'].encode()).hexdigest()
     layout = {'creative_slots': {}, 'campaign_ids': []}
+    campaign_of_slot = {}
     for spec in book['campaigns']:
         slot = spec['slot']
         campaign_id = slot[0] + tag[:31]
+        campaign_of_slot[slot] = campaign_id
         layout['campaign_ids'].append(campaign_id)
         client.request('ads/campaigns', {'campaign_id': campaign_id,
             'name': 'quality-v2 %s %s' % (book['playbook_id'], slot),
@@ -573,7 +575,6 @@ def _run_scripted_book(client, book, ad_sku):
             client.request('ads/actions', action, merchant=True)
     exposures_by_slot = {slot: [] for slot in layout['creative_slots']}
     probes, rejections, status_probes = [], [], []
-    campaign_of_slot = {spec['slot']: slot[0] + tag[:31] for spec in book['campaigns']}
     for step in book['script']:
         op = step['op']
         if op == 'expose':
