@@ -22,6 +22,10 @@ SUPPORT_MANIFEST = CONTRACT_DIR / 'support/manifest.json'
 ADS_PLAYBOOKS = CONTRACT_DIR / 'ads/playbooks.json'
 ADS_HOLDOUT_PLAYBOOKS = CONTRACT_DIR / 'ads/holdout-playbooks.json'
 ADS_MANIFEST = CONTRACT_DIR / 'ads/manifest.json'
+# holdout-2：独立密封留出（holdout-1 已烧毁，其文件仅存证不改动）。
+SHOPPING_HOLDOUT2 = CONTRACT_DIR / 'shopping/holdout2.jsonl'
+SUPPORT_HOLDOUT2 = CONTRACT_DIR / 'support/holdout2.jsonl'
+ADS_HOLDOUT2_PLAYBOOKS = CONTRACT_DIR / 'ads/holdout2-playbooks.json'
 HOLDOUT_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout-manifest.json',
                      'support': CONTRACT_DIR / 'support/holdout-manifest.json',
                      'ads': CONTRACT_DIR / 'ads/holdout-manifest.json'}
@@ -60,10 +64,12 @@ def freeze_manifest():
 
 
 def refuse_holdout(split):
-    if split != 'holdout':
+    if split not in ('holdout', 'holdout2'):
         return
+    # Both sealed splits ride on the same dev-freeze artifact; per-line seals
+    # are additionally enforced by holdout_ready/holdout2_ready at run time.
     if freeze_manifest() is None:
-        raise ValueError('holdout_sealed_questions_not_authored')
+        raise ValueError(split + '_sealed_questions_not_authored')
 
 
 def provenance():
@@ -709,6 +715,8 @@ def dataset_paths(split='development'):
         return {'shopping': SHOPPING_DEV, 'support': SUPPORT_DEV, 'ads': ADS_PLAYBOOKS}
     if split == 'holdout':
         return {'shopping': SHOPPING_HOLDOUT, 'support': SUPPORT_HOLDOUT, 'ads': ADS_HOLDOUT_PLAYBOOKS}
+    if split == 'holdout2':
+        return {'shopping': SHOPPING_HOLDOUT2, 'support': SUPPORT_HOLDOUT2, 'ads': ADS_HOLDOUT2_PLAYBOOKS}
     raise ValueError('unknown_split:' + split)
 
 
@@ -734,6 +742,22 @@ def holdout_ready(lines=('shopping', 'support', 'ads')):
     missing = [line for line in lines if not HOLDOUT_MANIFESTS[line].exists()]
     if missing:
         raise ValueError('holdout_questions_not_authored:' + ','.join(missing))
+    return True
+
+
+HOLDOUT2_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout2-manifest.json',
+                      'support': CONTRACT_DIR / 'support/holdout2-manifest.json',
+                      'ads': CONTRACT_DIR / 'ads/holdout2-manifest.json'}
+
+
+def holdout2_ready(lines=('shopping', 'support', 'ads')):
+    """Seal gate for holdout-2: runable only after every line's manifest is stamped.
+
+    Draft stage (questions authored, user review pending) can validate offline
+    but never run: first test is final test, so nothing executes before the seal."""
+    missing = [line for line in lines if not HOLDOUT2_MANIFESTS[line].exists()]
+    if missing:
+        raise ValueError('holdout2_seal_pending_user_approval:' + ','.join(missing))
     return True
 
 

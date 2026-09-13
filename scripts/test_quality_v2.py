@@ -710,5 +710,28 @@ class AdsScriptTests(unittest.TestCase):
         self.assertEqual(scripted['Attribution_integrity'], 1.0)
 
 
+class Holdout2SealTests(unittest.TestCase):
+    def test_run_gate_refuses_until_manifests_stamped(self):
+        import quality_v2
+        self.assertFalse(any(path.exists() for path in quality_v2.HOLDOUT2_MANIFESTS.values()))
+        with self.assertRaisesRegex(ValueError, 'holdout2_seal_pending'):
+            quality_v2.holdout2_ready()
+        # stamp into a temp copy of the paths to prove existence flips the gate
+        import tempfile
+        original = dict(quality_v2.HOLDOUT2_MANIFESTS)
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                for line, path in original.items():
+                    quality_v2.HOLDOUT2_MANIFESTS[line] = Path(folder) / (line + '.json')
+                    quality_v2.HOLDOUT2_MANIFESTS[line].write_text('{}')
+                self.assertTrue(quality_v2.holdout2_ready())
+                self.assertTrue(quality_v2.holdout2_ready(('shopping',)))
+        finally:
+            quality_v2.HOLDOUT2_MANIFESTS = original
+
+    def test_holdout2_datasets_validate_offline(self):
+        quality_v2.validate_dev_sets(split='holdout2')  # draft stage: offline check only
+
+
 if __name__ == '__main__':
     unittest.main()
