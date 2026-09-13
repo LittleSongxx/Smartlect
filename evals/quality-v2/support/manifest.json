@@ -1,6 +1,6 @@
 {
-  "dataset_id": "quality-v2-support-v4-dev",
-  "schema_version": "quality-v2-support-v4",
+  "dataset_id": "quality-v2-support-v5-dev",
+  "schema_version": "quality-v2-support-v5",
   "split": "development",
   "holdout": {
     "sealed": true,
@@ -9,14 +9,14 @@
     "freeze_command": "scripts/eval_quality_v2.py freeze"
   },
   "checksums": {
-    "evals/quality-v2/support/dev.jsonl": "1f738b6c623aa990304b9272fd5ca09d1ecc85e0afaee6595831e247383abfa6",
-    "evals/quality-v2/metrics-contract.json": "d4dc677ec83addbbc4a4fb5a40cd151c991e5f37c33d5395f4a9bac8448f68c0"
+    "evals/quality-v2/support/dev.jsonl": "d9dadd39b00719f7432a4da6ec22f8fe891b51c6f0ecf0c9d16d364b662dd7c1",
+    "evals/quality-v2/metrics-contract.json": "83a0999d16b8c1bd608cae8ebf81de92e86ae9335c9e0a2dde4382c74041f39f"
   },
   "metrics": [
     "Recall@8",
     "Faithfulness"
   ],
-  "case_count": 62,
+  "case_count": 63,
   "case_ids": [
     "sup-d-01",
     "sup-d-02",
@@ -79,7 +79,8 @@
     "sup-d-59",
     "sup-d-60",
     "sup-d-61",
-    "sup-d-62"
+    "sup-d-62",
+    "sup-d-63"
   ],
   "live_skip": [
     "sup-d-24"

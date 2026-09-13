@@ -91,8 +91,17 @@
     "faithfulness_empty_claims": null,
     "faithfulness_on_citation_cleared": null,
     "must_not_claim_consumed": "uncued hit in final answer fails the case",
+    "negation_cues": ["不", "没", "未", "非", "别", "无", "勿", "莫"],
+    "negation_window_chars": 8,
     "forbidden_claims_consumed": "verbatim hit in final answer fails the case",
     "handoff_is_aux_pass": true,
+    "allow_handoff": {
+      "added_in": "v6.2 (P3 arbitration D4)",
+      "applies_to": "once-published-then-expired/withdrawn material",
+      "semantics": "insufficient without ticket and needs_human with persistent ticket are both honest closures (both pass)",
+      "validator_enforced": "requires expected_handoff=false and allow_insufficient=true, else AnnotationError",
+      "never_existed_material": "insufficient only; handoff stays a fail (over-transfer)"
+    },
     "llm_judge": {
       "development_only": true,
       "enters_public_score": true,
@@ -117,7 +126,12 @@
     "claims_scope": {
       "essential": "counts into Faithfulness",
       "peripheral": "diagnostic Peripheral_coverage only",
-      "validator_enforced": true
+      "validator_enforced": true,
+      "grading_principle_v6_2": "essential = removing the proposition from the final answer leaves some actually-asked question unanswered or misleadingly half-answered on the scoring face; everything else genuinely related (background, mechanism, safety rules, procedural detail, follow-up service pointers, earlier-turn recap) is peripheral",
+      "operational_clauses": [
+        "action-request turns: direct denial AND completion-condition/alternative-path are both essential; capability/policy-inquiry turns: only the direct denial/confirmation is essential, later service pointers are peripheral",
+        "multi-turn cases anchor on the final turn (including unresolved earlier questions it incorporates by reference); earlier turns reversed or narrowed away by the final turn are peripheral; final-turn self-containment remains an authoring requirement"
+      ]
     },
     "faithfulness_answer_side": {
       "definition": "decompose the answer's own statements, verify each against docs (RAGAS-aligned)",

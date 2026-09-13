@@ -351,7 +351,7 @@ def recall_at_k(gold_doc_ids, candidates, k):
 
 
 NEGATION_WINDOW = 8
-NEGATION_CUES = ('不', '没', '未', '非', '别', '无')
+NEGATION_CUES = ('不', '没', '未', '非', '别', '无', '勿', '莫')
 
 
 def _uncued_hits(needle, text):
@@ -429,6 +429,11 @@ def score_support(case, observation):
     expected_handoff = bool(case.get('expected_handoff'))
     pass_handoff = handoff if expected_handoff else (not handoff and result.get('answer_status') != 'needs_human')
     if case.get('allow_insufficient') and result.get('answer_status') == 'insufficient' and not ticket_id:
+        pass_handoff = True
+    # allow_handoff (P3 D4): once-published-then-expired/withdrawn material —
+    # insufficient and a real ticket are both honest closures of the same
+    # epistemic state. needs_human without a ticket still fails either way.
+    if case.get('allow_handoff') and handoff:
         pass_handoff = True
     outcome = 'fail' if leaked or claim_hit or not pass_handoff else 'pass'
     if recall is None and rule_faithfulness is None and case.get('expected_retrieval') is False:
@@ -590,6 +595,8 @@ def validate_support_case(case, problems, split='development'):
         problems.append(f'{cid}: split_mismatch:{case.get("split")}')
     if case.get('expected_retrieval') is False and case.get('relevant_doc_ids'):
         problems.append(f'{cid}: chitchat_cannot_have_relevant_docs')
+    if case.get('allow_handoff') and (case.get('expected_handoff') or not case.get('allow_insufficient')):
+        problems.append(f'{cid}: allow_handoff_requires_expected_handoff_false_and_allow_insufficient')
     if set(case.get('forbidden_doc_ids') or []) & set(case.get('relevant_doc_ids') or []):
         problems.append(f'{cid}: forbidden_doc_in_relevant_set')
     if case.get('actor') not in {None, 'user_a', 'user_b', 'visitor'}:

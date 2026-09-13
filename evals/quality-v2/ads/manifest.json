@@ -1,6 +1,6 @@
 {
-  "dataset_id": "quality-v2-ads-v3-dev",
-  "schema_version": "quality-v2-ads-v3",
+  "dataset_id": "quality-v2-ads-v4-dev",
+  "schema_version": "quality-v2-ads-v4",
   "split": "development",
   "holdout": {
     "sealed": true,
@@ -9,13 +9,13 @@
     "freeze_command": "scripts/eval_quality_v2.py freeze"
   },
   "checksums": {
-    "evals/quality-v2/ads/playbooks.json": "eff207fafb0439c80fe532a73eaa94035cc016935fd691ffa4e3dd7dadc92017",
-    "evals/quality-v2/metrics-contract.json": "d4dc677ec83addbbc4a4fb5a40cd151c991e5f37c33d5395f4a9bac8448f68c0"
+    "evals/quality-v2/ads/playbooks.json": "4701361e6f37a7f8587b20e19031fb4545a325b7d90db2652e623e1bbc718eaf",
+    "evals/quality-v2/metrics-contract.json": "83a0999d16b8c1bd608cae8ebf81de92e86ae9335c9e0a2dde4382c74041f39f"
   },
   "metrics": [
     "Attribution_integrity"
   ],
-  "playbook_count": 11,
+  "playbook_count": 12,
   "playbook_ids": [
     "ads-d-01",
     "ads-d-02",
@@ -27,6 +27,7 @@
     "ads-d-08",
     "ads-d-09",
     "ads-d-10",
-    "ads-d-11"
+    "ads-d-11",
+    "ads-d-12"
   ]
 }

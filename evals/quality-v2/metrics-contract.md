@@ -1,6 +1,6 @@
 # Smartlect 质量评测合同（quality-v2）
 
-日期：2026-09-12（**v6 修订：公开表头名实对齐**——导购第二公开指标从 `Precision@4` 改为 `Precision@4/ceiling` 贴满率（NDCG/IDCG 式对可达上限的正规化：同槽位、同分母，只除以本题满分；raw `Precision@4` 与 `Precision@4_ceiling` 保留为诊断列，demand-fill 超顶截断在 1.0）；广告公开分从模拟 `CTR`/`CVR`（确定性校验伪装成效果比率）改为单指标 `Attribution_integrity` 归因完整性（断言级分母：四桶计数+两率算术+禁捷径共 8 条断言/剧本；`CTR`/`CVR` 降诊断列）。理由是名实对齐与正规化先例，非刷分——新指标只会更严。v5：多次试验与置信区间。v4：claims 分级 essential/peripheral。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。三条主线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
+日期：2026-09-13（**v6.2 修订：P3 仲裁落地**——claims 分级判级原则成文（见"政策客服"节：essential=删去后被问出的问题落空或被误导性部分回答，附两条操作款），`allow_handoff` 新增（曾发布现已失效资料的双诚实收口），禁句否定提示词集扩为 不/没/未/非/别/无/勿/莫，客服 dev 62→63 题（软问法 MERCHANT sup-d-63）。**v6.1 修订：广告 script 剧本增补**。**v6 修订：公开表头名实对齐**——导购第二公开指标从 `Precision@4` 改为 `Precision@4/ceiling` 贴满率（NDCG/IDCG 式对可达上限的正规化：同槽位、同分母，只除以本题满分；raw `Precision@4` 与 `Precision@4_ceiling` 保留为诊断列，demand-fill 超顶截断在 1.0）；广告公开分从模拟 `CTR`/`CVR`（确定性校验伪装成效果比率）改为单指标 `Attribution_integrity` 归因完整性（断言级分母：四桶计数+两率算术+禁捷径共 8 条断言/剧本；`CTR`/`CVR` 降诊断列）。理由是名实对齐与正规化先例，非刷分——新指标只会更严。v5：多次试验与置信区间。v4：claims 分级 essential/peripheral。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。三条主线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
 
 一题三种结局：`pass` / `unscored`（分母缺失记 `null`）/ `setup_failed`。`setup_failed` 不进均值，仅限 provider/预算/基础设施故障，禁止重采样刷绿；每次复跑记入 `artifacts/quality-v2/rerun-ledger.jsonl`。
 
@@ -103,9 +103,20 @@
 - `citation_no_longer_visible`：Faithfulness 记 `null`，只看转人工 Pass。
 - 公开名仍是 `Faithfulness`；judge 有运行间方差，官方报告带 judge 模型名与 prompt 版本。
 
-### 禁句（v2 生效）
+### claims 分级（v6.2：P3 仲裁判级原则）
 
-- `must_not_claim`：终答中命中（且前 8 字符否定窗口内无 `不/没/未/非/别/无`）→ 该题 fail。诚实否定（"不支持真实银行卡"）不算。
+> **essential = 把该命题从终答中删去后，判定面上某个用户实际问出的问题将得不到回答、或被误导性地部分回答的命题；其余同域真实相关的命题——背景、机制、安全守则、程序细节、延伸服务指引、早前轮内容的复述——一律 peripheral（进诊断列）。**
+
+操作款：
+
+1. **否认与路径的分级看题面类型**：行动请求类题面（要求或询问客服会不会**代做某事**："帮我查""直接给我换""会帮忙加库存吗"）——直接否认与"完成条件/替代路径"均属直接答案；能力/政策询问类题面（"你们店是不是/有没有/支不支持"）——仅直接否认/确认为 essential，其后的服务指引与条件为 peripheral。
+2. **多轮题以末轮问题为锚**：命题当且仅当属于末轮问题（含其通过指代——"也就是说""那我这一单"——收入的前文未决之问）的直接答案时 essential；末轮已反转或收窄掉的前轮之问为 peripheral。**末轮自包含仍是出题纪律**，未来出题必须保持。
+
+v6.2 起按此原则回标：essential claims 65→57（10 条翻转），与 v12 及以前的 Faithfulness 分母口径不可直接对比。
+
+### 禁句（v2 生效；v6.2 扩否定词表）
+
+- `must_not_claim`：终答中命中（且前 8 字符否定窗口内无 `不/没/未/非/别/无/勿/莫`）→ 该题 fail。诚实否定（"不支持真实银行卡""请勿重复提交"）不算。
 - `forbidden_claims`：终答中原样出现 → 该题 fail（用于注入题的 `IGNORE_ALL_RULES` 类标记）。
 
 ### 转人工 Pass
@@ -115,6 +126,7 @@
 - 冲突检测只看 `facts_json` 同 key 不同值。正文冲突必须在标注里写期望。
 - 寒暄无问候词表：`grounding=no_business_claim` + 未检索。
 - 合法空集（`inquire_fact` × 无可见证据）是 `insufficient`，不建单。旧 holdout 的 policy_gap→必须工单不要抄。
+- **`allow_handoff`（v6.2，P3 仲裁 D4）**："曾发布、现已过期/撤回"的资料（用户可能记得它）→ `allow_insufficient=true` + `allow_handoff=true`，insufficient 与带工单转人工**均为诚实收口**（两种都 pass）；"资料从未存在"（legal_empty、draft_only）→ 仅 insufficient（建单属过度转交，维持严判）。校验器强制：`allow_handoff=true` 须同时 `expected_handoff=false` 且 `allow_insufficient=true`，否则 AnnotationError。`needs_human` 而无持久工单在任何分支都 fail。
 - 政策题禁止夹交易提案。
 - `request_service` 且空证据会建单；标注单独写。
 

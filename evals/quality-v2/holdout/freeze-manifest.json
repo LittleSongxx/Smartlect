@@ -1,23 +1,23 @@
 {
   "schema_version": "quality-v2-holdout-freeze-v1",
-  "frozen_at": "2026-09-12T19:54:21.465571+00:00",
+  "frozen_at": "2026-09-13T15:38:21.953307+00:00",
   "frozen_by": "scripts/eval_quality_v2.py freeze",
   "note": "冻结开发集形态。留出题目尚未出；出题后以其自身 manifest 为准，禁止用留出调系统。",
   "dev_digests": {
     "shopping_dev_sha256": "2fa1bd99db69305b1f414205f745cc1f9bd40e2e8681098204487dedd3eb0c27",
-    "support_dev_sha256": "1f738b6c623aa990304b9272fd5ca09d1ecc85e0afaee6595831e247383abfa6",
-    "ads_playbooks_sha256": "eff207fafb0439c80fe532a73eaa94035cc016935fd691ffa4e3dd7dadc92017",
+    "support_dev_sha256": "d9dadd39b00719f7432a4da6ec22f8fe891b51c6f0ecf0c9d16d364b662dd7c1",
+    "ads_playbooks_sha256": "4701361e6f37a7f8587b20e19031fb4545a325b7d90db2652e623e1bbc718eaf",
     "catalog_snapshot_sha256": "c6c5d26130758bd48173a38b75084be232b0e3a2579e71654f20ea15ef643583",
-    "metrics_contract_sha256": "d4dc677ec83addbbc4a4fb5a40cd151c991e5f37c33d5395f4a9bac8448f68c0"
+    "metrics_contract_sha256": "83a0999d16b8c1bd608cae8ebf81de92e86ae9335c9e0a2dde4382c74041f39f"
   },
   "provenance": {
     "workdir": "/home/song/code/Smartlect",
-    "contract_sha256": "d4dc677ec83addbbc4a4fb5a40cd151c991e5f37c33d5395f4a9bac8448f68c0",
+    "contract_sha256": "83a0999d16b8c1bd608cae8ebf81de92e86ae9335c9e0a2dde4382c74041f39f",
     "scorer_sha256": {
-      "quality_v2.py": "a7096f3096c0ff408f815e087a7a76f18b08940f43a656b6621772eba8756d48",
-      "eval_quality_v2.py": "848723101f0888d689d832a104ee6b74993613616efaf9cc63901efbdf0b6e93"
+      "quality_v2.py": "d442f2b95a402c32e6888da9c5266bb6f12f1d56323a65a0395e8d681fb14e89",
+      "eval_quality_v2.py": "c204c77ef9839fae953b364276f8267c02e81040b30b976f245d6e4454d509c6"
     },
-    "git_head": "7eea5cc5c5e6694b4c6129dbb1b8957a75ad1391",
-    "working_diff_sha256": "a1199ff4d99b6cc4e4c43a3000ca20edfea2d174a221fb6d52aac3a84de971b6"
+    "git_head": "cb6612f7e1506060709c15459ca0bd48e1650b1b",
+    "working_diff_sha256": "ca29e7cad7a9447f49ac4ac322658ef528a04f80726ed06d5b803dc0d8f3f7b5"
   }
 }

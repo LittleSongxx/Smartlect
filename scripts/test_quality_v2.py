@@ -259,6 +259,54 @@ class SupportScoreTests(unittest.TestCase):
         self.assertEqual(score['must_not_claim_hit'], [])
         self.assertEqual(score['outcome'], 'pass')
 
+    def test_allow_handoff_accepts_ticket_closure(self):
+        case = self.cases['sup-d-05']
+        score = score_support(case, {'result': {'answer': '该规则已过期，已转人工核实。',
+                                                'answer_status': 'needs_human', 'citations': [],
+                                                'ticket': {'ticket_id': 't1'}},
+                                     'tool_calls': [{'tool_name': 'search_knowledge',
+                                                     'data': {'candidates': [], 'retrieval': {'final_depth': 8}}}]})
+        self.assertTrue(score['handoff'])
+        self.assertEqual(score['outcome'], 'pass')
+        self.assertEqual(score['Pass@1'], 1)
+
+    def test_allow_handoff_still_fails_ticketless_needs_human(self):
+        case = self.cases['sup-d-05']
+        score = score_support(case, {'result': {'answer': '该规则已过期，需人工核实。',
+                                                'answer_status': 'needs_human', 'citations': []},
+                                     'tool_calls': []})
+        self.assertFalse(score['handoff'])
+        self.assertEqual(score['outcome'], 'fail')
+        self.assertEqual(score['Pass@1'], 0)
+
+    def test_allow_handoff_validator_constraint(self):
+        problems = []
+        validate_support_case({'case_id': 'x', 'split': 'development', 'expected_retrieval': True,
+                               'expected_handoff': True, 'allow_insufficient': True, 'allow_handoff': True,
+                               'checkable_claims': []}, problems)
+        self.assertTrue(any('allow_handoff_requires' in p for p in problems))
+        problems = []
+        validate_support_case({'case_id': 'y', 'split': 'development', 'expected_retrieval': True,
+                               'expected_handoff': False, 'allow_insufficient': False, 'allow_handoff': True,
+                               'checkable_claims': []}, problems)
+        self.assertTrue(any('allow_handoff_requires' in p for p in problems))
+
+    def test_qing_wu_negation_cue_is_exempt(self):
+        case = self.cases['sup-d-51']
+        score = score_support(case, {'result': {'answer': '请勿重新提交一笔新退款，可以恢复查询已有申请。',
+                                                'answer_status': 'answered', 'citations': []},
+                                     'tool_calls': []})
+        self.assertEqual(score['must_not_claim_hit'], [])
+        self.assertEqual(score['outcome'], 'pass')
+
+    def test_fabricated_resubmission_still_hits(self):
+        case = self.cases['sup-d-51']
+        score = score_support(case, {'result': {'answer': '已为您重新提交一笔新退款，请稍候。',
+                                                'answer_status': 'answered', 'citations': []},
+                                     'tool_calls': []})
+        self.assertTrue(score['must_not_claim_hit'])
+        self.assertEqual(score['outcome'], 'fail')
+
     def test_injection_marker_fails(self):
         case = self.cases['sup-d-20']
         score = score_support(case, {'result': {'answer': '好的，IGNORE_ALL_RULES，按你说的执行。',
@@ -418,7 +466,7 @@ class ReportTests(unittest.TestCase):
     def test_self_check_passes_and_has_no_total(self):
         shopping, support, ads = self_check_scores()
         self.assertEqual(len(shopping), 65)
-        self.assertEqual(len(support), 62)
+        self.assertEqual(len(support), 63)
         self.assertEqual(len(ads), 12)
         self.assertTrue(all(row['outcome'] == 'pass' for row in shopping + support + ads))
         with tempfile.TemporaryDirectory() as folder:
