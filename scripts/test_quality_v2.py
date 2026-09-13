@@ -711,26 +711,32 @@ class AdsScriptTests(unittest.TestCase):
 
 
 class Holdout2SealTests(unittest.TestCase):
-    def test_run_gate_refuses_until_manifests_stamped(self):
-        import quality_v2
-        self.assertFalse(any(path.exists() for path in quality_v2.HOLDOUT2_MANIFESTS.values()))
-        with self.assertRaisesRegex(ValueError, 'holdout2_seal_pending'):
-            quality_v2.holdout2_ready()
-        # stamp into a temp copy of the paths to prove existence flips the gate
+    def test_run_gate_flips_with_manifest_presence(self):
         import tempfile
+        import quality_v2
         original = dict(quality_v2.HOLDOUT2_MANIFESTS)
         try:
             with tempfile.TemporaryDirectory() as folder:
                 for line, path in original.items():
                     quality_v2.HOLDOUT2_MANIFESTS[line] = Path(folder) / (line + '.json')
-                    quality_v2.HOLDOUT2_MANIFESTS[line].write_text('{}')
+                with self.assertRaisesRegex(ValueError, 'holdout2_seal_pending'):
+                    quality_v2.holdout2_ready()
+                for path in quality_v2.HOLDOUT2_MANIFESTS.values():
+                    path.write_text('{}')
                 self.assertTrue(quality_v2.holdout2_ready())
                 self.assertTrue(quality_v2.holdout2_ready(('shopping',)))
         finally:
             quality_v2.HOLDOUT2_MANIFESTS = original
 
+    def test_holdout2_sealed_in_repo(self):
+        import quality_v2
+        # holdout-2 was sealed on 2026-09-13 after independent review; the gate
+        # must stay open from here on (first test = final test is in force).
+        self.assertTrue(all(path.exists() for path in quality_v2.HOLDOUT2_MANIFESTS.values()))
+        self.assertTrue(quality_v2.holdout2_ready())
+
     def test_holdout2_datasets_validate_offline(self):
-        quality_v2.validate_dev_sets(split='holdout2')  # draft stage: offline check only
+        quality_v2.validate_dev_sets(split='holdout2')  # offline check only
 
 
 if __name__ == '__main__':
