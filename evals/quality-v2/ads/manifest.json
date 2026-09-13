@@ -1,6 +1,6 @@
 {
-  "dataset_id": "quality-v2-ads-v2-dev",
-  "schema_version": "quality-v2-ads-v2",
+  "dataset_id": "quality-v2-ads-v3-dev",
+  "schema_version": "quality-v2-ads-v3",
   "split": "development",
   "holdout": {
     "sealed": true,
@@ -9,19 +9,24 @@
     "freeze_command": "scripts/eval_quality_v2.py freeze"
   },
   "checksums": {
-    "evals/quality-v2/ads/playbooks.json": "fa5f7ac2d198051833d06b2b5b104eaef9737b075e2b194778f808b027f516e0",
-    "evals/quality-v2/metrics-contract.json": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae"
+    "evals/quality-v2/ads/playbooks.json": "eff207fafb0439c80fe532a73eaa94035cc016935fd691ffa4e3dd7dadc92017",
+    "evals/quality-v2/metrics-contract.json": "d4dc677ec83addbbc4a4fb5a40cd151c991e5f37c33d5395f4a9bac8448f68c0"
   },
   "metrics": [
-    "CTR",
-    "CVR"
+    "Attribution_integrity"
   ],
-  "playbook_count": 5,
-  "case_ids": [
+  "playbook_count": 11,
+  "playbook_ids": [
     "ads-d-01",
     "ads-d-02",
     "ads-d-03",
     "ads-d-04",
-    "ads-d-05"
+    "ads-d-05",
+    "ads-d-06",
+    "ads-d-07",
+    "ads-d-08",
+    "ads-d-09",
+    "ads-d-10",
+    "ads-d-11"
   ]
 }

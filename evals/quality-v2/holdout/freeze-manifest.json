@@ -1,23 +1,23 @@
 {
   "schema_version": "quality-v2-holdout-freeze-v1",
-  "frozen_at": "2026-09-12T13:45:45.510779+00:00",
+  "frozen_at": "2026-09-12T19:54:21.465571+00:00",
   "frozen_by": "scripts/eval_quality_v2.py freeze",
   "note": "冻结开发集形态。留出题目尚未出；出题后以其自身 manifest 为准，禁止用留出调系统。",
   "dev_digests": {
-    "shopping_dev_sha256": "634b9eaa1b14a455fdd375a63b73f2175c6f043b39092b5d55d1962c4ab9a454",
-    "support_dev_sha256": "5a34daef6fe1f309651dfcc47863a6467a08d19f74b963ff5bf931b1f4978e47",
-    "ads_playbooks_sha256": "fa5f7ac2d198051833d06b2b5b104eaef9737b075e2b194778f808b027f516e0",
+    "shopping_dev_sha256": "2fa1bd99db69305b1f414205f745cc1f9bd40e2e8681098204487dedd3eb0c27",
+    "support_dev_sha256": "1f738b6c623aa990304b9272fd5ca09d1ecc85e0afaee6595831e247383abfa6",
+    "ads_playbooks_sha256": "eff207fafb0439c80fe532a73eaa94035cc016935fd691ffa4e3dd7dadc92017",
     "catalog_snapshot_sha256": "c6c5d26130758bd48173a38b75084be232b0e3a2579e71654f20ea15ef643583",
-    "metrics_contract_sha256": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae"
+    "metrics_contract_sha256": "d4dc677ec83addbbc4a4fb5a40cd151c991e5f37c33d5395f4a9bac8448f68c0"
   },
   "provenance": {
     "workdir": "/home/song/code/Smartlect",
-    "contract_sha256": "c04a3d1619b9c3e140b4fda9312dad9fc98827174dd1df0c722dda6bedd388ae",
+    "contract_sha256": "d4dc677ec83addbbc4a4fb5a40cd151c991e5f37c33d5395f4a9bac8448f68c0",
     "scorer_sha256": {
-      "quality_v2.py": "d5828a5049e3c929bbe22f8f876cf6dc4c2530e4716677530a3e322d56d24c43",
-      "eval_quality_v2.py": "9ef8d4ccd66b82d67994e21846458f50b42160c5028a110ddc3542f3e0513822"
+      "quality_v2.py": "a7096f3096c0ff408f815e087a7a76f18b08940f43a656b6621772eba8756d48",
+      "eval_quality_v2.py": "848723101f0888d689d832a104ee6b74993613616efaf9cc63901efbdf0b6e93"
     },
-    "git_head": "ac8e35e7089b34acc364552bc6ae420c6b3b1372",
-    "working_diff_sha256": "c146b7e741e63d46a199836c3c222e5c5b7db48904ac72f436029457e51a6f4e"
+    "git_head": "7eea5cc5c5e6694b4c6129dbb1b8957a75ad1391",
+    "working_diff_sha256": "a1199ff4d99b6cc4e4c43a3000ca20edfea2d174a221fb6d52aac3a84de971b6"
   }
 }
