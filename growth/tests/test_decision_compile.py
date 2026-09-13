@@ -88,6 +88,15 @@ class DecisionCompileTests(unittest.TestCase):
         self.assertTrue(no_business_claim_has_store_conclusion('聊天里推荐过的商品不一定现在还买得到。'))
         self.assertTrue(no_business_claim_has_store_conclusion('这款现在缺货。'))
         self.assertFalse(no_business_claim_has_store_conclusion('您好，我可以帮您查询店铺政策。'))
+        # Search/verification offers describe the action, not store state (v11 sup-d-50:
+        # a well-formed clarify was rejected twice and degraded on exactly these).
+        self.assertFalse(no_business_claim_has_store_conclusion(
+            '为了帮您确认是否有三个库存并生成报价，我需要知道您具体想买哪款键盘。'))
+        self.assertFalse(no_business_claim_has_store_conclusion('我可以为您检索当前有货且满足数量要求的商品'))
+        self.assertFalse(no_business_claim_has_store_conclusion('帮您确认库存还剩几件吗'))
+        # A "tell" is not a "search": smuggled facts stay flagged.
+        self.assertTrue(no_business_claim_has_store_conclusion('我可以告诉您现在有货'))
+        self.assertTrue(no_business_claim_has_store_conclusion('库存还剩3件'))
 
     def test_irreconcilable_sources_are_handoff_topic_difference_is_not(self):
         self.assertTrue(looks_like_irreconcilable_sources('两份政策互相矛盾。'))

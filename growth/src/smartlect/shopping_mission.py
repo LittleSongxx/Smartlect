@@ -12,6 +12,14 @@ COUNT_MEASURE = '个只条台把张件套份支块'
 _CN_DIGITS = {'一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
 
 
+def _cn_price(raw):
+    """Like _cn_count but for prices: no 999 cap (预算1000元 is legal money)."""
+    value = unicodedata.normalize('NFKC', str(raw or '').strip())
+    if value.isdigit():
+        return int(value)
+    return _cn_count(raw)
+
+
 def _cn_count(raw):
     """Arabic or simple Chinese numerals (through 百) to an int in [1, 999]."""
     value = unicodedata.normalize('NFKC', str(raw or '').strip())
@@ -111,18 +119,36 @@ def extract_mission(utterance):
     if not text:
         extracted['reversed_terms'] = reversed_terms
         return extracted
-    for match in re.finditer(r'预算\s*(\d+)\s*(?:元|块)?', text):
-        extracted['budget_max_cents'] = int(match.group(1)) * 100
+    for match in re.finditer(r'预算\s*([0-9０-９一二两三四五六七八九十百千]+)\s*(?:元|块)?', text):
+        price = _cn_price(match.group(1))
+        if price:
+            extracted['budget_max_cents'] = price * 100
     # Buy-count intent: purchase verb + count + measure word. Interrogatives without
     # a count ("能买吗") and result-count asks ("推荐3个") stay outside.
     for match in re.finditer(r'(?:买|购买|要|来)\s*([0-9０-９一二两三四五六七八九十百千]+)\s*[' + COUNT_MEASURE + ']', text):
         count = _cn_count(match.group(1))
         if count:
             extracted['quantity'] = count
-    for match in re.finditer(r'(\d+)\s*(?:元|块)\s*以内', text):
-        extracted['budget_max_cents'] = int(match.group(1)) * 100
-    for match in re.finditer(r'(\d+)\s*(?:元|块)\s*以上', text):
-        extracted['min_price_cents'] = int(match.group(1)) * 100
+    # Price windows ("50元到150元之间") carry both bounds; the first number must
+    # carry a currency so quantity ranges ("2到3个") never parse as prices.
+    for match in re.finditer(r'([0-9０-９一二两三四五六七八九十百千]+)\s*(?:元|块)\s*(?:到|至|-|—|~)'
+                             r'\s*([0-9０-９一二两三四五六七八九十百千]+)\s*(?:元|块)?(?:之间|以内|以下)?', text):
+        low, high = _cn_price(match.group(1)), _cn_price(match.group(2))
+        if low and high:
+            extracted['min_price_cents'] = min(low, high) * 100
+            extracted['budget_max_cents'] = max(low, high) * 100
+    # Bare numbers bind prices only when not followed by a measure word, so
+    # "两百以内" is a budget but "三个以内" stays a count phrase.
+    for match in re.finditer(r'([0-9０-９一二两三四五六七八九十百千]+)\s*(?![个只条台把张件套支])'
+                             r'(?:元|块)?\s*(?:以内|以下)', text):
+        price = _cn_price(match.group(1))
+        if price:
+            extracted['budget_max_cents'] = price * 100
+    for match in re.finditer(r'([0-9０-９一二两三四五六七八九十百千]+)\s*(?![个只条台把张件套支])'
+                             r'(?:元|块)?\s*以上', text):
+        price = _cn_price(match.group(1))
+        if price:
+            extracted['min_price_cents'] = price * 100
     for match in re.finditer(r'其实\s*([^，。！？\s]{1,12})\s*可以', text):
         reversed_terms.append(match.group(1))
     for match in re.finditer(r'([^，。！？\s]{1,12})\s*(?:也行|没关系)', text):
@@ -168,6 +194,14 @@ def extract_mission(utterance):
     match = re.search(r'([A-Za-z][A-Za-z0-9]{0,7})类目', text)
     if match:
         extracted['category_id'] = match.group(1)
+    # Users say the category in Chinese while the catalog ids are Latin; a closed
+    # word map bridges them so a declared category can ground (v11 shop-d-52/54:
+    # "桌面这个类目" could never trace a model-declared 'desk', the guard dropped
+    # it, and the categoryless browse came back with every category's goods).
+    match = re.search(r'(桌面|音频|配件|家具)[^，。！？\s]{0,4}(?:类目|分类|类别|类)', text)
+    if match:
+        extracted['category_id'] = {'桌面': 'desk', '音频': 'audio',
+                                    '配件': 'acc', '家具': 'furn'}[match.group(1)]
     return extracted
 
 
@@ -182,12 +216,21 @@ def requirement_slots(utterance):
         term = match.group(1)
         if term.startswith('预算'):
             continue
+        # "要买三个呢" captures 买三个呢 — strip the buy intent and the count+measure
+        # phrase so only a real product noun survives; a bare quantity is not a term.
+        term = re.sub(r'^(?:买|购买)?(?:[0-9０-９一二两三四五六七八九十百千]+\s*'
+                      r'[个只条台把张件套份支块]?)+', '', term)
+        if not term:
+            continue
         raw.append(term)
     # Explicit purchase intent names the product: 买/购买 + optional count+measure + term.
     # Negations and interrogatives (买不到/能买吗) stay outside via lookarounds.
+    # The capture may not start with a numeral: with a trailing count+measure and no
+    # noun ("买一把"), the greedy prefix group would otherwise backtrack and hand the
+    # quantity phrase itself to the capture — poisoning every later retrieval.
     for match in re.finditer(r'(?<![不别没])(?:买|购买)(?![吗吧呢到不没来])'
                              r'(?:[0-9０-９一二两三四五六七八九十百千]+\s*[个只条台把张件套份支块]?)*'
-                             r'([^，。！？、\s]{2,16})', text):
+                             r'([^，。！？、\s0-9０-９一二两三四五六七八九十百千]{2,16})', text):
         raw.append(match.group(1))
     for match in re.finditer(
             r'(?:预算\s*\d+\s*(?:元|块)?|\d+\s*(?:元|块)\s*(?:以内|以上)|以内|以上)\s*的\s*([^，。！？、\s]{1,16})',
@@ -195,7 +238,9 @@ def requirement_slots(utterance):
         raw.append(match.group(1))
     terms = []
     for item in raw:
-        item = re.sub(r'(?:这款|看看|给我看|来一[个台份])$', '', item).strip('的')
+        item = re.sub(r'(?:这款|看看|给我看|来一[个台份])$', '', item)
+        item = re.sub(r'(?:有哪些|什么|哪个|哪些|几款|几样|什么样)$', '', item)
+        item = re.sub(r'[呢吧吗啊嘛呀哦]+$', '', item).strip('的')
         if not item:
             continue
         latin = ''.join(re.findall(r'[A-Za-z0-9]+', item))

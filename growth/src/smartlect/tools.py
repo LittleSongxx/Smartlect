@@ -243,19 +243,23 @@ async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, e
         source = next((m for m in data['messages'] if m['message_id'] == run['message_id'] and m['role'] == 'user'), None)
         quote = params['evidence_quote'].strip()
         if not source or len(quote) < 2 or quote not in source['content']:
-            raise ValueError('preference_requires_current_user_evidence')
+            raise ValueError('preference_requires_current_user_evidence:'
+                             ' evidence_quote 必须逐字来自本轮用户原话')
         values = [params[key] for key in ('text_value', 'amount_cents', 'list_value') if key in params]
         if len(values) != 1:
-            raise ValueError('exactly_one_preference_value_required')
+            raise ValueError('exactly_one_preference_value_required:'
+                             ' text_value/amount_cents/list_value 三选一且仅一个')
         value = values[0]
         if params['key'] == 'budget_max_cents':
             amounts = [int(Decimal(match.group(1)) * 100) for match in re.finditer(
                 r'(?<![\d.,+\-])(\d+(?:\.\d{1,2})?)\s*(?:元|块|CNY|RMB)(?![A-Za-z])', source['content'], re.I)
                 if match.group(0) in quote]
             if type(value) is not int or value not in amounts:
-                raise ValueError('preference_budget_requires_explicit_currency')
+                raise ValueError('preference_budget_requires_explicit_currency:'
+                                 ' 预算值必须等于引文中带元/块单位的金额×100（分）')
         elif not all(isinstance(item, str) and item in quote for item in (value if isinstance(value, list) else [value])):
-            raise ValueError('preference_value_requires_verbatim_evidence')
+            raise ValueError('preference_value_requires_verbatim_evidence:'
+                             ' 偏好值必须逐字出现在 evidence_quote 引文内，不得改写或概括')
         try:
             return await asyncio.to_thread(memory.set_preference, actor, params['key'], value, source='inferred',
                 evidence_ids=[source['message_id']], conversation_id=lease['conversation_id'], confidence=0.7, lease=lease)

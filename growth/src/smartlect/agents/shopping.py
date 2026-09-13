@@ -343,9 +343,21 @@ def looks_like_irreconcilable_sources(text):
         value))
 
 
+_STORE_FACT_WORDS = r'(?:库存|售罄|可售|下架|买得到|买不到|有货|没货|在售|缺货|现货)'
+_SEARCH_OFFER_CUE = r'(?:检索|查询|搜索|找找|找一找|看看|确认|核实|推荐|查到|查一下|筛选)'
+
+
 def no_business_claim_has_store_conclusion(answer):
-    """Availability or stock assertions are store facts, not chit-chat."""
-    return bool(re.search(r'(?:库存|售罄|可售|下架|买得到|买不到|有货|没货|在售|缺货|现货)', answer or ''))
+    """Availability or stock assertions are store facts, not chit-chat.
+
+    A mention inside a search/verification offer ("我可以为您检索当前有货的商品")
+    describes the offered action, not store state — v11 sup-d-50 died exactly
+    there: a well-formed clarify was rejected twice, the repair hint pointed at
+    "format" (nothing to fix), and the budget exhausted into a degraded turn.
+    Only availability words without a nearby action cue assert facts."""
+    text = answer or ''
+    scrubbed = re.sub(_SEARCH_OFFER_CUE + r'[^，。；！？\s]{0,6}' + _STORE_FACT_WORDS, '', text)
+    return bool(re.search(_STORE_FACT_WORDS, scrubbed))
 
 
 def constraint_echo(request):
@@ -748,11 +760,25 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                                        schema_version=SCHEMA_VERSION)
         return {'messages': messages + [response['message']], 'response': response['message']}
 
+    rejected_calls = {}
+
     async def tool_node(state):
         messages = list(state['messages'])
         for call in state['response']['tool_calls']:
             try:
                 arguments = json.loads(call['function']['arguments'])
+                # A model that cannot decode a rejection re-sends identical arguments
+                # until the call budget dies (v11 sup-d-50: remember_preference x4).
+                # The second identical attempt is intercepted instead of executed.
+                key = (call['function']['name'], canonical(arguments))
+                if key in rejected_calls:
+                    failure = {'error': 'identical_rejected_call', 'previous': rejected_calls[key],
+                               'instruction': '同样的参数已被拒绝；请修改参数，或放弃该动作直接继续回答。'}
+                    await emit('tool_result', {'name': call['function']['name'],
+                                               'rejected_before_result': True, **failure})
+                    messages.append({'role': 'tool', 'tool_call_id': call['id'],
+                                     'content': canonical(failure)})
+                    continue
                 receipt = await call_tool(call['function']['name'], arguments, call['id'])
                 data = receipt['data']
                 if call['function']['name'] == 'load_skill':
@@ -797,6 +823,7 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                                               for item in failure['fields'] if item['loc'] and isinstance(arguments, dict)}
                 else:
                     failure['reason'] = str(error)[:160]
+                rejected_calls[(call['function']['name'], canonical(arguments))] = failure
                 encoded = canonical(failure)
                 await emit('tool_result', {'name': call['function']['name'], 'rejected_before_result': True, **failure})
             messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': encoded})

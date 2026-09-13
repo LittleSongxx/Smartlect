@@ -98,6 +98,22 @@ class ShoppingMissionTests(unittest.TestCase):
         request = shopping_request({'query': 'desk'}, mission)
         self.assertEqual(request['category_id'], 'desk')
         self.assertEqual(request['max_price_cents'], 20000)
+
+    def test_chinese_colloquial_price_and_category_shapes(self):
+        # v11 shop-d-52..64: 以下/以下无货币/中文数字/区间、中文类目词、疑问词尾巴。
+        audio = extract_mission('音频类两百以内的都看看')
+        self.assertEqual(audio['category_id'], 'audio')
+        self.assertEqual(audio['budget_max_cents'], 20000)
+        self.assertEqual(extract_mission('300 块以下的游戏耳机')['budget_max_cents'], 30000)
+        self.assertEqual(extract_mission('两百块以上的键盘有哪些')['min_price_cents'], 20000)
+        window = extract_mission('50元到150元之间的键盘')
+        self.assertEqual((window['min_price_cents'], window['budget_max_cents']), (5000, 15000))
+        self.assertEqual(extract_mission('桌面这个类目都有什么，先看看')['category_id'], 'desk')
+        self.assertEqual(requirement_slots('两百块以上的键盘有哪些'), ['键盘'])
+        # 数量短语与数量区间绝不能被解析成价格。
+        self.assertIsNone(extract_mission('买2到3个键盘')['budget_max_cents'])
+        self.assertIsNone(extract_mission('推荐三个以内的耳机')['budget_max_cents'])
+        self.assertEqual(extract_mission('帮我买6个桌面音箱')['quantity'], 6)
         metal = merge_mission(empty_mission(), extract_mission('要金属键盘'),
                               {'required_terms': requirement_slots('要金属键盘')})
         self.assertEqual(shopping_request({'query': '金属键盘'}, metal)['required_terms'], ['金属', '键盘'])
@@ -113,6 +129,16 @@ class GroundingAndBuyFrameTests(unittest.TestCase):
         self.assertEqual(requirement_slots('买键盘'), ['键盘'])
         self.assertEqual(requirement_slots('购买人体工学椅'), ['人体', '学椅'])
         self.assertEqual(requirement_slots('我想买一台台灯'), ['台灯'])
+
+    def test_trailing_count_phrase_is_not_a_product_term(self):
+        # Buy frames ending in count+measure with no noun must not backtrack the
+        # quantity phrase into required_terms ("买一把"/"要买三个呢" poisoned every
+        # retrieval in v11 shop-d-58 / sup-d-50 / shop-d-49 t1).
+        self.assertEqual(requirement_slots('人体工学椅还有吗？我买一把'), [])
+        self.assertEqual(requirement_slots('那我这次要买三个呢？'), [])
+        self.assertEqual(requirement_slots('买一台'), [])
+        self.assertEqual(requirement_slots('买键盘呢'), ['键盘'])
+        self.assertEqual(requirement_slots('要两台音箱'), ['音箱'])
 
     def test_negated_and_interrogative_buy_stay_outside(self):
         self.assertEqual(requirement_slots('买不到键盘'), [])
