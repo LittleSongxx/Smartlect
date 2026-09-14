@@ -56,6 +56,7 @@ def empty_mission():
         'comparison_required': False,
         'query': '',
         'quantity': None,
+        'rollback_authorized': False,
     }
 
 
@@ -108,6 +109,8 @@ def normalize_mission(value):
         'comparison_required': bool(data.get('comparison_required')),
         'query': query,
         'quantity': quantity,
+        # Authorization persists for the conversation once given ("按可售来").
+        'rollback_authorized': bool(data.get('rollback_authorized')),
     }
 
 
@@ -202,6 +205,12 @@ def extract_mission(utterance):
     if match:
         extracted['category_id'] = {'桌面': 'desk', '音频': 'audio',
                                     '配件': 'acc', '家具': 'furn'}[match.group(1)]
+    # Explicit rollback authorization ("按可售来", "买不到就放宽"): availability
+    # trumps the strict qualifier set, so an empty set under authorization must
+    # be substituted, not bounced back to the user (v11-v14 shop-d-19 kept
+    # asking for permission the user had already granted).
+    if re.search(r'按可售来|买不到就|买不起就算了|实在没有就|没有的话|有什么买什么|有啥买啥|随便挑|随便选', text):
+        extracted['rollback_authorized'] = True
     return extracted
 
 
@@ -236,6 +245,20 @@ def requirement_slots(utterance):
             r'(?:预算\s*\d+\s*(?:元|块)?|\d+\s*(?:元|块)\s*(?:以内|以上)|以内|以上)\s*的\s*([^，。！？、\s]{1,16})',
             text):
         raw.append(match.group(1))
+    # Bare attributive noun phrase ("白色的入门耳机"): the whole utterance is the
+    # product ask. Harvest the HEAD noun phrase only — the model reliably names
+    # colour qualifiers but under-reports the head (v14 shop-d-34 passed only
+    # 白色 and let a white wireless headset through), and the tool-arg union
+    # then tops the gate up structurally. Interrogatives, negations, reversals
+    # and multi-clause turns stay out: this frame is a noun phrase, not a
+    # sentence.
+    stripped = re.sub(r'[?？。!！]+$', '', text)
+    if (2 <= len(stripped) <= 16 and stripped.count('的') == 1
+            and not re.search(r'[，,、;；]|吗|呢|能不能|可不可以|有没有|是不是|多少|是什么|哪个|哪些|什么|'
+                              r'怎么|你们|客服|政策|订单|退款|优惠|发票|地址|也|的话|就行|有哪些|不要|别|只要', stripped)):
+        head = stripped.partition('的')[2]
+        if head and 2 <= len(head) <= 10 and not re.search(r'[0-9０-９]', head):
+            raw.append(head)
     terms = []
     for item in raw:
         item = re.sub(r'(?:这款|看看|给我看|来一[个台份])$', '', item)
@@ -321,6 +344,10 @@ def merge_mission(previous, extracted, explicit=None):
         'min_price_cents': minimum,
         'category_id': category,
         'excluded_terms': excluded,
+        # Rollback authorization is sticky: once granted it covers later turns
+        # of the same purchase conversation too.
+        'rollback_authorized': bool(previous.get('rollback_authorized')
+                                    or extracted.get('rollback_authorized')),
         'required_terms': required,
         'comparison_targets': targets,
         'comparison_required': comparison_required,

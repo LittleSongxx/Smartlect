@@ -238,6 +238,35 @@ class QuantityIntentTests(unittest.TestCase):
         self.assertEqual(later.get('quantity'), 6)  # mission-grounded survives later turns
         self.assertNotIn('quantity', carried)
 
+    def test_bare_attributive_noun_phrase_harvests_head_only(self):
+        # The head noun phrase becomes an explicit required term; colour qualifiers
+        # stay with the model (v14 shop-d-34 under-reported the head and a white
+        # wireless headset slipped in). Tool-arg union tops the gate up.
+        self.assertEqual(requirement_slots('白色的入门耳机'), ['入门', '耳机'])
+        self.assertEqual(requirement_slots('黑色的金属机械键盘'), ['金属', '键盘'])
+        self.assertEqual(requirement_slots('粉色的便携鼠标'), ['便携', '鼠标'])
+        # Interrogatives, negations, reversals, multi-clause and policy turns stay out.
+        self.assertEqual(requirement_slots('有没有统一的七天无理由退货'), [])
+        self.assertEqual(requirement_slots('当前聊天里说的预算和历史偏好哪个优先'), [])
+        self.assertEqual(requirement_slots('资料里的操作说明是不是等于已经下单了'), [])
+        self.assertEqual(requirement_slots('不要塑料的键盘'), [])
+        self.assertEqual(requirement_slots('白色耳机没有的话黑色也行'), [])
+        self.assertEqual(requirement_slots('头戴的也可以，预算 500 以内'), [])
+        self.assertEqual(requirement_slots('Type-C的线，30元以内'), [])
+
+    def test_rollback_authorization_extracts_and_persists(self):
+        # Availability-over-qualifiers grants are sticky for the conversation;
+        # an empty set under authorization must be substituted, not re-asked.
+        self.assertTrue(extract_mission('灰色下架键盘也能买吗，按可售来')['rollback_authorized'])
+        self.assertTrue(extract_mission('金属机械键盘买不起就算了，塑料薄膜的也行')['rollback_authorized'])
+        self.assertTrue(extract_mission('白色耳机没有的话黑色也行')['rollback_authorized'])
+        self.assertFalse(extract_mission('白色的入门耳机')['rollback_authorized'])
+        self.assertFalse(extract_mission('预算150以内的入门耳机')['rollback_authorized'])
+        mission = merge_mission(empty_mission(), extract_mission('灰色下架键盘也能买吗，按可售来'))
+        self.assertTrue(mission['rollback_authorized'])
+        later = merge_mission(mission, extract_mission('再看看别的'))
+        self.assertTrue(later['rollback_authorized'])
+
 
 if __name__ == '__main__':
     unittest.main()

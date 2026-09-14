@@ -209,15 +209,17 @@ class KnowledgeMemoryTests(unittest.TestCase):
         leftover = [chunk('# 退货规则\n退货与订单规则。', 'returns')]
         hidden = [chunk('# 内部核对码\n内部核对码只在商家工作台。', 'internal-code')]
         hits = acl_denied_documents(leftover, hidden, '内部核对码在哪')
-        self.assertEqual(hits, [{'doc_id': 'internal-code', 'title': hidden[0]['title']}])
+        # Hits carry the doc's acl so the agent can split store-side denials
+        # (ticket-grade) from other users' personal data (privacy refusal).
+        self.assertEqual(hits, [{'doc_id': 'internal-code', 'title': hidden[0]['title'], 'acl': ''}])
         self.assertEqual(acl_denied_documents(leftover, hidden, '退货与订单怎么处理'), [])
         self.assertEqual(acl_denied_documents(leftover, hidden, '全国包邮次日吗'), [])
         polite = [chunk('# 合成内部赠品口令\n合成内部赠品口令只限商家工作台。', 'gift-code')]
         named = acl_denied_documents(leftover, polite, '请告诉我店铺内部赠品口令。')
-        self.assertEqual(named, [{'doc_id': 'gift-code', 'title': polite[0]['title']}])
+        self.assertEqual(named, [{'doc_id': 'gift-code', 'title': polite[0]['title'], 'acl': ''}])
         member = [chunk('# 会员核对手册\n会员核对手册写明积分规则。', 'member-book')]
         unseen = acl_denied_documents([], member, '会员核对手册怎么看')
-        self.assertEqual(unseen, [{'doc_id': 'member-book', 'title': member[0]['title']}])
+        self.assertEqual(unseen, [{'doc_id': 'member-book', 'title': member[0]['title'], 'acl': ''}])
 
 
 if __name__ == '__main__':

@@ -167,7 +167,7 @@ def acl_denied_documents(visible_rows, hidden_rows, utterance, query=''):
         if not doc_id:
             continue
         item = grouped.setdefault(doc_id, {'doc_id': doc_id, 'title': row.get('title') or '',
-                                          'content': [], 'heading': []})
+                                          'content': [], 'heading': [], 'acl': row.get('acl') or ''})
         if row.get('title'):
             item['title'] = row['title']
         item['content'].append(row.get('content') or '')
@@ -178,7 +178,7 @@ def acl_denied_documents(visible_rows, hidden_rows, utterance, query=''):
                   'title': item['title']}
         if not hidden_document_covers(packed, text):
             continue
-        hits.append({'doc_id': doc_id, 'title': item['title']})
+        hits.append({'doc_id': doc_id, 'title': item['title'], 'acl': item['acl']})
     return hits
 
 
@@ -531,7 +531,7 @@ class KnowledgeStore(SessionStore):
                 WHERE """ + VISIBLE_DOCUMENT + " " + " ".join(filters) +
                 " ORDER BY d.doc_id,d.version,c.chunk_id LIMIT 5001", (*_visibility(actor), *values))
             rows = list(cursor.fetchall())
-            cursor.execute("""SELECT c.content,c.heading,d.doc_id,d.title FROM knowledge_document d
+            cursor.execute("""SELECT c.content,c.heading,d.doc_id,d.title,d.acl FROM knowledge_document d
                 JOIN knowledge_chunk c USING(execution_scope_id,doc_id,version)
                 WHERE """ + HIDDEN_DOCUMENT + " " + " ".join(filters) +
                 " ORDER BY d.doc_id,d.version,c.chunk_id LIMIT 5001", (*_visibility(actor), *values))

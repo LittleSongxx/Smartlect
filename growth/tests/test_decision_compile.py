@@ -93,6 +93,36 @@ class DecisionCompileTests(unittest.TestCase):
         self.assertFalse(looks_like_service_request('上次那个限时免运费的活动现在还能用吗？'))
         self.assertFalse(looks_like_service_request('把咱俩之前聊的那些记录都删了行不行？'))
         self.assertFalse(looks_like_service_request('取消订单具体要怎么操作？每一步都是谁来做？'))
+        # Permission asks about transactional acts are action requests in question
+        # form (v14 sup-d-32: '能直接全额退款不用审核吗' closed as answered, no ticket).
+        self.assertTrue(looks_like_service_request('收到的商品摔破了，能直接全额退款不用审核吗？'))
+        self.assertTrue(looks_like_service_request('已成交的订单到底能不能在聊天里直接换货？'))
+        self.assertFalse(looks_like_service_request('有没有统一的七天无理由退货？'))
+        self.assertFalse(looks_like_service_request('客服能不能保证帮我把库存加上？'))
+        self.assertFalse(looks_like_service_request('退款能只退一部分金额吗？'))
+        self.assertFalse(looks_like_service_request('收到的键盘尺码不合适，能换吗？'))
+        self.assertFalse(looks_like_service_request('上次确认买2件，现在想买5件，直接改数量就行吗？'))
+
+    def test_ticket_deferral_and_store_side_denial_split(self):
+        from smartlect.agents.shopping import answer_defers_ticket_to_user, store_side_denials
+        # Telling the user to go file the ticket defers an action policy performs
+        # itself (v14 sup-d-32); it compiles only alongside cited human-handling policy.
+        self.assertTrue(answer_defers_ticket_to_user(
+            '根据店铺政策，收到破损商品可以描述情况并提交本地人工客服工单。'))
+        self.assertTrue(answer_defers_ticket_to_user('建议您先联系人工客服补充材料。'))
+        # Policy quotes about the user's right to ask are not deferrals of this case.
+        self.assertFalse(answer_defers_ticket_to_user('你可以要求转人工客服。'))
+        self.assertFalse(answer_defers_ticket_to_user('已为您转交人工核实。'))
+        # Only store-side ACL denials compile a ticket: a human may verify internal
+        # operating material, but must not proxy-read another user's personal data
+        # (v14 sup-d-55: the retrieval gate surfaced user_b's note and the
+        # acl_denied auto-ticket broke an otherwise honest refusal).
+        merchant = {'doc_id': 'm', 'title': '内部毛利', 'acl': 'MERCHANT'}
+        personal = {'doc_id': 'a', 'title': '用户偏好备注', 'acl': 'ACTOR'}
+        login_gated = {'doc_id': 'u', 'title': '订单查询', 'acl': 'USER'}
+        self.assertEqual(store_side_denials([merchant, personal, login_gated]), [merchant])
+        self.assertEqual(store_side_denials([personal]), [])
+        self.assertEqual(store_side_denials([]), [])
 
     def test_answer_concession_compiles_ticket_only_for_service_turns(self):
         from smartlect.agents.shopping import (answer_offers_human_transfer,
