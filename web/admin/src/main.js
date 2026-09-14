@@ -1,3 +1,4 @@
+import '@/utils/randomUUIDPolyfill';
 import "@/assets/icon/iconfont.css"
 import '@/assets/base.scss';
 import '@/assets/smartlect-admin.scss';
