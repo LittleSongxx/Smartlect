@@ -68,6 +68,9 @@ jobs:
     needs: [backend, growth, web]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # 长重启期间无输出，必须带 keepalive 防中间层掐连接
+      SSH_CMD: ssh -i ~/deploy_key -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,15 +82,15 @@ jobs:
           echo "${{ secrets.ECS_HOST_KEY }}" >> ~/.ssh/known_hosts
       - name: 回滚（inputs.rollback=true 时）
         if: ${{ inputs.rollback }}
-        run: ssh -i ~/deploy_key -o BatchMode=yes root@39.107.102.244 rollback
+        run: $SSH_CMD root@39.107.102.244 rollback
       - name: 打 bundle 并上传
         if: ${{ !inputs.rollback }}
         run: |
           git bundle create deploy.bundle HEAD
-          ssh -i ~/deploy_key -o BatchMode=yes root@39.107.102.244 upload < deploy.bundle
+          $SSH_CMD root@39.107.102.244 upload < deploy.bundle
       - name: 部署 + 健康门禁（失败即 exit 1）
         if: ${{ !inputs.rollback }}
-        run: ssh -i ~/deploy_key -o BatchMode=yes root@39.107.102.244 deploy
+        run: $SSH_CMD root@39.107.102.244 deploy
       - name: 部署后状态
         if: always()
-        run: ssh -i ~/deploy_key -o BatchMode=yes root@39.107.102.244 status || true
+        run: $SSH_CMD root@39.107.102.244 status || true
