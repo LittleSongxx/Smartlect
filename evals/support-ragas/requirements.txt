@@ -1,0 +1,13 @@
+# support-ragas 判分环境（run/venv-ragas，独立于 growth/.venv 与 user-site）
+# 安装：python3 -m venv run/venv-ragas && run/venv-ragas/bin/pip install -r evals/support-ragas/requirements.txt
+# 钉死理由：ragas 各大版本 API/依赖面变动剧烈（0.4.x 与 langchain 1.x 组合存在 vertexai 导入断裂），本组合实测 import 通过。
+ragas==0.2.15
+langchain==0.3.30
+langchain-community==0.3.31
+langchain-core==0.3.86
+langchain-openai==0.3.35
+datasets==5.0.1
+openai==2.54.0
+pydantic==2.13.5
+pandas==3.0.5
+numpy==2.5.3
