@@ -39,6 +39,7 @@ rabbitmq-exporter :9419 ┘        │ 告警规则 7 条
 | SmartlectMySQLNearMemLimit | 容器内存>limit 90% | 5m | P0-0 事故前置量 |
 | SmartlectGrowthWorkerDown | worker 心跳==0 | 2m | textfile 1min 粒度×2 |
 | SmartlectDiskUsageHigh | 根盘>80% | 10m | 40G 盘、备份将占空间（T0-2） |
+| SmartlectMySQLDown | mysql_up==0 | 1m | **T2-9 演练发现**：MySQL 容器宕机时 exporter 仍响应（scrape up=1），必须以 mysql_up 为准，否则整库不可用不告警 |
 
 ## 怎么验证的
 
