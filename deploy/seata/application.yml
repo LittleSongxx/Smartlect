@@ -16,7 +16,8 @@ seata:
     type: nacos
     nacos:
       application: smartlect-seata
-      server-addr: nacos:8848
+      # 默认走 compose 网络内的单机 nacos；集群形态注入逗号分隔的多成员地址
+      server-addr: ${SMARTLECT_NACOS_SEATA_ADDR:nacos:8848}
       group: SMARTLECT_SEATA_GROUP
       namespace: ""
       cluster: default

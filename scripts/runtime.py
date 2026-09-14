@@ -162,12 +162,32 @@ def verify_project():
     if ids:
         for container in json.loads(run("docker", "inspect", *ids, capture=True)):
             labels = container["Config"]["Labels"]
-            if labels.get("com.docker.compose.project.config_files") != str(ROOT / "deploy/compose.yaml"):
+            # 允许同一 checkout 的叠加文件（集群期 compose.cluster.yaml），仍拒绝外来 checkout
+            files = (labels.get("com.docker.compose.project.config_files") or "").split(",")
+            if str(ROOT / "deploy/compose.yaml") not in files:
                 raise RuntimeError("Existing smartlect container belongs to another checkout; refusing to modify it")
 
 
+def cluster_form(env):
+    # SMARTLECT_CLUSTER_FORM=cluster：RabbitMQ/Nacos 由 /opt/cluster 下的多机编排提供，
+    # 本机 compose 只保留 mysql/redis/seata（见 run/cloud/cluster/）。
+    return env.get("SMARTLECT_CLUSTER_FORM") == "cluster"
+
+
+def amqp_port_open(endpoint, timeout=3):
+    host, _, port = endpoint.rpartition(":")
+    with socket.socket() as probe:
+        probe.settimeout(timeout)
+        return probe.connect_ex((host, int(port))) == 0
+
+
+def nacos_addr(env):
+    # Nacos 客户端支持逗号分隔多地址；本脚本的单请求取首个成员即可
+    return env["SMARTLECT_NACOS_ADDR"].split(",")[0]
+
+
 def nacos_request(env, path, data):
-    req = urllib.request.Request("http://" + env["SMARTLECT_NACOS_ADDR"] + path,
+    req = urllib.request.Request("http://" + nacos_addr(env) + path,
                                  data=urllib.parse.urlencode(data).encode())
     with urllib.request.urlopen(req, timeout=10) as response:
         return json.load(response)
@@ -193,13 +213,20 @@ def infra_check(env):
     verify_project()
     states = compose("ps", "--all", "--format", "{{.Service}} {{.Health}} {{.State}}", capture=True)
     healthy = {line.split()[0] for line in states.splitlines() if line.endswith("healthy running")}
-    if not {"mysql", "redis", "rabbitmq", "nacos", "seata"} <= healthy:
+    if cluster_form(env):
+        if not {"mysql", "redis", "seata"} <= healthy:
+            raise RuntimeError("Middleware health check incomplete; run infra-up first")
+        # RabbitMQ 3 节点 quorum：任一 AMQP 端点可连即通过（节点级故障由演练覆盖）
+        endpoints = [ep for ep in (env.get("SPRING_RABBITMQ_ADDRESSES") or "").split(",") if ep]
+        if not endpoints or not any(amqp_port_open(ep) for ep in endpoints):
+            raise RuntimeError("No RabbitMQ cluster endpoint reachable")
+    elif not {"mysql", "redis", "rabbitmq", "nacos", "seata"} <= healthy:
         raise RuntimeError("Middleware health check incomplete; run infra-up first")
     token = nacos_request(env, "/nacos/v1/auth/login", {
         "username": env["SMARTLECT_NACOS_USERNAME"], "password": env["SMARTLECT_NACOS_PASSWORD"]})["accessToken"]
     query = urllib.parse.urlencode({"accessToken": token, "serviceName": "smartlect-seata",
                                    "groupName": "SMARTLECT_SEATA_GROUP", "healthyOnly": "true"})
-    with urllib.request.urlopen("http://" + env["SMARTLECT_NACOS_ADDR"] +
+    with urllib.request.urlopen("http://" + nacos_addr(env) +
                                 "/nacos/v1/ns/instance/list?" + query, timeout=10) as response:
         hosts = json.load(response)["hosts"]
     if not any(host["healthy"] and host["ip"] == env["SMARTLECT_SEATA_IP"]
@@ -513,7 +540,7 @@ def apps_check(env):
         for service in tuple(pending):
             query = urllib.parse.urlencode({"accessToken": token, "serviceName": f"smartlect-{service}",
                                            "groupName": env["SMARTLECT_NACOS_GROUP"], "healthyOnly": "true"})
-            with urllib.request.urlopen("http://" + env["SMARTLECT_NACOS_ADDR"] +
+            with urllib.request.urlopen("http://" + nacos_addr(env) +
                                         "/nacos/v1/ns/instance/list?" + query, timeout=5) as response:
                 hosts = json.load(response)["hosts"]
             if any(host["healthy"] and host["ip"] == "127.0.0.1"
