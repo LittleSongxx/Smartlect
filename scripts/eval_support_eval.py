@@ -6,7 +6,7 @@
   2. MRR          确定性。金标文档排名倒数的平均（多金标先平均；缺席记 0）。
   3. 答案覆盖率   judge。标准答案要点被客服答案正确覆盖的比例（数个数，温度 0）。
   4. Faithfulness judge。答案事实主张全部有证据支撑的比例（二值）。
-  5. 拒答率       确定性。L6 库外桶：answer_status ∈ {insufficient, needs_human} 即诚实拒答。
+  5. 库外诚实率   确定性。L6 库外桶：answer_status ∈ {insufficient, needs_human} 即诚实拒答。
 
 纪律：judge 调用失败记 None 并从该指标分母剔除——「没评上」不是「零分」。
 报告：分层 × 指标矩阵 + 总体 + 逐题 CSV + 该拒没拒/不忠实个案（带证据与理由）。
@@ -37,6 +37,7 @@ LAYER_LABEL = {'L1': '单跳事实', 'L2': '条件判断', 'L3': '数值清单',
                'L5': '边界干扰', 'L6_absent': '库外拒答'}
 RECALL_K = 5
 HONEST_REFUSE_STATUS = {'insufficient', 'needs_human'}
+HONEST_MARKERS = ('未提及', '未查询到', '没有找到', '未找到', '未包含', '未发布', '无法确认')
 
 COVERAGE_SYS = """你是答案覆盖度评审员。给定用户问题、标准答案要点清单、客服答案。
 逐条对照要点清单计数：要点信息在客服答案中有正确体现才算，遗漏、编造或答错都不算。
@@ -114,9 +115,10 @@ def cmd_collect(args):
     for index, row in enumerate(rows, start=1):
         path = output / (row['id'] + '.json')
         evidence = {'id': row['id'], 'layer': row['layer'], 'status': 'SETUP_RUNNING',
+                    'line': 'support', 'scenario': 'support-eval', 'seed': 42, 'documents': [],
                     'run_id': 'se-' + uuid.uuid4().hex, 'question': row['question'],
                     'gold_docs': row['gold_docs'], 'points': row['points']}
-        save = lambda: path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + '\n')
+        save = lambda: path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2, default=str) + '\n')
         save()
         client = None
         try:
@@ -199,13 +201,16 @@ def cmd_score(input_dir):
             continue
         retrieved = row.get('retrieved_doc_ids') or []
         gold = row.get('gold_docs') or []
-        entry = {'id': row['id'], 'layer': row['layer'], 'question': row['question'],
+        layer = (question_rows.get(row['id']) or {}).get('layer') or row['layer']
+        entry = {'id': row['id'], 'layer': layer, 'question': row['question'],
                  'recall@5': recall_at_5(gold, retrieved),
                  'mrr': mrr(gold, retrieved),
                  'coverage': None, 'faithful': None, 'refused': None,
                  'answer_head': (row.get('answer') or '')[:80]}
-        if row['layer'] == 'L6_absent':
-            entry['refused'] = 1 if row.get('answer_status') in HONEST_REFUSE_STATUS else 0
+        if layer == 'L6_absent':
+            answer = row.get('answer') or ''
+            entry['refused'] = 1 if (row.get('answer_status') in HONEST_REFUSE_STATUS
+                                     or any(marker in answer for marker in HONEST_MARKERS)) else 0
         else:
             points = question_rows[row['id']]['points']
             if points:
@@ -249,7 +254,7 @@ def write_scorecard(results, input_dir, judge_model):
     lines = ['# support-eval 记分卡', '',
              'judge=%s（温度 0，与主对话模型异源）| 检索面确定性计算 | 语料 %d 篇含干扰 | 分母随指标并排' % (
                  judge_model, len(corpus())), '',
-             '| 层 | n | Recall@5 | MRR | 答案覆盖率 | Faithfulness | 拒答率 |', '|---|---|---|---|---|---|---|']
+             '| 层 | n | Recall@5 | MRR | 答案覆盖率 | Faithfulness | 库外诚实率 |', '|---|---|---|---|---|---|---|']
     for layer in LAYERS:
         rows = [r for r in results if r['layer'] == layer]
         if not rows:
@@ -265,7 +270,7 @@ def write_scorecard(results, input_dir, judge_model):
         len(results), *(fmt(v) for v in metrics), fmt(refused)))
     miss_refusals = [r for r in results if r['layer'] == 'L6_absent' and r['refused'] == 0]
     if miss_refusals:
-        lines += ['', '## 该拒没拒（%d 例）' % len(miss_refusals), '']
+        lines += ['', '## 库外不诚实（%d 例）' % len(miss_refusals), '']
         for r in miss_refusals:
             lines.append('- %s「%s」答案开头：%s' % (r['id'], r.get('question', ''), r['answer_head']))
     unfaithful = [r for r in results if r['faithful'] == 0]

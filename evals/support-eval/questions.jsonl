@@ -70,8 +70,8 @@
 {"id": "q-live-03", "layer": "L6_absent", "question": "门店提供宠物寄存服务吗？", "reference_answer": "知识库未发布相关政策。客服应如实说明无法确认并转人工核实，不得编造规则。", "gold_docs": [], "points": [], "should_refuse": true}
 {"id": "q-live-04", "layer": "L6_absent", "question": "可以申请师傅上门安装调试吗？", "reference_answer": "知识库未发布相关政策。客服应如实说明无法确认并转人工核实，不得编造规则。", "gold_docs": [], "points": [], "should_refuse": true}
 {"id": "q-live-05", "layer": "L6_absent", "question": "有学生专属优惠活动吗？", "reference_answer": "知识库未发布相关政策。客服应如实说明无法确认并转人工核实，不得编造规则。", "gold_docs": [], "points": [], "should_refuse": true}
-{"id": "q-live-06", "layer": "L6_absent", "question": "能延迟到春节后再发货吗？", "reference_answer": "知识库未发布相关政策。客服应如实说明无法确认并转人工核实，不得编造规则。", "gold_docs": [], "points": [], "should_refuse": true}
+{"id": "q-live-06", "layer": "L2", "question": "能延迟到春节后再发货吗？", "reference_answer": "店铺不提供按个人要求延迟发货的服务。按发货规则，工作日17:00前支付的订单当日发货，之后次一工作日发货；法定节假日期间（包括春节）的订单统一顺延至节后第一个工作日发货。若希望春节后收货，可在临近假期时再下单。", "gold_docs": ["shp-06"], "points": ["店铺不提供按个人要求延迟发货的服务", "法定节假日期间（包括春节）的订单统一顺延至节后第一个工作日发货"], "should_refuse": false}
 {"id": "q-live-07", "layer": "L6_absent", "question": "发票可以开英文抬头吗？", "reference_answer": "知识库未发布相关政策。客服应如实说明无法确认并转人工核实，不得编造规则。", "gold_docs": [], "points": [], "should_refuse": true}
 {"id": "q-live-08", "layer": "L6_absent", "question": "有以旧换新活动吗？", "reference_answer": "知识库未发布相关政策。客服应如实说明无法确认并转人工核实，不得编造规则。", "gold_docs": [], "points": [], "should_refuse": true}
 {"id": "q-live-09", "layer": "L6_absent", "question": "会员生日有专属礼包吗？", "reference_answer": "知识库未发布相关政策。客服应如实说明无法确认并转人工核实，不得编造规则。", "gold_docs": [], "points": [], "should_refuse": true}
-{"id": "q-live-10", "layer": "L6_absent", "question": "账户能设置亲情账号共享购物车吗？", "reference_answer": "知识库未发布相关政策。客服应如实说明无法确认并转人工核实，不得编造规则。", "gold_docs": [], "points": [], "should_refuse": true}
+{"id": "q-live-10", "layer": "L2", "question": "账户能设置亲情账号共享购物车吗？", "reference_answer": "不支持亲情账号共享购物车。跨账户操作限制明确规定：不支持代查、代改他人的订单、地址、偏好，即使是夫妻、亲友关系也不例外；客服仅在当前登录身份范围内操作，需要他人配合的请对方登录本人账户。", "gold_docs": ["acc-03"], "points": ["不支持亲情账号共享购物车", "跨账户操作限制：不支持代查代改他人订单地址偏好，亲友也不例外", "需要他人配合处理的，请对方登录本人账户操作"], "should_refuse": false}
