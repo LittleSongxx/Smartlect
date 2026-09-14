@@ -401,6 +401,18 @@ def start_app(service, env, records):
                    f"-DJM.LOG.PATH={ROOT}/run/logs/{service}",
                    f"-DJM.SNAPSHOT.PATH={ROOT}/run/cache/{service}",
                    "-jar", str(runtime_jar), "--server.address=127.0.0.1", "--spring.cloud.nacos.discovery.ip=127.0.0.1"]
+        # OTel javaagent 只能经命令行注入（JAVA_TOOL_OPTIONS 已剥离）；agent 文件
+        # 不存在时（本地无追踪）完全不影响原命令。约束 #7：改本函数后
+        # check_independence + 进程身份核验必须仍过。
+        agent = env.get("SMARTLECT_OTEL_AGENT") or str(ROOT / "run" / "opentelemetry-javaagent.jar")
+        if not Path(agent).is_file():
+            agent = "/opt/otel/opentelemetry-javaagent.jar"
+        if Path(agent).is_file():
+            endpoint = env.get("SMARTLECT_OTEL_EXPORTER", "http://127.0.0.1:4318")
+            command[1:1] = [f"-javaagent:{agent}",
+                            f"-Dotel.service.name=smartlect-{service}",
+                            f"-Dotel.exporter.otlp.endpoint={endpoint}",
+                            "-Dotel.exporter.otlp.protocol=http/protobuf"]
     if not executable.exists():
         raise RuntimeError(f"Missing runtime executable for {service}; run build first")
     env_stamp = hashlib.sha256(json.dumps(env, sort_keys=True).encode()).hexdigest()

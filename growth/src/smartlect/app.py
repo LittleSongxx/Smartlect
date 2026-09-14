@@ -212,6 +212,32 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     app = FastAPI(title="Smartlect AI API", version=__version__, lifespan=lifespan)
     Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
+    # OTel 追踪（T1-7）：仅在显式配置端点且依赖可用时启用——未装包/未配置的
+    # 环境（本地测试、CI）自动跳过，零影响。W3C traceparent 由 FastAPI/httpx
+    # 插桩自动提取/注入，与 Java 侧 OTel javaagent 打通。
+    def _instrument_otel():
+        endpoint = config.get("SMARTLECT_OTEL_EXPORTER")
+        if not endpoint:
+            return
+        try:
+            from opentelemetry import trace
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+            from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+            from opentelemetry.sdk.resources import Resource
+            from opentelemetry.sdk.trace import TracerProvider
+            from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        except ImportError:
+            return
+        provider = TracerProvider(resource=Resource.create({"service.name": "smartlect-growth"}))
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+        trace.set_tracer_provider(provider)
+        FastAPIInstrumentor.instrument_app(app, tracer_provider=provider,
+                                            excluded_urls="health,metrics")
+        HTTPXClientInstrumentor().instrument(tracer_provider=provider)
+
+    _instrument_otel()
+
     @app.middleware('http')
     async def private_responses(request, call_next):
         response = await call_next(request)
