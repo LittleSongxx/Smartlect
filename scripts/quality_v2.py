@@ -26,6 +26,10 @@ ADS_MANIFEST = CONTRACT_DIR / 'ads/manifest.json'
 SHOPPING_HOLDOUT2 = CONTRACT_DIR / 'shopping/holdout2.jsonl'
 SUPPORT_HOLDOUT2 = CONTRACT_DIR / 'support/holdout2.jsonl'
 ADS_HOLDOUT2_PLAYBOOKS = CONTRACT_DIR / 'ads/holdout2-playbooks.json'
+# holdout-3：v15 基线后的下一份密封留出（holdout-1/2 均已烧毁）。
+SHOPPING_HOLDOUT3 = CONTRACT_DIR / 'shopping/holdout3.jsonl'
+SUPPORT_HOLDOUT3 = CONTRACT_DIR / 'support/holdout3.jsonl'
+ADS_HOLDOUT3_PLAYBOOKS = CONTRACT_DIR / 'ads/holdout3-playbooks.json'
 HOLDOUT_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout-manifest.json',
                      'support': CONTRACT_DIR / 'support/holdout-manifest.json',
                      'ads': CONTRACT_DIR / 'ads/holdout-manifest.json'}
@@ -64,7 +68,7 @@ def freeze_manifest():
 
 
 def refuse_holdout(split):
-    if split not in ('holdout', 'holdout2'):
+    if split not in ('holdout', 'holdout2', 'holdout3'):
         return
     # Both sealed splits ride on the same dev-freeze artifact; per-line seals
     # are additionally enforced by holdout_ready/holdout2_ready at run time.
@@ -724,6 +728,8 @@ def dataset_paths(split='development'):
         return {'shopping': SHOPPING_HOLDOUT, 'support': SUPPORT_HOLDOUT, 'ads': ADS_HOLDOUT_PLAYBOOKS}
     if split == 'holdout2':
         return {'shopping': SHOPPING_HOLDOUT2, 'support': SUPPORT_HOLDOUT2, 'ads': ADS_HOLDOUT2_PLAYBOOKS}
+    if split == 'holdout3':
+        return {'shopping': SHOPPING_HOLDOUT3, 'support': SUPPORT_HOLDOUT3, 'ads': ADS_HOLDOUT3_PLAYBOOKS}
     raise ValueError('unknown_split:' + split)
 
 
@@ -755,6 +761,20 @@ def holdout_ready(lines=('shopping', 'support', 'ads')):
 HOLDOUT2_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout2-manifest.json',
                       'support': CONTRACT_DIR / 'support/holdout2-manifest.json',
                       'ads': CONTRACT_DIR / 'ads/holdout2-manifest.json'}
+
+
+HOLDOUT3_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout3-manifest.json',
+                      'support': CONTRACT_DIR / 'support/holdout3-manifest.json',
+                      'ads': CONTRACT_DIR / 'ads/holdout3-manifest.json'}
+
+
+def holdout3_ready(lines=('shopping', 'support', 'ads')):
+    """Seal gate for holdout-3: runable only after every line's manifest is stamped.
+    Draft stage validates offline but never runs — first test is final test."""
+    missing = [line for line in lines if not HOLDOUT3_MANIFESTS[line].exists()]
+    if missing:
+        raise ValueError('holdout3_seal_pending_user_approval:' + ','.join(missing))
+    return True
 
 
 def holdout2_ready(lines=('shopping', 'support', 'ads')):

@@ -814,6 +814,32 @@ class Holdout2SealTests(unittest.TestCase):
         quality_v2.validate_dev_sets(split='holdout2')  # offline check only
 
 
+class Holdout3SealTests(unittest.TestCase):
+    def test_run_gate_flips_with_manifest_presence(self):
+        import tempfile
+        import quality_v2
+        original = dict(quality_v2.HOLDOUT3_MANIFESTS)
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                for line, path in original.items():
+                    quality_v2.HOLDOUT3_MANIFESTS[line] = Path(folder) / (line + '.json')
+                with self.assertRaisesRegex(ValueError, 'holdout3_seal_pending'):
+                    quality_v2.holdout3_ready()
+                for path in quality_v2.HOLDOUT3_MANIFESTS.values():
+                    path.write_text('{}')
+                self.assertTrue(quality_v2.holdout3_ready())
+                self.assertTrue(quality_v2.holdout3_ready(('shopping',)))
+        finally:
+            quality_v2.HOLDOUT3_MANIFESTS = original
+
+    def test_holdout3_draft_validates_offline_when_authored(self):
+        # Draft stage: questions may not exist yet; once they do they must validate
+        # offline. Running is refused until the user stamps every line's manifest.
+        from quality_v2 import SHOPPING_HOLDOUT3
+        if SHOPPING_HOLDOUT3.exists():
+            quality_v2.validate_dev_sets(split='holdout3')
+
+
 class FrozenReportTests(unittest.TestCase):
     def test_report_frozen_sections_and_no_composite(self):
         import tempfile

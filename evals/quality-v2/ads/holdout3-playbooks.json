@@ -1,0 +1,315 @@
+{
+  "schema_version": "quality-v2-ads-playbooks-v2",
+  "split": "holdout3",
+  "simulated_not_causal": true,
+  "causal_conclusion_supported": false,
+  "count_source": "campaign.metrics",
+  "forbid": [
+    "summary.payment_conversions",
+    "recommendation_clicks",
+    "GET /admin-api/assistant/ads top-level totals"
+  ],
+  "playbooks": [
+    {
+      "playbook_id": "ads-h3-01",
+      "kind": "fatigue_reorder",
+      "same_sku": true,
+      "campaigns": [
+        {
+          "slot": "a",
+          "budget_cents": 3000,
+          "cpc_cents": 10
+        },
+        {
+          "slot": "b",
+          "budget_cents": 3000,
+          "cpc_cents": 10
+        }
+      ],
+      "script": [
+        {
+          "op": "probe_rank",
+          "expect_first": "a",
+          "expect_items": 2
+        },
+        {
+          "op": "expose",
+          "slot": "b",
+          "count": 6
+        },
+        {
+          "op": "probe_rank",
+          "expect_first": "a",
+          "expect_items": 2
+        }
+      ],
+      "note": "疲劳重排镜像：b 被忽略 6 次后仍 a 先（1/(1+6) 降权不足以翻转 id 序平手）",
+      "expected": {
+        "counts": {
+          "impressions": 6,
+          "clicks": 0,
+          "payment_conversions": 0,
+          "unknown_payments": 0
+        },
+        "CTR": 0.0,
+        "CVR": null
+      }
+    },
+    {
+      "playbook_id": "ads-h3-02",
+      "kind": "fatigue_viewer_isolation",
+      "same_sku": true,
+      "campaigns": [
+        {
+          "slot": "a",
+          "budget_cents": 2000,
+          "cpc_cents": 10
+        },
+        {
+          "slot": "b",
+          "budget_cents": 2000,
+          "cpc_cents": 10
+        }
+      ],
+      "script": [
+        {
+          "op": "expose",
+          "slot": "a",
+          "count": 4
+        },
+        {
+          "op": "probe_rank",
+          "as_actor": "user_b",
+          "expect_first": "a",
+          "expect_items": 2
+        }
+      ],
+      "note": "观众隔离镜像：user_a 的疲劳不影响 user_b 视角的排序",
+      "expected": {
+        "counts": {
+          "impressions": 4,
+          "clicks": 0,
+          "payment_conversions": 0,
+          "unknown_payments": 0
+        },
+        "CTR": 0.0,
+        "CVR": null
+      }
+    },
+    {
+      "playbook_id": "ads-h3-03",
+      "kind": "dual_exhaustion_gate",
+      "same_sku": true,
+      "campaigns": [
+        {
+          "slot": "a",
+          "budget_cents": 24,
+          "cpc_cents": 8
+        },
+        {
+          "slot": "b",
+          "budget_cents": 32,
+          "cpc_cents": 8
+        }
+      ],
+      "script": [
+        {
+          "op": "expose",
+          "slot": "a",
+          "count": 3
+        },
+        {
+          "op": "expose",
+          "slot": "b",
+          "count": 4
+        },
+        {
+          "op": "click",
+          "slot": "a",
+          "count": 3
+        },
+        {
+          "op": "click",
+          "slot": "b",
+          "count": 4
+        },
+        {
+          "op": "reject",
+          "http": "click",
+          "slot": "a",
+          "error": "ads_not_active"
+        },
+        {
+          "op": "reject",
+          "http": "click",
+          "slot": "b",
+          "error": "ads_not_active"
+        },
+        {
+          "op": "probe_status",
+          "slot": "b",
+          "expect_status": "EXHAUSTED",
+          "expect_pause_reason": "budget_exhausted"
+        },
+        {
+          "op": "probe_rank",
+          "expect_first": null,
+          "expect_items": 0
+        }
+      ],
+      "note": "双活动双耗尽（新形状）：两条小额预算先后扣满→双双 409+除名；b 为非末位槽位兼作 probe_status 解析金丝雀",
+      "expected": {
+        "counts": {
+          "impressions": 7,
+          "clicks": 7,
+          "payment_conversions": 0,
+          "unknown_payments": 0
+        },
+        "CTR": 1.0,
+        "CVR": 0.0
+      }
+    },
+    {
+      "playbook_id": "ads-h3-04",
+      "kind": "budget_exhaustion_gate",
+      "campaigns": [
+        {
+          "slot": "a",
+          "budget_cents": 36,
+          "cpc_cents": 12
+        }
+      ],
+      "script": [
+        {
+          "op": "expose",
+          "slot": "a",
+          "count": 9
+        },
+        {
+          "op": "click",
+          "slot": "a",
+          "count": 3
+        },
+        {
+          "op": "reject",
+          "http": "click",
+          "slot": "a",
+          "error": "ads_not_active"
+        },
+        {
+          "op": "reject",
+          "http": "click",
+          "slot": "a",
+          "error": "ads_not_active"
+        },
+        {
+          "op": "probe_status",
+          "slot": "a",
+          "expect_status": "EXHAUSTED",
+          "expect_pause_reason": "budget_exhausted"
+        },
+        {
+          "op": "probe_rank",
+          "expect_first": null,
+          "expect_items": 0
+        }
+      ],
+      "note": "耗尽门连续 409（幂等）：连续两次点击拒绝都须 409（同参重试不产生新扣费）",
+      "expected": {
+        "counts": {
+          "impressions": 9,
+          "clicks": 3,
+          "payment_conversions": 0,
+          "unknown_payments": 0
+        },
+        "CTR": 0.3333333333333333,
+        "CVR": 0.0
+      }
+    },
+    {
+      "playbook_id": "ads-h3-05",
+      "kind": "impressions_only",
+      "steps": [
+        "create_campaign",
+        "grant",
+        "activate_campaign",
+        "activate_creative",
+        "exposures"
+      ],
+      "traffic": {
+        "impressions": 9,
+        "clicks": 0,
+        "payments": 0
+      },
+      "expected": {
+        "counts": {
+          "impressions": 9,
+          "clicks": 0,
+          "payment_conversions": 0,
+          "unknown_payments": 0
+        },
+        "CTR": 0.0,
+        "CVR": null
+      },
+      "note": "基础面：仅曝光"
+    },
+    {
+      "playbook_id": "ads-h3-06",
+      "kind": "attributed_payment",
+      "buy": "other_sku",
+      "steps": [
+        "create_campaign",
+        "grant",
+        "activate_campaign",
+        "activate_creative",
+        "exposures",
+        "clicks",
+        "pay_other"
+      ],
+      "traffic": {
+        "impressions": 11,
+        "clicks": 5,
+        "payments": 5
+      },
+      "expected": {
+        "counts": {
+          "impressions": 11,
+          "clicks": 5,
+          "payment_conversions": 5,
+          "unknown_payments": 0
+        },
+        "CTR": 0.45454545454545453,
+        "CVR": 1.0
+      },
+      "note": "基础面：点 A 买 B 仍归因"
+    },
+    {
+      "playbook_id": "ads-h3-07",
+      "kind": "clicks_no_payment",
+      "steps": [
+        "create_campaign",
+        "grant",
+        "activate_campaign",
+        "activate_creative",
+        "exposures",
+        "clicks"
+      ],
+      "traffic": {
+        "impressions": 14,
+        "clicks": 6,
+        "payments": 0
+      },
+      "expected": {
+        "counts": {
+          "impressions": 14,
+          "clicks": 6,
+          "payment_conversions": 0,
+          "unknown_payments": 0
+        },
+        "CTR": 0.42857142857142855,
+        "CVR": 0.0
+      },
+      "note": "基础面：曝光点击不支付"
+    }
+  ]
+}
