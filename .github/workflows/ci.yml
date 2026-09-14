@@ -76,7 +76,7 @@ jobs:
         run: |
           install -m600 /dev/stdin ~/deploy_key <<<"${{ secrets.SMARTLECT_DEPLOY_KEY }}"
           mkdir -p ~/.ssh
-          echo "39.107.102.244 ${{ secrets.ECS_HOST_KEY }}" >> ~/.ssh/known_hosts
+          echo "${{ secrets.ECS_HOST_KEY }}" >> ~/.ssh/known_hosts
       - name: 回滚（inputs.rollback=true 时）
         if: ${{ inputs.rollback }}
         run: ssh -i ~/deploy_key -o BatchMode=yes root@39.107.102.244 rollback
