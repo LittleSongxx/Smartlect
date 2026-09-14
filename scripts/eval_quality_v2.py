@@ -757,6 +757,9 @@ METRIC_DESIGN_MAP = [
     ('pass^k（三线）',
      '模型采样方差（不播种的 k 次独立试验）',
      'flip_cases 与 per_case_trials 逐题 k 次结局表'),
+    ('Tier-1 诊断列（Recall@1 / MRR@8 / Context_Precision@8 / violation_free@1 / empty_set_honesty / 建单 F1）',
+     '判别力在饱和指标之下的层：检索首位与排序质量（@8 已饱和）、导购首位资格门、空集收口诚实、建单边界',
+     '全部确定性、试验级聚合、不进公开表头；失败归因到检索排序/资格门/收口纪律/建单编译终态'),
 ]
 
 
@@ -797,8 +800,12 @@ def write_frozen_report(run_dir):
             '| 线 | 指标 | 值 [CI] | 分母 |', '|---|---|---|---|']
     for line, metrics in (
             ('导购', [('Pass@1（公开）', 'Pass@1'), ('Precision@4/ceiling（公开）', 'Precision@4/ceiling'),
-                      ('raw Precision@4（诊断）', 'Precision@4'), ('Precision@4_ceiling（诊断）', 'Precision@4_ceiling')]),
+                      ('raw Precision@4（诊断）', 'Precision@4'), ('Precision@4_ceiling（诊断）', 'Precision@4_ceiling'),
+                      ('violation_free@1（诊断，Tier-1）', 'violation_free@1'),
+                      ('empty_set_honesty（诊断，Tier-1）', 'empty_set_honesty')]),
             ('客服', [('Recall@8（公开）', 'Recall@8'), ('Recall@4（诊断）', 'Recall@4_diagnostic'),
+                      ('Recall@1（诊断，Tier-1）', 'Recall@1'), ('MRR@8（诊断，Tier-1）', 'MRR@8'),
+                      ('Context_Precision@8（诊断，Tier-1）', 'Context_Precision@8'),
                       ('Faithfulness（公开，judge）', 'Faithfulness'), ('Faithfulness_rule（诊断）', 'Faithfulness_rule'),
                       ('Faithfulness_answer_side（诊断）', 'Faithfulness_answer_side'), ('Peripheral_coverage（诊断）', 'Peripheral_coverage')]),
             ('广告', [('Attribution_integrity（公开）', 'Attribution_integrity'), ('CTR（诊断，模拟非因果）', 'CTR'),
@@ -809,6 +816,16 @@ def write_frozen_report(run_dir):
         for label, key in metrics:
             if key in block:
                 out.append('| %s | %s | %s | %s |' % (line, label, _fmt_ci(block.get(key), ci.get(key)), dens.get(key, '—')))
+    handoff_block = (summary.get('support') or {}).get('handoff_f1') or {}
+    if handoff_block:
+        def _num(value):
+            return '—' if value is None else '%.4f' % value
+        out.append('')
+        out.append('建单 F1（诊断，Tier-1）：P=%s R=%s F1=%s（分母 %s 试验；剔除 allow_handoff %s 试验；tp=%s fp=%s fn=%s）' % (
+            _num(handoff_block.get('precision')), _num(handoff_block.get('recall')),
+            _num(handoff_block.get('f1')), handoff_block.get('denominator'),
+            handoff_block.get('excluded_allow_handoff'),
+            handoff_block.get('tp'), handoff_block.get('fp'), handoff_block.get('fn')))
     out.append('')
 
     out += ['## 可靠性（k 次试验）', '']

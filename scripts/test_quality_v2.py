@@ -8,8 +8,9 @@ from eval_quality_v2 import business_closeout_after_budget, handoff_ends_convers
 import quality_v2
 from quality_v2 import (ADS_PLAYBOOKS, CONTRACT_JSON, SHOPPING_CATALOG, SHOPPING_DEV, SUPPORT_DEV,
                         AnnotationError, ads_grant_envelope, aggregate_line, append_rerun_ledger,
-                        campaign_rates, catalog_index, catalog_overlay_plan, last_real_search,
-                        live_support_cases, load_json, load_jsonl, refuse_holdout, remap_observation,
+                        campaign_rates, catalog_index, catalog_overlay_plan, context_precision_at_k,
+                        handoff_f1, last_real_search, live_support_cases, load_json, load_jsonl,
+                        mrr_at_k, recall_at_1_strict, recall_at_k, refuse_holdout, remap_observation,
                         score_ads, score_faithfulness, score_shopping, score_support,
                         self_check_scores, sku_satisfies, trial_table, validate_dev_sets,
                         validate_support_case, validate_shopping_case, wilson_ci, write_report)
@@ -685,6 +686,174 @@ class TrialsAndCITests(unittest.TestCase):
         self.assertEqual(row1['Faithfulness'], 1.0)
         self.assertEqual(row2['Faithfulness'], 0.0)  # same case_id, different trial rows
         self.assertEqual(row1['judge_quotes'], {'a': '模拟支付'})  # quotes retained for human review
+
+
+class Tier1DiagnosticTests(unittest.TestCase):
+    """Six Tier-1 diagnostic columns: deterministic, trial-level, never public headers."""
+
+    def setUp(self):
+        self.shopping_cases = {row['case_id']: row for row in load_jsonl(SHOPPING_DEV)}
+        self.skus = catalog_index()
+
+    @staticmethod
+    def support_observation(doc_ids):
+        return {'result': {'answer': '已按店内资料回答。', 'answer_status': 'answered', 'citations': []},
+                'tool_calls': [{'tool_name': 'search_knowledge',
+                                'data': {'candidates': [{'doc_id': doc} for doc in doc_ids],
+                                         'retrieval': {'final_depth': 8}}}]}
+
+    @staticmethod
+    def support_case(gold):
+        return {'case_id': 'tier1', 'relevant_doc_ids': gold, 'expected_retrieval': True,
+                'expected_handoff': False, 'checkable_claims': []}
+
+    def test_mrr_known_values_dedup_and_beyond_k(self):
+        # gold a,b,c at ranks 2,3,5 -> (1/2 + 1/3 + 1/5) / 3 = 31/90
+        score = score_support(self.support_case(['a', 'b', 'c']),
+                              self.support_observation(['x', 'a', 'b', 'y', 'c']))
+        self.assertAlmostEqual(score['MRR@8'], 31 / 90, places=12)
+        # duplicates keep first position: a=1, b=3 -> (1 + 1/3) / 2 = 2/3
+        score = score_support(self.support_case(['a', 'b']),
+                              self.support_observation(['a', 'x', 'a', 'b']))
+        self.assertAlmostEqual(score['MRR@8'], 2 / 3, places=12)
+        # gold ranked 9th is beyond @8: reciprocal 0, same null-vs-zero face as Recall@8
+        score = score_support(self.support_case(['a']),
+                              self.support_observation(['b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'a']))
+        self.assertEqual(score['MRR@8'], 0.0)
+        self.assertEqual(score['Recall@8'], 0.0)
+
+    def test_recall_at_1_strict(self):
+        self.assertEqual(score_support(self.support_case(['a']),
+                                       self.support_observation(['a', 'b']))['Recall@1'], 1.0)
+        self.assertEqual(score_support(self.support_case(['a']),
+                                       self.support_observation(['b', 'a']))['Recall@1'], 0.0)
+        # two distinct gold docs cannot both sit at rank 1 after dedup
+        self.assertEqual(score_support(self.support_case(['a', 'b']),
+                                       self.support_observation(['a', 'b']))['Recall@1'], 0.0)
+        chitchat = self.support_case([])
+        chitchat['expected_retrieval'] = False
+        self.assertIsNone(score_support(chitchat, self.support_observation([]))['Recall@1'])
+
+    def test_context_precision_known_values(self):
+        # hits at i=1 (1/1) and i=3 (2/3), |gold|=2 -> (1 + 2/3) / 2 = 5/6
+        score = score_support(self.support_case(['a', 'b']),
+                              self.support_observation(['a', 'x', 'b', 'y']))
+        self.assertAlmostEqual(score['Context_Precision@8'], 5 / 6, places=12)
+        # single gold at rank 3: 1/3 — and identical to MRR for single-gold trials
+        score = score_support(self.support_case(['a']),
+                              self.support_observation(['x', 'y', 'a']))
+        self.assertAlmostEqual(score['Context_Precision@8'], 1 / 3, places=12)
+        self.assertAlmostEqual(score['MRR@8'], 1 / 3, places=12)
+        # no hits at all -> 0.0, not null
+        self.assertEqual(score_support(self.support_case(['q']),
+                                       self.support_observation(['x', 'y']))['Context_Precision@8'], 0.0)
+
+    def test_violation_free_at_1_first_slot_only(self):
+        case = self.shopping_cases['shop-d-01']
+        lite, pro = self.skus['kb-lite:black'], self.skus['kb-pro:black']
+        clean = score_shopping(case, {'selected_sku_keys': [lite['sku_key'], pro['sku_key']],
+                                      'products': [lite, pro],
+                                      'retrieve_diagnostics': {'popular_used': False}})
+        self.assertEqual(clean['violation_free@1'], 1)   # first slot within budget
+        dirty = score_shopping(case, {'selected_sku_keys': [pro['sku_key'], lite['sku_key']],
+                                      'products': [pro, lite],
+                                      'retrieve_diagnostics': {'popular_used': False}})
+        self.assertEqual(dirty['violation_free@1'], 0)   # first slot over budget
+        # empty selection on a gold case leaves the denominator
+        empty = score_shopping(case, {'selected_sku_keys': [], 'products': [],
+                                      'retrieve_diagnostics': {'popular_used': False}})
+        self.assertIsNone(empty['violation_free@1'])
+        # compare cases score completeness, not first-slot compliance
+        compare_case = self.shopping_cases['shop-d-04']
+        compare = score_shopping(compare_case, {'selected_sku_keys': [lite['sku_key']], 'products': [lite],
+                                                'comparison_complete': False, 'missing_targets': ['火星飞船'],
+                                                'comparison_sku_keys': [lite['sku_key']],
+                                                'retrieve_diagnostics': {'popular_used': False}})
+        self.assertIsNone(compare.get('violation_free@1'))
+
+    def test_empty_set_honesty_mirrors_empty_branch_pass(self):
+        case = self.shopping_cases['shop-d-03']
+        honest = score_shopping(case, {'selected_sku_keys': [], 'products': [],
+                                       'retrieve_diagnostics': {'popular_used': False,
+                                                                'empty_reason': 'hard_constraint_unsatisfied'}})
+        self.assertEqual(honest['empty_set_honesty'], 1)
+        backfilled = score_shopping(case, {'selected_sku_keys': ['chair:mesh'], 'products': [self.skus['chair:mesh']],
+                                           'retrieve_diagnostics': {'popular_used': True, 'empty_reason': None}})
+        self.assertEqual(backfilled['empty_set_honesty'], 0)
+        reasonless = score_shopping(case, {'selected_sku_keys': [], 'products': [],
+                                           'retrieve_diagnostics': {'popular_used': False, 'empty_reason': None}})
+        self.assertEqual(reasonless['empty_set_honesty'], 0)
+        # non-empty-satisfaction cases carry no empty-honesty observation
+        gold_case = self.shopping_cases['shop-d-01']
+        filled = score_shopping(gold_case, {'selected_sku_keys': ['kb-lite:black'],
+                                            'products': [self.skus['kb-lite:black']],
+                                            'retrieve_diagnostics': {'popular_used': False}})
+        self.assertIsNone(filled.get('empty_set_honesty'))
+
+    def test_handoff_f1_excludes_allow_handoff_and_setup_failed(self):
+        rows = [
+            {'outcome': 'pass', 'expected_handoff': True, 'handoff': True},
+            {'outcome': 'pass', 'expected_handoff': True, 'handoff': True},
+            {'outcome': 'fail', 'expected_handoff': False, 'handoff': True},
+            {'outcome': 'fail', 'expected_handoff': True, 'handoff': False},
+            {'outcome': 'pass', 'expected_handoff': False, 'handoff': False},
+            {'outcome': 'pass', 'expected_handoff': False, 'handoff': False},
+            {'outcome': 'pass', 'expected_handoff': False, 'handoff': False},
+            {'outcome': 'pass', 'allow_handoff': True, 'expected_handoff': False, 'handoff': False},
+            {'outcome': 'pass', 'allow_handoff': True, 'expected_handoff': False, 'handoff': True},
+            {'outcome': 'setup_failed', 'expected_handoff': True, 'handoff': False},
+        ]
+        result = handoff_f1(rows)
+        self.assertEqual((result['tp'], result['fp'], result['fn']), (2, 1, 1))
+        self.assertAlmostEqual(result['precision'], 2 / 3, places=12)
+        self.assertAlmostEqual(result['recall'], 2 / 3, places=12)
+        self.assertAlmostEqual(result['f1'], 2 / 3, places=12)
+        self.assertEqual(result['denominator'], 7)
+        self.assertEqual(result['excluded_allow_handoff'], 2)
+
+    def test_trial_level_aggregation_differs_from_case_macro(self):
+        rows = [{'case_id': 'a', 'trial': 1, 'outcome': 'pass', 'Pass@1': 1, 'violation_free@1': 1},
+                {'case_id': 'a', 'trial': 2, 'outcome': 'fail', 'Pass@1': 0, 'violation_free@1': 0},
+                {'case_id': 'b', 'trial': 1, 'outcome': 'pass', 'Pass@1': 1, 'violation_free@1': 1},
+                {'case_id': 'b', 'trial': 2, 'outcome': 'pass', 'Pass@1': 1, 'violation_free@1': 1},
+                {'case_id': 'b', 'trial': 3, 'outcome': 'pass', 'Pass@1': 1, 'violation_free@1': 1}]
+        summary = aggregate_line('shopping', rows, ('Pass@1',), trial_level_names=('violation_free@1',))
+        self.assertAlmostEqual(summary['violation_free@1'], 4 / 5, places=12)   # trial share
+        self.assertAlmostEqual(summary['Pass@1'], 0.75, places=12)             # case-macro headline (0.5, 1.0)
+        self.assertEqual(summary['denominators']['violation_free@1'], 5)
+        self.assertIn('violation_free@1', summary['ci95_wilson'])
+
+    def test_self_check_synthetic_tier1_values(self):
+        shopping, support, _ = self_check_scores()
+        with tempfile.TemporaryDirectory() as folder:
+            report = write_report(folder, shopping, support, [], official=False, synthetic=True)
+        # synthetic retrieval ranks gold docs in gold order: MRR = mean(1/i over gold positions)
+        eligible = [case for case in load_jsonl(SUPPORT_DEV)
+                    if case.get('relevant_doc_ids') and case.get('expected_retrieval') is not False]
+        expected_mrr = quality_v2.mean(
+            quality_v2.mean(1 / i for i in range(1, len(case['relevant_doc_ids']) + 1))
+            for case in eligible)
+        self.assertAlmostEqual(report['support']['MRR@8'], expected_mrr, places=12)
+        # only single-gold trials can put all gold at rank 1 under dedup
+        expected_recall1 = sum(1 for case in eligible if len(case['relevant_doc_ids']) == 1) / len(eligible)
+        self.assertAlmostEqual(report['support']['Recall@1'], expected_recall1, places=12)
+        # synthetic selections are gold SKUs (first slot satisfies) and legal empties
+        self.assertEqual(report['shopping']['violation_free@1'], 1.0)
+        self.assertEqual(report['shopping']['empty_set_honesty'], 1.0)
+        n_recommend_gold = sum(1 for case in load_jsonl(SHOPPING_DEV)
+                               if (case.get('kind') or 'recommend') == 'recommend'
+                               and case.get('satisfaction_set'))
+        # empty-satisfaction compare cases score via the compare branch instead,
+        # so the honesty denominator is the non-compare empty-satisfaction cases
+        n_empty = sum(1 for case in load_jsonl(SHOPPING_DEV)
+                      if not case.get('satisfaction_set')
+                      and (case.get('kind') or 'recommend') != 'compare')
+        self.assertEqual(report['shopping']['denominators']['violation_free@1'], n_recommend_gold)
+        self.assertEqual(report['shopping']['denominators']['empty_set_honesty'], n_empty)
+        # perfect synthetic handoff: F1=1, allow_handoff cases excluded and counted
+        self.assertEqual(report['support']['handoff_f1']['f1'], 1.0)
+        self.assertEqual(report['support']['handoff_f1']['excluded_allow_handoff'],
+                         sum(1 for row in support if row.get('allow_handoff')))
 
 
 class JudgeCalibrationTests(unittest.TestCase):

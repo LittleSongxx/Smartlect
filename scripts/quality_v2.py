@@ -297,8 +297,11 @@ def score_shopping(case, observation, catalog=None):
     if not gold:
         empty_ok = diagnostics.get('empty_reason') in (contract()['shopping']['empty_reasons_ok'])
         passed = (not items and not popular and empty_ok)
+        # empty_set_honesty: in an empty-satisfaction case the honest outcome IS the
+        # pass condition — empty list + legitimate reason + no popular backfill.
         return {'line': 'shopping', 'case_id': case['case_id'], 'outcome': 'pass' if passed else 'fail',
-                'Precision@4': None, 'Pass@1': 1 if passed else 0, 'empty_reason': diagnostics.get('empty_reason')}
+                'Precision@4': None, 'Pass@1': 1 if passed else 0, 'empty_reason': diagnostics.get('empty_reason'),
+                'empty_set_honesty': 1 if passed else 0}
 
     selected_keys = [sku['sku_key'] for sku in items]
     ceiling = min(4, len(gold)) / 4
@@ -309,13 +312,17 @@ def score_shopping(case, observation, catalog=None):
         in_gold = any(key in gold for key in selected_keys)
         no_violators = all(sku_satisfies(sku, constraints) and sku['sku_key'] in gold for sku in items)
     passed = in_gold and no_violators and not popular
+    # violation_free@1: recommend trials with a non-empty selection only (compare
+    # scores completeness, empty-satisfaction cases score honesty — both stay null).
+    violation_free = (1 if sku_satisfies(items[0], constraints) else 0) if items else None
     return {'line': 'shopping', 'case_id': case['case_id'], 'outcome': 'pass' if passed else 'fail',
             'Precision@4': precision, 'Precision@4_ceiling': ceiling,
             # NDCG-style normalization against the achievable ceiling: same slots,
             # same hits — the ratio only answers "how close to this case's maximum".
             # Capped at 1.0; demand-fill overshoot stays visible in the raw column.
             'Precision@4/ceiling': min(precision / ceiling, 1.0) if ceiling else None,
-            'Pass@1': 1 if passed else 0, 'hits': hits, 'selected': selected_keys}
+            'Pass@1': 1 if passed else 0, 'hits': hits, 'selected': selected_keys,
+            'violation_free@1': violation_free}
 
 
 def receipt_data(call):
@@ -352,6 +359,56 @@ def recall_at_k(gold_doc_ids, candidates, k):
         if doc_id and doc_id not in ranked:
             ranked.append(doc_id)
     return len(set(gold) & set(ranked[:k])) / len(gold)
+
+
+def dedup_ranks(candidates):
+    """doc_id -> 1-based rank in the deduplicated candidate order (same order
+    recall_at_k scores against; duplicate doc_ids keep their first position)."""
+    ranks = {}
+    for row in candidates or []:
+        doc_id = row.get('doc_id') if isinstance(row, dict) else row
+        if doc_id and doc_id not in ranks:
+            ranks[doc_id] = len(ranks) + 1
+    return ranks
+
+
+def mrr_at_k(gold_doc_ids, candidates, k=8):
+    """Mean reciprocal rank over gold docs; a gold doc ranked beyond k (or absent)
+    contributes 0, matching Recall@k's null-vs-zero semantics."""
+    gold = list(dict.fromkeys(gold_doc_ids or []))
+    if not gold:
+        return None
+    ranks = dedup_ranks(candidates)
+    return mean(1 / ranks[doc] if ranks.get(doc, k + 1) <= k else 0.0 for doc in gold)
+
+
+def recall_at_1_strict(gold_doc_ids, candidates):
+    """1.0 only when every gold doc sits at rank 1 of the deduped order — with
+    distinct doc_ids that means single-gold-at-top; multi-gold trials score 0."""
+    gold = list(dict.fromkeys(gold_doc_ids or []))
+    if not gold:
+        return None
+    ranks = dedup_ranks(candidates)
+    return 1.0 if all(ranks.get(doc) == 1 for doc in gold) else 0.0
+
+
+def context_precision_at_k(gold_doc_ids, candidates, k=8):
+    """RAGAS-style rank-weighted precision with binary gold: at each hit position i,
+    precision-so-far = hits_up_to_i / i; total = sum(precision@i) / |gold|."""
+    gold = set(dict.fromkeys(gold_doc_ids or []))
+    if not gold:
+        return None
+    ranked = []
+    for row in candidates or []:
+        doc_id = row.get('doc_id') if isinstance(row, dict) else row
+        if doc_id and doc_id not in ranked:
+            ranked.append(doc_id)
+    hits, total = 0, 0.0
+    for index, doc_id in enumerate(ranked[:k], start=1):
+        if doc_id in gold:
+            hits += 1
+            total += hits / index
+    return total / len(gold)
 
 
 NEGATION_WINDOW = 8
@@ -409,11 +466,15 @@ def score_support(case, observation):
     gold = list(case.get('relevant_doc_ids') or [])
     recall = recall_at_k(gold, candidates, 8)
     diagnostic = recall_at_k(gold, candidates, 4)
+    mrr = mrr_at_k(gold, candidates, 8)
+    recall1 = recall_at_1_strict(gold, candidates)
+    context_precision = context_precision_at_k(gold, candidates, 8)
     if case.get('expected_retrieval') is False and gold:
         raise AnnotationError('chitchat_cannot_have_relevant_docs:' + case['case_id'])
     if case.get('expected_retrieval') is False:
         recall = None
         diagnostic = None
+        mrr = recall1 = context_precision = None
     forbidden = set(case.get('forbidden_doc_ids') or [])
     cited = {row.get('doc_id') for row in result.get('citations') or [] if row.get('doc_id')}
     cand_ids = {row.get('doc_id') for row in candidates if isinstance(row, dict)}
@@ -444,9 +505,11 @@ def score_support(case, observation):
         outcome = 'pass' if pass_handoff and not claim_hit else 'fail'
     return {'line': 'support', 'case_id': case['case_id'], 'outcome': outcome,
             'Recall@8': recall, 'Recall@4_diagnostic': diagnostic,
+            'Recall@1': recall1, 'MRR@8': mrr, 'Context_Precision@8': context_precision,
             'Faithfulness': None if case.get('checkable_claims') else None,
             'Faithfulness_rule': rule_faithfulness,
             'Pass@1': 1 if pass_handoff and not leaked and not claim_hit else 0, 'handoff': handoff,
+            'expected_handoff': expected_handoff, 'allow_handoff': bool(case.get('allow_handoff')),
             'forbidden_leak': leaked, 'forbidden_claim_hit': forbidden_claim_hit,
             'must_not_claim_hit': must_not_claim_hit}
 
@@ -788,7 +851,29 @@ def holdout2_ready(lines=('shopping', 'support', 'ads')):
     return True
 
 
-def aggregate_line(name, rows, metric_names):
+def handoff_f1(rows):
+    """P/R/F1 of "opened a persistent ticket" (the compiled final state behind
+    Pass@1's handoff face) against expected_handoff. allow_handoff cases accept
+    both closures, so they are undecidable negatives: excluded from the
+    denominator and counted separately."""
+    eligible = [row for row in rows
+                if row.get('outcome') != 'setup_failed' and not row.get('allow_handoff')]
+    tp = sum(1 for row in eligible if row.get('expected_handoff') and row.get('handoff'))
+    fp = sum(1 for row in eligible if not row.get('expected_handoff') and row.get('handoff'))
+    fn = sum(1 for row in eligible if row.get('expected_handoff') and not row.get('handoff'))
+    precision = tp / (tp + fp) if tp + fp else None
+    recall = tp / (tp + fn) if tp + fn else None
+    if precision is None or recall is None or precision + recall == 0:
+        f1 = None
+    else:
+        f1 = 2 * precision * recall / (precision + recall)
+    return {'precision': precision, 'recall': recall, 'f1': f1,
+            'tp': tp, 'fp': fp, 'fn': fn, 'denominator': len(eligible),
+            'excluded_allow_handoff': sum(1 for row in rows if row.get('outcome') != 'setup_failed'
+                                          and row.get('allow_handoff'))}
+
+
+def aggregate_line(name, rows, metric_names, trial_level_names=()):
     scored = [row for row in rows if row.get('outcome') != 'setup_failed']
     setup_failed = [row for row in rows if row.get('outcome') == 'setup_failed']
     summary = {'line': name, 'n': len(rows), 'n_scored': len(scored), 'n_setup_failed': len(setup_failed),
@@ -815,13 +900,19 @@ def aggregate_line(name, rows, metric_names):
     else:
         scored_by_case = {None: scored}
     # Denominators next to every headline so a 1.0 over 10 cases can't pose as 1.0 over all.
+    trial_level_names = tuple(trial_level_names)
+    all_metrics = tuple(metric_names) + trial_level_names
     summary['denominators'] = {metric: sum(1 for row in scored if row.get(metric) is not None)
-                               for metric in metric_names}
+                               for metric in all_metrics}
     for metric in metric_names:
         summary[metric] = mean(mean(row.get(metric) for row in case_rows)
                                for case_rows in scored_by_case.values())
+    # Tier-1 diagnostic columns aggregate at trial level (each scored trial is one
+    # observation), unlike the case-macro headlines above.
+    for metric in trial_level_names:
+        summary[metric] = mean(row.get(metric) for row in scored)
     summary['ci95_wilson'] = {metric: wilson_ci(summary[metric], summary['denominators'][metric])
-                              for metric in metric_names}
+                              for metric in all_metrics}
     return summary
 
 
@@ -1003,6 +1094,11 @@ def write_report(output_dir, shopping, support, ads, *, official=False, partial=
                  trials=1):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    support_summary = aggregate_line('support', support, ('Recall@8', 'Faithfulness',
+                                                          'Faithfulness_rule', 'Faithfulness_answer_side',
+                                                          'Peripheral_coverage', 'Pass@1'),
+                                     trial_level_names=('Recall@1', 'MRR@8', 'Context_Precision@8'))
+    support_summary['handoff_f1'] = handoff_f1(support)
     report = {
         'schema_version': 'quality-v2-report-v2',
         'official': official,
@@ -1017,10 +1113,9 @@ def write_report(output_dir, shopping, support, ads, *, official=False, partial=
                    f'pass^k=全部 k 次试验都通过的题占比；ads 为确定性模拟跑单次。' if trials > 1 else ''),
         'provenance': provenance(),
         'shopping': aggregate_line('shopping', shopping, ('Precision@4/ceiling', 'Precision@4',
-                                                        'Precision@4_ceiling', 'Pass@1')),
-        'support': aggregate_line('support', support, ('Recall@8', 'Faithfulness',
-                                                      'Faithfulness_rule', 'Faithfulness_answer_side',
-                                                      'Peripheral_coverage', 'Pass@1')),
+                                                        'Precision@4_ceiling', 'Pass@1'),
+                                   trial_level_names=('violation_free@1', 'empty_set_honesty')),
+        'support': support_summary,
         'ads': aggregate_line('ads', ads, ('Attribution_integrity', 'CTR', 'CVR', 'Pass@1')),
         'cases': {'shopping': shopping, 'support': support, 'ads': ads},
     }

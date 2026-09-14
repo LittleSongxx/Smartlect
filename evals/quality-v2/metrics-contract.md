@@ -157,6 +157,31 @@ v6.2 起按此原则回标：essential claims 65→57（10 条翻转），与 v1
 
 ---
 
+## Tier-1 诊断指标（2026-09-14 追加；不进公开表头、不改分母、不改判分）
+
+六项确定性诊断列（零 judge 成本）。动机：Recall@8 在 32 篇语料上已饱和（v15=1.0），判别力在首位与排序质量；导购/客服各补行为面。全部**试验级聚合**（每个计分试验一个观测），与公开表头的按题宏平均口径不同；分母照印。公开表头未变，故本节只修订本文档：`metrics-contract.json` 与三线 manifest/freeze 均不动。
+
+### 客服检索（Recall@8 的判别力下探）
+
+打分面与 Recall@8 同源：最后一次真实 `search_knowledge` 的去重 `candidates` 序；null 条件相同（金标为空或 `expected_retrieval=false` 记 null；金标非空而未发生真实检索记 0）。
+
+- **`Recall@1`（严格）**：全部金标 doc_id 均排名 ≤1 的试验占比。去重后多个金标不可能都居首，多金标试验此列几乎恒 0——设计如此，它测量的是"首位即全对"。
+- **`MRR@8`**：每试验对每个金标取其在去重序中的排名 r，得分 1/r（r>8 或缺席记 0），多金标先平均；线级=按试验宏平均。
+- **`Context_Precision@8`**（RAGAS 同义，binary 金标）：对前 8 位去重 candidates，第 i 位命中金标则计 precision@i=(截至 i 的金标命中数)/i，总分=Σ(precision@i)/|金标集|；无命中记 0。
+
+### 导购行为面
+
+- **`violation_free@1`（首位合规率）**：分母=recommend 类且选择列表非空的计分试验（compare 走对比完整性语义、空集题走诚实语义，均不计入）；分子=首位 SKU 满足该题全部硬约束（`sku_satisfies`，首位即展示序第一）。
+- **`empty_set_honesty`（空集诚实率）**：分母=`satisfaction_set` 为空且非 compare 的计分试验；分子=L 为空 ∧ `empty_reason∈{hard_constraint_unsatisfied,no_eligible_sku}` ∧ 未走热销补位——即空集题的 pass 贡献。分母为 0 记 null。
+
+### 客服建单边界
+
+- **`handoff_f1`**：金标=`expected_handoff`；预测=编译后终态"开了持久工单"（`answer_status=needs_human` ∧ 持久 `ticket_id`，与 Pass@1 的建单面同源；不用模型原始 `handoff_requested` 声明）。**`allow_handoff` 题（两种收口都算对，非可判定负例）从 F1 分母剔除并单列剔除数**；输出 precision/recall/F1 三数+分母。
+
+历史回填（当前评分器重扫 v13/v14/v15 证据，只读）：`artifacts/quality-v2/tier1-backfill/backfill-report.md`。Tier-2（公开表头是否纳入检索线 MRR、导购首位合规率、意图 F1）待用户看完回填数字后另行决定；届时走合同 v6.3 修订（md+json+manifest 刷新+freeze 重盖+合同测试）。
+
+---
+
 ## 留出与作弊
 
 - 开发 / 留出先切后出题。`scripts/eval_quality_v2.py freeze` 盖开发集摘要（`evals/quality-v2/holdout/freeze-manifest.json`），之后 `--split holdout` 才可加载；出题仍是人工任务，工具不代写。
