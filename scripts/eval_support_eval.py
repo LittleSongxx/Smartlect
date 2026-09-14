@@ -37,7 +37,8 @@ LAYER_LABEL = {'L1': '单跳事实', 'L2': '条件判断', 'L3': '数值清单',
                'L5': '边界干扰', 'L6_absent': '库外拒答'}
 RECALL_K = 5
 HONEST_REFUSE_STATUS = {'insufficient', 'needs_human'}
-HONEST_MARKERS = ('未提及', '未查询到', '没有找到', '未找到', '未包含', '未发布', '无法确认')
+HONEST_MARKERS = ('未提及', '未查询到', '没有找到', '未找到', '未包含', '未发布', '无法确认',
+                  '未明确说明', '未明确提及', '没有明确说明')
 
 COVERAGE_SYS = """你是答案覆盖度评审员。给定用户问题、标准答案要点清单、客服答案。
 逐条对照要点清单计数：要点信息在客服答案中有正确体现才算，遗漏、编造或答错都不算。
@@ -130,8 +131,12 @@ def cmd_collect(args):
             evidence['answer'] = str((reply or {}).get('answer') or '')
             evidence['answer_status'] = (reply or {}).get('answer_status')
             run_id = client.evidence['model_runs'][-1]['agent_run_id']
-            evidence['retrieved_doc_ids'] = last_search_candidates(
-                {'tool_calls': collect_tools(client, run_id)}) or None
+            tool_rows = collect_tools(client, run_id)
+            evidence['tool_names'] = [row['tool_name'] for row in tool_rows]
+            evidence['tool_receipts'] = [
+                {'tool_name': row['tool_name'], 'receipt': str(row.get('receipt_json') or '')[:600]}
+                for row in tool_rows if row['tool_name'] != 'search_knowledge']
+            evidence['retrieved_doc_ids'] = last_search_candidates({'tool_calls': tool_rows}) or None
             evidence['status'] = 'COLLECTED'
         except Exception as error:
             evidence['status'] = 'FAILED'
@@ -207,10 +212,11 @@ def cmd_score(input_dir):
                  'mrr': mrr(gold, retrieved),
                  'coverage': None, 'faithful': None, 'refused': None,
                  'answer_head': (row.get('answer') or '')[:80]}
+        hedged = None
         if layer == 'L6_absent':
             answer = row.get('answer') or ''
-            entry['refused'] = 1 if (row.get('answer_status') in HONEST_REFUSE_STATUS
-                                     or any(marker in answer for marker in HONEST_MARKERS)) else 0
+            hedged = (row.get('answer_status') in HONEST_REFUSE_STATUS
+                      or any(marker in answer for marker in HONEST_MARKERS))
         else:
             points = question_rows[row['id']]['points']
             if points:
@@ -222,17 +228,24 @@ def cmd_score(input_dir):
                                      'cov:' + row['id'])
                 if verdict is not None and isinstance(verdict.get('covered'), int):
                     entry['coverage'] = min(verdict['covered'], len(points)) / len(points)
-            evidence_text = '\n'.join('[%d] %s' % (i + 1, docs[doc_id])
-                                      for i, doc_id in enumerate(retrieved) if doc_id in docs)
-            verdict = judge_call(judge, model, FAITH_SYS,
-                                 '检索证据:\n%s\n\n客服回答:\n%s' % (
-                                     evidence_text or '(本轮无检索证据)',
-                                     row.get('answer') or '(空)'),
-                                 'faith:' + row['id'])
-            if verdict is not None and isinstance(verdict.get('faithful'), bool):
-                entry['faithful'] = 1 if verdict['faithful'] else 0
-                if not verdict['faithful']:
-                    entry['faith_reason'] = str(verdict.get('reason') or '')[:120]
+        # Faithfulness 对全部层判（L6 的编造同样要露头）；证据面=用户问题+检索文档+工具观测
+        evidence_text = '用户问题:' + row['question'] + '\n检索证据:\n' + '\n'.join(
+            '[%d] %s' % (i + 1, docs[doc_id])
+            for i, doc_id in enumerate(retrieved) if doc_id in docs)
+        for receipt in row.get('tool_receipts') or []:
+            evidence_text += '\n[工具观测] %s -> %s' % (receipt.get('tool_name'), receipt.get('receipt') or '(空)')
+        verdict = judge_call(judge, model, FAITH_SYS,
+                             '检索证据:\n%s\n\n客服回答:\n%s' % (
+                                 evidence_text or '(本轮无检索证据)',
+                                 row.get('answer') or '(空)'),
+                             'faith:' + row['id'])
+        if verdict is not None and isinstance(verdict.get('faithful'), bool):
+            entry['faithful'] = 1 if verdict['faithful'] else 0
+            if not verdict['faithful']:
+                entry['faith_reason'] = str(verdict.get('reason') or '')[:120]
+        if layer == 'L6_absent':
+            # 诚实 = 声明了未命中/不足收口 ∧ 没有编造（judge 失败时退回声明面，不因没评上落零）
+            entry['refused'] = 1 if hedged and entry['faithful'] != 0 else 0
         results.append(entry)
     if skipped:
         print('skipped_not_collected:', json.dumps(skipped, ensure_ascii=False))

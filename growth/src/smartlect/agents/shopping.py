@@ -10,6 +10,7 @@ from typing import Literal, TypedDict
 from langgraph.graph import StateGraph, START, END
 from pydantic import Field, ValidationError
 
+from smartlect.answer_guards import unsupported_state_claims
 from smartlect.business_skills import USER_SKILLS, load_skill
 from smartlect.events import canonical
 from smartlect.provider import ProviderError
@@ -926,6 +927,17 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                                      '用户已明示回退授权（如"按可售来"）：请把不满足的规格必含词移出硬约束'
                                      '（并入 query）后重新 recommend_skus，按可售结果推荐并在答案中披露替代；'
                                      '若放宽后仍无任何可售商品，再按诚实空集收口')
+            state_claims = unsupported_state_claims(final.answer, context.get('accepted_tools'))
+            if state_claims:
+                if context.get('state_claim_repair_done'):
+                    # 修复后仍声明状态：放行但留残余旗标，不把坏答案升级成通道失败
+                    context['state_claim_residual'] = state_claims
+                else:
+                    context['state_claim_repair_done'] = True
+                    raise ValueError('state_claim_without_receipt: '
+                                     '答案声明了用户订单/优惠券/账户的当前状态（' + '、'.join(state_claims[:3]) +
+                                     '），但本轮没有任何订单查询工具回执——这是编造的观测。'
+                                     '请删除这些状态声明，改为请用户提供订单号或转人工核实，只保留有证据支撑的政策内容')
             if final.grounding == 'no_business_claim' and (final.citation_chunk_ids or final.selected_sku_keys):
                 raise ValueError('no_business_claim_cannot_carry_evidence')
             if final.grounding == 'no_business_claim' and no_business_claim_has_store_conclusion(final.answer):
