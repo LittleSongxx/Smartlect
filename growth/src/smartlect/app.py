@@ -16,6 +16,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import Field, ValidationError
 import uvicorn
 
@@ -209,6 +210,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         await asyncio.gather(*tasks.values(), return_exceptions=True)
 
     app = FastAPI(title="Smartlect AI API", version=__version__, lifespan=lifespan)
+    Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
     @app.middleware('http')
     async def private_responses(request, call_next):
