@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      rollback:
+        description: "回滚到上一个 release bundle（不部署新代码）"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: mvn test（testcontainers 自带 MySQL）
+        run: mvn -B -f backend/pom.xml test
+
+  growth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: 安装锁定依赖 + 本包
+        run: |
+          pip install -r growth/requirements.lock
+          pip install --no-deps --no-build-isolation ./growth
+      - name: unittest
+        working-directory: growth
+        run: python -m unittest discover -s tests
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        dir: [user, admin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/${{ matrix.dir }}/package-lock.json
+      - name: npm ci + test
+        run: |
+          npm --prefix web/${{ matrix.dir }} ci
+          npm --prefix web/${{ matrix.dir }} test
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [backend, growth, web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 配置 deploy key（服务器网关仅放行 upload/deploy/status/rollback）
+        run: |
+          install -m600 /dev/stdin ~/deploy_key <<<"${{ secrets.SMARTLECT_DEPLOY_KEY }}"
+          mkdir -p ~/.ssh
+          echo "39.107.102.244 ${{ secrets.ECS_HOST_KEY }}" >> ~/.ssh/known_hosts
+      - name: 回滚（inputs.rollback=true 时）
+        if: ${{ inputs.rollback }}
+        run: ssh -i ~/deploy_key -o BatchMode=yes root@39.107.102.244 rollback
+      - name: 打 bundle 并上传
+        if: ${{ !inputs.rollback }}
+        run: |
+          git bundle create deploy.bundle HEAD
+          ssh -i ~/deploy_key -o BatchMode=yes root@39.107.102.244 upload < deploy.bundle
+      - name: 部署 + 健康门禁（失败即 exit 1）
+        if: ${{ !inputs.rollback }}
+        run: ssh -i ~/deploy_key -o BatchMode=yes root@39.107.102.244 deploy
+      - name: 部署后状态
+        if: always()
+        run: ssh -i ~/deploy_key -o BatchMode=yes root@39.107.102.244 status || true
