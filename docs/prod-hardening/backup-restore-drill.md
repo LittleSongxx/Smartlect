@@ -48,7 +48,7 @@
 - **RTO ≈ 30 秒**（容器就绪 16s + 全量恢复 7s + binlog 回放 2.4s + 验证 3s）。
   诚实标注：当前数据集极小（dump 124K），RTO 被容器初始化的固定成本主导；数据增长后 dump 恢复与回放时间线性上升，届时应关注 gzip 解压与回放带宽。
 - **RPO（PITR 粒度）≈ 秒级**：binlog 事件按秒时间戳回放，本演练在相隔 12 秒的两个事件之间精确切割。
-- **RPO（磁盘/卷全损场景）= 最近一次备份副本年龄（最坏 ~24h）**：binlog 与数据在同一卷同一盘，盘损同灭；每日 03:30 外带一份是当前唯一异地化。改进选项（未做，按需启用）：① 每小时 cron 只跑 binlog 副本段（脚本已按文件名增量，加一行 cron 即可）；② ossutil 传阿里云 OSS 异地一份（分币级成本，需控制台建 bucket+AK）。
+- **RPO（磁盘/卷全损场景）= 最近一次 binlog 外带副本年龄（最坏 ~1h）+ 每日全量**：binlog 与数据在同一卷同一盘，盘损同灭；自 2026-09-15 起每小时第 7 分由 `/opt/backups/bin/binlog-sync.sh` 经 binlog-dump 协议外带增量（`mysqlbinlog --read-from-remote-server --raw`，不直接拷正在写的活跃文件；每次重拉上一档保证截断副本自愈；`/opt/backups/binlog/` 保留 7 天，cron `/etc/cron.d/smartlect-binlog-sync`）。改进选项（未做，按需启用）：ossutil 传阿里云 OSS 异地一份（分币级成本，需控制台建 bucket+AK）。
 
 ## 遇到的坑
 
