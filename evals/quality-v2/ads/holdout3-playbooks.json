@@ -34,16 +34,16 @@
         },
         {
           "op": "expose",
-          "slot": "b",
+          "slot": "a",
           "count": 6
         },
         {
           "op": "probe_rank",
-          "expect_first": "a",
+          "expect_first": "b",
           "expect_items": 2
         }
       ],
-      "note": "疲劳重排镜像：b 被忽略 6 次后仍 a 先（1/(1+6) 降权不足以翻转 id 序平手）",
+      "note": "疲劳翻转断言：a 被忽略 6 次（1/(1+6) 降权）后 b 严格领先——疲劳机制整体失效时本题必挂",
       "expected": {
         "counts": {
           "impressions": 6,
@@ -282,6 +282,34 @@
         "CVR": 1.0
       },
       "note": "基础面：点 A 买 B 仍归因"
+    },
+    {
+      "playbook_id": "ads-h3-08",
+      "kind": "organic_payment",
+      "steps": [
+        "create_campaign",
+        "grant",
+        "activate_campaign",
+        "activate_creative",
+        "exposures",
+        "organic_pay"
+      ],
+      "traffic": {
+        "impressions": 12,
+        "clicks": 0,
+        "payments": 4
+      },
+      "expected": {
+        "counts": {
+          "impressions": 12,
+          "clicks": 0,
+          "payment_conversions": 0,
+          "unknown_payments": 4
+        },
+        "CTR": 0.0,
+        "CVR": null
+      },
+      "note": "基础面正例：无活动点击的付款进 unknown_payments（不得进任何 CVR 分子）"
     },
     {
       "playbook_id": "ads-h3-07",
