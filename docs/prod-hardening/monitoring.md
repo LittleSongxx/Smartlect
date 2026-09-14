@@ -1,6 +1,6 @@
 # T0-1 监控告警体系（Prometheus + Grafana + Alertmanager）
 
-日期：2026-09-14 ｜ 状态：**主体完成，2 个开口项**（SMTP 投递凭证、Growth FastAPI 指标） ｜ 部署：`/opt/monitoring`（compose project `monitoring`，独立于 smartlect 主栈）
+日期：2026-09-14 ｜ 状态：**SMTP 已接线（邮件通道=163 邮箱，投递日志 0 错误，待用户确认收件）；剩 1 个开口项：Growth FastAPI 指标** ｜ 部署：`/opt/monitoring`（compose project `monitoring`，独立于 smartlect 主栈）
 
 ## 做了什么
 
@@ -55,6 +55,22 @@ rabbitmq_queue_messages_ready 59 个队列标签（含 commerce/dead 队列）
 16:28:46 docker unpause
 16:30:06 Alertmanager API: alert count: 0（恢复）；应用 curl 200（Java 自动重连，无需重启）
 
+# SMTP 接线后的完整闭环（16:54 第二轮演练，邮件通道生效）
+16:47    amtool check-config SUCCESS；POST 测试告警 SmartlectTestEmail → 200
+16:54:56 docker pause smartlect-rabbitmq-1
+16:57:31 Alertmanager: active SmartlectTestEmail + SmartlectServiceDown（2 条）
+16:57:31 docker unpause
+16:58:51 Alertmanager: alert count 0（全部恢复）
+         Alertmanager 投递错误日志（--since 6m）: 0 条 —— SMTP 全程接受
+         应用 curl 200
+
+# SMTP 凭证管理
+凭证只存 /opt/monitoring/env（600）：ALERT_EMAIL_FROM/TO、ALERT_SMTP_HOST
+(smtp.163.com:465)、ALERT_SMTP_USER/PASS；gen-alertmanager.sh 渲染真实版
+alertmanager.yml（640 root:65534，容器内 nobody 可读）。本地 run/cloud 只留
+无凭证模板——同步监控目录时禁止 scp -r 整目录覆盖服务器版 alertmanager.yml。
+
+
 # 大盘：headless Chromium 经 SSH 隧道截图，13 面板有数据（figures/monitoring-dashboard.png）
 ```
 
@@ -70,10 +86,11 @@ rabbitmq_queue_messages_ready 59 个队列标签（含 commerce/dead 队列）
 
 ## 开口项（下回接续）
 
-- [ ] **SMTP 投递**：Alertmanager email_configs 已预留占位（smtp.qq.com:465），等用户提供邮箱+授权码后替换 `/opt/monitoring/alertmanager.yml` 并 `systemctl restart smartlect-monitoring`；然后补一次 pause 演练验证「收到邮件」+ send_resolved。
 - [ ] **Growth FastAPI 指标**：`prometheus-fastapi-instrumentator` 接入 growth API（growth 代码改动 → 本地 `./scripts/dev.sh check` 全绿 → bundle 同步 → 重启 apps）。growth-worker 已有 textfile 心跳兜底。
+- [ ] 用户确认 163 收件箱实际收到 3 封邮件（测试/告警/恢复；注意垃圾箱）——确认后本项验收完全关闭。
 - [ ] Alertmanager 静默/路由分档（warning vs critical）暂未做，规则起来后再按实际噪声调整。
 - [ ] kbudde exporter 归档风险：迁移到原生 rabbitmq_prometheus 插件（需给 rabbit 容器发布 15692 端口，动 deploy/compose.yaml，放 T1-6/T2-9 一并考虑）。
+- [ ] 授权码出现在过对话记录：如介意，验收后到 163 设置里重生成，改 env 后重跑 gen 脚本 + restart 即可。
 
 ## 面试一句话
 
