@@ -408,7 +408,11 @@ def start_app(service, env, records):
         if not Path(agent).is_file():
             agent = "/opt/otel/opentelemetry-javaagent.jar"
         if Path(agent).is_file():
-            endpoint = env.get("SMARTLECT_OTEL_EXPORTER", "http://127.0.0.1:4318")
+            # SMARTLECT_OTEL_EXPORTER 同时供 growth(Python, 需含 /v1/traces 全路径)；
+            # Java agent 只要基址（自动追加 /v1/traces、/v1/logs），必须剥掉后缀。
+            endpoint = env.get("SMARTLECT_OTEL_EXPORTER", "http://127.0.0.1:4318").rstrip("/")
+            if endpoint.endswith("/v1/traces"):
+                endpoint = endpoint[: -len("/v1/traces")]
             command[1:1] = [f"-javaagent:{agent}",
                             f"-Dotel.service.name=smartlect-{service}",
                             f"-Dotel.exporter.otlp.endpoint={endpoint}",
