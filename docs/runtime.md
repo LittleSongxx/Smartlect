@@ -35,7 +35,7 @@ Gateway 的 `/api/assistant/**` 和 `/admin-api/assistant/**` 保留原路径转
 
 `./scripts/dev.sh status`列出容器和应用健康状态。`./scripts/dev.sh apps-down`停止本项目应用，保留中间件；`./scripts/dev.sh down`再停止/移除经Compose项目标签和配置文件路径核对的本项目容器及网络，保留数据卷。没有自动清库或重置。从`down`恢复或首次运行先`infra-up`，再`up`；`up`自身不启动中间件。`reset-demo --run-id`仅退役Java已登记的本项目演示并创建独立replacement资源，保留旧交易/事件/累计账本；实际隔离和重投证据见[安全重置合同](reset-contract.md)及实施状态。
 
-`./scripts/dev.sh demo --scenario purchase_stockout --seed 42` 保留已有真实 Java 交易场景。Java 仅在本地 demo 开关及 mock 支付模式下初始化 100 用户/20 商品/40 SKU，使用生成密码签发正常 Redis 会话；重复初始化不改已有库存。场景覆盖下单/重放/支付/退款/售罄/取消及对账，事件消费启用时等待账本收齐。该入口本轮11项交易回归已通过，仍不是推荐投放效果实验。
+`./scripts/dev.sh demo --seed 42` 保留已有真实 Java 交易场景（固定为 purchase_stockout，无 `--scenario` 参数）。Java 仅在本地 demo 开关及 mock 支付模式下初始化 100 用户/20 商品/40 SKU，使用生成密码签发正常 Redis 会话；重复初始化不改已有库存。场景覆盖下单/重放/支付/退款/售罄/取消及对账，事件消费启用时等待账本收齐。该入口本轮11项交易回归已通过，仍不是推荐投放效果实验。
 
 新增 F1 专项入口：应用 up 后执行 `growth/.venv/bin/python scripts/check_f1.py`。它只使用 Smartlect 合成用户/SKU、Java 报价及模拟支付，验证伪造头、归属/CSRF、变更金额拒绝、提案持久化、重复确认、SSE 回放和账本；中途核验进程身份后实际重启 **API 一个进程**，保持 worker 运行。已通过的结果见 [f1-live-confirmation.json](../artifacts/f1-live-confirmation.json)：实付/退款/净额 1000/1000/0 分，库存 5→5，`live_model_called=false`。这不是完整自然语言演示，也未使用真实资金。
 

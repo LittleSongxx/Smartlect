@@ -29,13 +29,11 @@ Java 是价格、库存、订单、支付和退款的唯一权威；Python Growt
 `bootstrap` 保留已有配置，只在 Git 忽略的 `run/runtime.env` 生成本项目业务凭证。模型白名单放在权限 600、同样被忽略的 `run/model.env`；默认 `qwen3.7-plus`，不自动更换旗舰模型。启用 live 会产生供应商费用，字段与模式见 [模型说明](docs/model-provider.md)。缺配置时 live 明确失败；mock、live 和规则回退分别标记。
 
 ```bash
-./scripts/dev.sh demo --scenario natural_assisted_purchase --seed 42
-./scripts/dev.sh demo --scenario campaign_assisted_purchase --seed 42
-./scripts/dev.sh demo --scenario support_refund_recovery --seed 42
-./scripts/dev.sh demo --scenario purchase_stockout --seed 42
+./scripts/dev.sh seed-store
+./scripts/dev.sh demo --seed 42
 ```
 
-每次 demo 分配新的 Java 合成用户/商品/SKU；同一 scope 跨轮次累计广告费，不重置授权预算。商城首页按「为你推荐」和明确「广告/模拟推广」分区；推广曝光/点击分别记账。客服可以直接回答或转人工结束，不必为了成交继续推荐。
+`seed-store` 准备默认门店（知识、广场券与导购剧本，只写 `execution_scope_id=store`），让用户端开箱可看推荐与广告分区、可演示政策问答与下单。`demo` 跑交易回归：首次初始化合成用户/商品/SKU 后覆盖下单、幂等重放、支付、退款、售罄与取消对账；事件消费启用时等待增长账本收齐。商城首页按「为你推荐」和明确「广告/模拟推广」分区；推广曝光/点击分别记账。客服可以直接回答或转人工结束，不必为了成交继续推荐。
 
 ```bash
 ./scripts/dev.sh reset-demo --run-id <owned-demo-run>
@@ -44,6 +42,10 @@ Java 是价格、库存、订单、支付和退款的唯一权威；Python Growt
 ```
 
 `down` 只处理 Smartlect 自有资源。负载紧张时用 `./scripts/dev.sh apps-down` 暂停应用、保留中间件和数据。从 `apps-down` 恢复用 `up`；从 `down` 或首次启动必须先 `infra-up` 再 `up`。这些命令不停止其他项目，不删除数据卷。
+
+## 质量评测
+
+唯一评测体系是 [quality-v2](docs/quality-eval-v2.md)：导购选品、政策客服、广告投放三条线。公开指标为导购 `Pass@1` 与 `Precision@4/ceiling`、客服 `Recall@8` 与 judge 判分的 `Faithfulness`、广告 `Attribution_integrity`，每指标印分母与 Wilson 95% CI，不合成总分。`--trials N` 支持逐题多次试验与 `pass^k` 方差；LLM judge 与主模型不同源，并经 32 对已知判定校准集与双 judge 交叉验证。开发集为导购 65 例、客服 63 例、广告 12 剧本；合同测试 68 项。禁句/禁文档走确定性规则门，不交给 judge。
 
 ## 合同与设计
 

@@ -1,6 +1,6 @@
 # quality-v2 质量评测索引
 
-更新 2026-09-13（扩容与修复阶段收官：三线 65/62/11、judge 校准与双 judge κ、五项类级修复+方案 A、v12 基线、holdout-1/2 均已首测即终测烧毁、P6 冻结报告、P5 放弃；v6：公开表头名实对齐——导购 `Precision@4/ceiling` 贴满率、广告单指标 `Attribution_integrity` 断言级分母；v5：`--trials N`、`pass^k` 与 Wilson 95% CI）。三条主线（导购选品 / 政策客服 / 广告投放）的公开指标评测体系。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
+更新 2026-09-14（P3 仲裁与状态缝闭环后计数同步：三线 65/63/12、judge 校准与双 judge κ、五项类级修复+方案 A、v12 基线、holdout-1/2 均已首测即终测烧毁、P6 冻结报告、P5 放弃；v6：公开表头名实对齐——导购 `Precision@4/ceiling` 贴满率、广告单指标 `Attribution_integrity` 断言级分母；v5：`--trials N`、`pass^k` 与 Wilson 95% CI）。三条主线（导购选品 / 政策客服 / 广告投放）的公开指标评测体系。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
 
 ## 位置
 
@@ -8,18 +8,18 @@
 |---|---|
 | 指标合同（操作定义，v6） | `evals/quality-v2/metrics-contract.md` / `.json` |
 | 导购开发集 / 商品快照 | `evals/quality-v2/shopping/dev.jsonl`（65 例）/ `catalog-snapshot.json`（20 SKU） |
-| 客服开发集 | `evals/quality-v2/support/dev.jsonl`（62 例，T1 扩容后；1 例 replay-only） |
-| 广告剧本 | `evals/quality-v2/ads/playbooks.json`（5 剧本） |
+| 客服开发集 | `evals/quality-v2/support/dev.jsonl`（63 例，T1 扩容 62 + P3 仲裁 D3 新增 sup-d-63；1 例 replay-only） |
+| 广告剧本 | `evals/quality-v2/ads/playbooks.json`（12 剧本：5 基础 + T4 扩容 6 本机制 script + ads-d-12 金丝雀） |
 | 评分库 / runner | `scripts/quality_v2.py` / `scripts/eval_quality_v2.py` |
 | LLM judge（DeepSeek） | `scripts/judge_quality_v2.py`（判 Faithfulness 公开分 + CLI 抽检 + `judge-calibrate` 校准与双 judge 交叉）；校准集 `support/judge-calibration.jsonl`（32 对已知判定） |
-| 合同测试 | `scripts/test_quality_v2.py`（60 项）+ growth 全量 364 项 |
+| 合同测试 | `scripts/test_quality_v2.py`（68 项）+ growth 全量 364 项 |
 | 产物 | `artifacts/quality-v2/<run-id>/`，复跑台账 `artifacts/quality-v2/rerun-ledger.jsonl` |
 
 ## 公开表头（合同 v6，只用这些，不合成总分）
 
 - 导购：`Pass@1`、`Precision@4/ceiling`（贴满率 = min(P@4 ÷ min(4,|金标|)/4, 1.0) 按题宏平均，NDCG/IDCG 式对可达上限正规化；raw `Precision@4` 与 `Precision@4_ceiling` 为并排诊断列）
 - 客服：`Recall@8`（k=生产检索面 FINAL_DEPTH=8，`Recall@4` 为伴读诊断）、`Faithfulness`（v3 起为 judge 判分：DeepSeek `deepseek-flash`，与主模型 qwen 不同源，quote 门控；v4 起只算 essential 命题）
-- 广告：`Attribution_integrity`（归因完整性，v6 起唯一公开分：断言级分母，每剧本 8 条确定性断言=四桶计数+两率算术+禁捷径；`Pass@1` 为剧本级门；模拟 `CTR`/`CVR` 降诊断列，恒标「模拟、非因果」）
+- 广告：`Attribution_integrity`（归因完整性，v6 起唯一公开分：断言级分母，基础 8 条确定性断言=四桶计数+两率算术+禁捷径，script 剧本另含排序/拒绝/状态机制断言，现行断言总数 116；`Pass@1` 为剧本级门；模拟 `CTR`/`CVR` 降诊断列，恒标「模拟、非因果」）
 
 禁句（`must_not_claim` 否定窗口豁免 / `forbidden_claims` 原样命中）与禁文档（`forbidden_doc_ids`）仍是**确定性规则门**，不交给 judge。judge 失败该题 Faithfulness 记 null（分母缺失），不借用规则分。judge 有 MoE 运行方差（实测 ±0.08），官方数字以 run 内单次判定为准并记录 judge 模型与 prompt 版本。
 
