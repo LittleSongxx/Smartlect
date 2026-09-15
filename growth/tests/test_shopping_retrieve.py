@@ -109,6 +109,20 @@ class ShoppingRetrieveTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(hard['diagnostics']['recall_relaxed'])
         self.assertFalse(any('popularProducts' in path or 'coPurchase' in path for _, path, _ in self.commerce.calls))
 
+
+    async def test_rollback_authorization_keeps_relaxed_enumeration_on_keyword_miss(self):
+        # "按可售来" grants availability-over-qualifiers: the whole-scope enumeration
+        # IS what the user asked for. A keyword miss under that grant must enumerate
+        # saleable substitutes, not report an honest empty set that claims nothing
+        # is on sale (post-revert smoke shop-d-19: "没有任何键盘商品处于可售状态").
+        mission = empty_mission()
+        mission['rollback_authorized'] = True
+        result = await ShoppingRetrieve(self.commerce).recommend(
+            self.actor, {'query': '灰色飞船'}, mission=mission, product_scope=self.scope)
+        self.assertGreaterEqual(len(result['items']), 1)
+        self.assertTrue(result['diagnostics']['browse_newest'] or result['diagnostics']['recall_relaxed'])
+        self.assertIsNone(result['diagnostics']['empty_reason'])
+
     async def test_keyword_miss_with_required_terms_keeps_rescue_path(self):
         # Paraphrased requests carry required_terms; the keyword-miss honest-empty
         # branch must not cut off the post-gate rescue that resolves them.

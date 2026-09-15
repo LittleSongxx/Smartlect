@@ -179,14 +179,16 @@ class ShoppingRetrieve:
             for variant in variants:
                 rows.extend(await self._search_on_sale(request, scope, variant, category_id=request['category_id'], errors=errors))
         if not rows:
-            if variants and not request.get('required_terms'):
+            if variants and not request.get('required_terms') and not mission.get('rollback_authorized'):
                 # A keyword search that matched nothing on sale in scope is an honest
                 # empty set: relaxing to whole-scope enumeration here hands the model
                 # unrelated bestsellers (shop-d-65 asked for USB cables, got mice) —
                 # the keyword names the product the user wants, not a soft hint.
-                # Recall relaxation stays for keyword-less browse; requests that also
-                # carry required_terms keep the post-gate rescue below, so paraphrased
-                # terms ("工学椅" vs catalog "人体工学椅") still resolve.
+                # Two stays for the relaxation: requests carrying required_terms keep
+                # the post-gate rescue below (paraphrases: "工学椅" vs "人体工学椅"),
+                # and an availability-over-qualifiers grant ("按可售来") means the
+                # user asked for exactly that enumeration — cutting it would report
+                # "nothing on sale" while saleable substitutes exist.
                 return self._finish([], ranked=[], cards=[], mode='content_rule', rerank_error=None,
                                     initial_removed={}, final_removed={},
                                     empty_reason='hard_constraint_unsatisfied' if hard else 'no_eligible_sku',
