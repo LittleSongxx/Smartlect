@@ -150,7 +150,34 @@ TOTAL_SENT=2430 / TOTAL_RECEIVED=2430 / ZERO_LOSS=PASS
 
 
 
+### 瓶颈归因与第二轮优化（连接池 4→12）：真极限 ~815 req/s，CPU 打满
+
+第一轮的 605 req/s"极限"其实是**假墙**。用 Micrometer/Prometheus 回查压测窗口（actuator 暴露 prometheus 端点，历史数据零成本取证），饱和点铁证：
+
+| 档位 | product Hikari active | 等连接排队数 | 最长等连接 | k6 p95 |
+|---|---|---|---|---|
+| 200 VU | 3/4 | 0 | 28ms | 22ms |
+| 400 VU | **4/4 钉满** | 12 | 462ms | 93ms |
+| 600 VU | 4/4 | **176** | **859ms** | 858ms |
+| 800 VU | 4/4 | 195 | 987ms | 1.67s |
+
+**k6 尾延迟 ≈ Hikari 等连接时间**（859ms≈858ms 对到毫秒）。因果链：browse 流量全压 product → `SMARTLECT_DB_POOL_MAX_SIZE` 默认 4 条 MySQL 连接串行服务 → 池满排队 → Tomcat 200 线程被等连接的请求塞满（800 VU 时恰好 active=200）→ 吞吐封顶 4 连接×(1000/6ms)≈605。
+
+修复=一行 env：`SMARTLECT_DB_POOL_MAX_SIZE=12`（配置注释本就预留此杠杆；预算核对：10 服务×12=120 + nacos/growth/exporter≈20 < MySQL max_connections 160，池 min-idle=1 空闲自动回缩）。第二轮结果：
+
+| 负载档 | req/s | p95 | 备注 |
+|---|---|---|---|
+| browse 400 VU | 488 | 63ms | 需求受限（思考时间），健康 |
+| browse 600 VU | 664 | 465ms | 进入拐点区 |
+| browse 800 VU | 753 | 1.15s | 贴墙 |
+| **hot 400 VU**（无思考时间变体） | **822** | 1.65s | 硬墙 |
+| hot 800 VU | **810** | 2.43s | **2× VU 吞吐不增=钉死** |
+
+- **真极限 ≈ 810-820 req/s（k6 口径）**：第二轮取证 node1 CPU **87-90%**——终于打到算力本身；product Hikari 11/12、排队≈0（池不再约束）；MySQL CPU 2%、gateway 在飞 488（反应式无压）；全程零失败，过载仍是纯排队劣化。**假墙 605 → 真墙 815（+35%），生产限流同步定格 `DEFAULTQPS=400`**（旧值 2 倍；位于拐点 443 API req/s 下沿、健康区 325 上方，p95 全程 ≤~90ms）。
+- 墙后的下一排杠杆（按性价比）：给 gateway/product 更高 JVM 处理器预算（现 9 JVM 统一 processors=4，需 runtime.py 支持每服务覆盖——小改，未做）；nginx→gateway 加 upstream keepalive（省每请求握手）；product 查询与缓存效率（热路径直查 MySQL）；Jaeger 已限 4g 内存（本轮 hot 压测吃满 3.34g 未再威胁宿主）。
+
 ### 收官期运维实录（四条新教训）
+
 
 1. **手动 `REPLICAOF` 会和 sentinel 打架**：node1 重启期间 sentinel 自动把 Redis 主漂到 node3；手动 REPLICAOF 回切被 sentinel 判定为主失效、触发自己的 failover（主落到 node2）。正确做法是**定向 failover**：非目标副本 `CONFIG SET replica-priority 0` → `SENTINEL FAILOVER mymaster` → 目标副本当选 → 恢复 priority=100。本次按此法一次成功，主回 node1、1m2s 收敛。
 2. **RabbitMQ 4.2 无 `rabbitmqctl quorum_status`**：命令在 `rabbitmq-queues` CLI 且必须带 `--vhost smartlect`（verify-cluster.sh 的旧调用会 `not found` 退出）。

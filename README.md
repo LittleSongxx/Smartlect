@@ -20,7 +20,7 @@
 | [对账自动化](docs/prod-hardening/recon-deadletter.md) | Java 支付权威 vs 事件账本每日对账；1 分钱注入演练 25 秒闭环 |
 | [LLM 成本/质量看板](docs/prod-hardening/llm-dashboard.md) | 零业务代码改动聚合模型调用画像；上线即暴露转人工率 61.5% 真实信号，成本 ¥0.85/88 次调用 |
 | [HA 演练](docs/prod-hardening/ha-design.md) | 四组件真实 kill：自愈 10-43s、Seata 宕机下单 1.6s 快速失败无半提交；抓出「整库宕机不告警」盲区并修复 |
-| [跨机集群](docs/prod-hardening/ha-cluster.md) | 3 台 ECS 常驻集群（RMQ 3 节点 quorum/Redis 哨兵/Nacos Raft），leader 击杀 11s 重选举、**2430 发=2430 收零丢失**、sentinel 1.06s 切主；node1 升配 8c32g + JVM 调优后同场景 **400 VU QPS 109→349（+220%）、p95 8.64s→40ms**；解除限流复测**真实极限 ~605 req/s（600 VU 零错误）**，过峰纯排队劣化零 5xx，并揪出 Jaeger 无上界内存（19.4GB OOM 致宿主假死）完成加固 |
+| [跨机集群](docs/prod-hardening/ha-cluster.md) | 3 台 ECS 常驻集群（RMQ 3 节点 quorum/Redis 哨兵/Nacos Raft），leader 击杀 11s 重选举、**2430 发=2430 收零丢失**、sentinel 1.06s 切主；node1 升配 8c32g 后同场景 **400 VU QPS 109→349（+220%）、p95 8.64s→40ms**；Micrometer 取证揪出 Hikari 池(4)假墙，一行 env 调到 12 后**真极限 ~815 req/s（node1 CPU 90% 打满）**，生产限流定格 400；并揪出 Jaeger 无上界内存（19.4GB OOM 致宿主假死）完成加固 |
 
 ## 架构与边界
 
