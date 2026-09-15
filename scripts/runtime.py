@@ -422,8 +422,12 @@ def start_app(service, env, records):
         artifact = artifacts[0]
         runtime_jar, source_sha, stamp = immutable_jar(artifact, ROOT / "run/apps" / service)
         executable = Path(shutil.which("java") or "/missing-java")
-        command = [str(executable), "-Xms64m", "-Xmx" + env.get("SMARTLECT_JAVA_XMX", "256m"),
-                   "-XX:MaxMetaspaceSize=192m", "-XX:MaxDirectMemorySize=64m", "-XX:ActiveProcessorCount=2",
+        # JVM 规格 env 化：默认值即 4c16g 共享机的保守配置；升配后按新规格调大
+        command = [str(executable),
+                   "-Xms" + env.get("SMARTLECT_JAVA_XMS", "64m"),
+                   "-Xmx" + env.get("SMARTLECT_JAVA_XMX", "256m"),
+                   "-XX:MaxMetaspaceSize=192m", "-XX:MaxDirectMemorySize=64m",
+                   "-XX:ActiveProcessorCount=" + env.get("SMARTLECT_JAVA_PROCESSORS", "2"),
                    f"-Dcsp.sentinel.log.dir={ROOT}/run/logs/sentinel/{service}",
                    f"-DJM.LOG.PATH={ROOT}/run/logs/{service}",
                    f"-DJM.SNAPSHOT.PATH={ROOT}/run/cache/{service}",
