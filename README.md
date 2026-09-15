@@ -2,13 +2,13 @@
 
 [![ci](https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml/badge.svg)](https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml)
 
-单店 AI 导购、RAG 客服与模拟经营闭环：**Java 微服务电商底座 + Python Agent 增长层 + 双前端**，已部署到阿里云生产环境单机运行。
+单店 AI 导购、RAG 客服与模拟经营闭环：**Java 微服务电商底座 + Python Agent 增长层 + 双前端**，已部署到阿里云生产环境三机集群运行。
 
 **在线演示**：用户端 `http://39.107.102.244/` ｜ 管理端 `http://39.107.102.244/admin/`（域名 + HTTPS 等 ICP 备案通过后切换）
 
 ## 生产级能力（全部有实测证据）
 
-部署形态：单台 ECS（4c16g）承载 9 个 Spring Cloud 服务 + Python Growth（API/worker）+ 2 前端 + 5 中间件容器 + 监控栈，systemd 全链自启。生产化工程落在以下十项，每项都有命令、输出与截图留档（`docs/prod-hardening/`）：
+部署形态：三机常驻集群——node1（8c32g）承载 9 个 Spring Cloud 服务 + Python Growth（API/worker）+ 2 前端 + MySQL + 监控栈，node2/3（2c8g×2）承载 RabbitMQ quorum/Nacos Raft/Redis 副本与哨兵；中间件全集群态、systemd 全链自启。生产化工程落在以下十项，每项都有命令、输出与截图留档（`docs/prod-hardening/`）：
 
 | 能力 | 关键数字 |
 |---|---|
@@ -20,7 +20,7 @@
 | [对账自动化](docs/prod-hardening/recon-deadletter.md) | Java 支付权威 vs 事件账本每日对账；1 分钱注入演练 25 秒闭环 |
 | [LLM 成本/质量看板](docs/prod-hardening/llm-dashboard.md) | 零业务代码改动聚合模型调用画像；上线即暴露转人工率 61.5% 真实信号，成本 ¥0.85/88 次调用 |
 | [HA 演练](docs/prod-hardening/ha-design.md) | 四组件真实 kill：自愈 10-43s、Seata 宕机下单 1.6s 快速失败无半提交；抓出「整库宕机不告警」盲区并修复 |
-| [跨机集群](docs/prod-hardening/ha-cluster.md) | 3 台 ECS 把中间件升为真集群（RMQ 3 节点 quorum/Redis 哨兵/Nacos Raft），leader 击杀 11s 重选举、**2430 发=2430 收零丢失**、sentinel 1.06s 切主；双形态压测集群 **QPS +50%~89%**、饱和时零错误 vs 单机 2.2% 报错 |
+| [跨机集群](docs/prod-hardening/ha-cluster.md) | 3 台 ECS 常驻集群（RMQ 3 节点 quorum/Redis 哨兵/Nacos Raft），leader 击杀 11s 重选举、**2430 发=2430 收零丢失**、sentinel 1.06s 切主；node1 升配 8c32g + JVM 调优后同场景 **400 VU QPS 109→349（+220%）、p95 8.64s→40ms**，800 VU 钉板：网关限流 200 QPS 顶格放行、过载干净 429、node1 CPU 仅 57% |
 
 ## 架构与边界
 

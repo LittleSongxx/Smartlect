@@ -1,7 +1,7 @@
-# 跨机集群形态：搭建、演练与单机对比（ha-cluster）
+# 跨机集群形态：搭建、演练、单机对比与常驻收官（ha-cluster）
 
-日期：2026-09-15 ｜ 状态：**已完成并切回单机**（集群形态按需可 15 分钟内重建）
-证据：本目录 `cluster-evidence/`（演练时间线日志、双形态压测曲线 CSV、sentinel 探针全量记录）
+日期：2026-09-15 ｜ 状态：**常驻集群已全量上线**（node1 升配 8c32g、JVM 调优、800 VU 钉板，见文末「常驻收官」节）
+证据：本目录 `cluster-evidence/`（演练时间线日志、双形态压测曲线 CSV、sentinel 探针全量记录）；收官压测在服务器 `/opt/cluster/evidence/loadtest-20260915-1049/`（8 份 k6 日志 + 曲线 CSV + 窗口戳）
 
 ## 目标与结论
 
@@ -14,7 +14,7 @@
 ## 集群拓扑
 
 ```
-smartlect-node1 (4c16g, 172.21.131.151)   现有机：全部应用进程 + MySQL(主) + Redis(主*)
+smartlect-node1 (8c32g, 172.21.131.151)   现有机：全部应用进程 + MySQL(主) + Redis(主*)
                                             + rabbit-c1 + nacos-c1 + sentinel ×1
 smartlect-node2 (2c8g, 172.19.34.202)     新购：rabbit-c2 + nacos-c2 + Redis 副本 + sentinel
 smartlect-node3 (2c8g, 172.19.34.203)     新购：rabbit-c3 + nacos-c3 + Redis 副本 + sentinel
@@ -95,11 +95,46 @@ TOTAL_SENT=2430 / TOTAL_RECEIVED=2430 / ZERO_LOSS=PASS
 
 ## 成本与运维事实
 
-- 新购 2×2c8g 经济型按量（科创包抵扣 ¥0.383/h/台）；全程开机 ~2h，集群体验成本 <¥2。演练+压测完成后已停机（控制台可再开机，编排保留在服务器 `/opt/cluster/`）。
+- 新购 2×2c8g 经济型按量（科创包抵扣 ¥0.383/h/台）；演练期成本 <¥2。集群后转**常驻**（node2/3 保持开机，编排保留在服务器 `/opt/cluster/`，含已验证一次的 `revert.sh` 全套回退）。
 - 切换窗口（停应用到恢复）：首次 01:53→02:23 约 30 分钟（含 runtime.py/seata 两处热修）；回退 03:23→03:33 仅 10 分钟、apps-check 全绿。
 - 坑位实录：compose override 改容器标签触发 runtime.py「外来 checkout」保护（改为允许同 checkout 叠加文件）；seata 注册地址硬编码 docker 网络名（参数化修复）；VT100 画框输出解析 quorum leader；`down --remove-orphans` 误杀同项目他目录容器（集群编排共享 project 名的教训）；单机 redis 容器缺 masterauth。
 
+## 常驻收官（2026-09-15）：升配、JVM 调优与 800 VU 钉板
+
+集群转常驻后对 node1 停机变配 **4c16g → 8c32g**，重启后三组件全部自愈（RMQ 3 节点/59 队列无分区、quorum 3/3 voter；Nacos 3/3 readiness；Redis 经定向 failover 主回 node1、1m2s+3 sentinel 收敛；apps-check 13 进程全绿）。随后一步到位注入 JVM 三键（`SMARTLECT_JAVA_XMS=512m / XMX=512m / PROCESSORS=4`，runtime.env，无代码改动），`ps` 验证 9 个 JVM 全部 `-XX:ActiveProcessorCount=4 -Xms512m -Xmx512m`。
+
+### 升配后四档压测（node2/3 双发 k6 打 node1，HOLD=100s/档）
+
+| 总并发 | 尝试 req/s | 实际服务 req/s | p95 | 错误率 | node1 CPU | node2/3 CPU |
+|---|---|---|---|---|---|---|
+| 100 VU | 124 | 124 | **24ms** | 0% | 26-44% | 15-19% |
+| 200 VU | 248 | 245 | **21ms** | 1.3%（429） | 38-42% | 17-23% |
+| 400 VU | 497 | 349 | **40ms** | 29.9%（429） | 42-48% | 22-30% |
+| 800 VU | 972 | 515 | **190ms** | 47.0%（429） | 52-57% | 26-38% |
+
+与升配前（4c16g + 默认 JVM，同为集群形态）对比：
+
+| 并发 | 旧 QPS / p95 / node1 CPU | 新 QPS / p95 / node1 CPU |
+|---|---|---|
+| 100 VU | 85 / 1.41s / ~99% | **124（+46%）** / 24ms（-98%）/ ~35% |
+| 200 VU | 103 / 4.38s / 97-98% | **245（+137%）** / 21ms / ~40% |
+| 400 VU | 109 / 8.64s / 97-98% | **349（+220%）** / 40ms / ~45% |
+
+### 极限结论：瓶颈已从 4 核 CPU 移到网关限流器（配置值）
+
+- **极限不再上移的机制**：400/800 VU 的全部"错误"都是网关 Sentinel 限流的 **429**（`SentinelGatewayConfig`：`web-api` 分组与每服务路由均 `default-qps=200`）。800 VU 峰值分钟 nginx 口径 API 成功量 **恰为 12000/分钟 = 200.0 req/s 整**，多出的 570 req/s 被干净甩载，**零 5xx、无级联、压后 apps-check 立即全绿**。
+- **拐点**：约 150-200 req/s（API 口径）——低于它零错误、p95≤24ms；高于它过载请求被 429 而非排队。旧形态是"全放进来然后爬到 8.6s"，新形态是"顶格 200 放行 + 秒拒超出"，保护性严格更优。
+- **表观吞吐**（含不过网关的静态首页，nginx 直接服务）：800 VU 下 ~585 req/s，node1 CPU 仅 57%——**8c32g 远未饱和，资源天花板未探到**。下一步扩容杠杆是把 `smartlect.gateway.rate-limit.default-qps` 上调（Spring 属性，env 可覆盖、无需改码）后复测；按 CPU 曲线外推，当前硬件 API 上限约在 350-400 QPS。
+- node2/3（压测机兼集群成员）峰值 CPU 38% < 60% 阈值，**无需扩容**。
+
+### 收官期运维实录（三条新教训）
+
+1. **手动 `REPLICAOF` 会和 sentinel 打架**：node1 重启期间 sentinel 自动把 Redis 主漂到 node3；手动 REPLICAOF 回切被 sentinel 判定为主失效、触发自己的 failover（主落到 node2）。正确做法是**定向 failover**：非目标副本 `CONFIG SET replica-priority 0` → `SENTINEL FAILOVER mymaster` → 目标副本当选 → 恢复 priority=100。本次按此法一次成功，主回 node1、1m2s 收敛。
+2. **RabbitMQ 4.2 无 `rabbitmqctl quorum_status`**：命令在 `rabbitmq-queues` CLI 且必须带 `--vhost smartlect`（verify-cluster.sh 的旧调用会 `not found` 退出）。
+3. **重启竞态的 nacos 变体**：apps 的 runtime.py 预检在 nacos-c1 重组 Raft 期间拿到 503 而失败——等 readiness 200 后 `systemctl restart smartlect-apps` 即愈（seata 变体此前已用 `Restart=on-failure` 根治，nacos 变体目前手动恢复）。
+
 ## 边界与演进
+
 
 - 应用层未跨机：9 个 Java 服务仍单机部署（Spring Cloud 注册 IP 为 127.0.0.1）。本次集群化对象是中间件数据面/控制面——对应"消息零丢失、配置发现不中断、缓存热切"三类真实故障；应用层多副本需要会话/幂等键跨机化，是下一阶段。
 - MySQL 未做主从：备份+PITR 已覆盖（见 backup-restore-drill.md）；补 async 复制即可演进。
