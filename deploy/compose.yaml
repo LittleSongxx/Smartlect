@@ -12,14 +12,16 @@ services:
       SMARTLECT_SEATA_MYSQL_PASSWORD: ${SMARTLECT_SEATA_MYSQL_PASSWORD:?run bootstrap}
       SMARTLECT_GROWTH_MYSQL_PASSWORD: ${SMARTLECT_GROWTH_MYSQL_PASSWORD:?run bootstrap}
       TZ: Asia/Shanghai
-    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_general_ci, --innodb_buffer_pool_size=128M, --max_connections=160]
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_general_ci, --innodb_buffer_pool_size=512M, --max_connections=200]
     volumes:
       - mysql:/var/lib/mysql
       - ./mysql-init.sh:/docker-entrypoint-initdb.d/00-smartlect.sh:ro
       - ./sql/14-nacos.sql:/docker-entrypoint-initdb.d/14-nacos.sql:ro
       - ./sql/15-seata.sql:/docker-entrypoint-initdb.d/15-seata.sql:ro
       - ./sql/16-seata-undo.sql:/docker-entrypoint-initdb.d/16-seata-undo.sql:ro
-    mem_limit: 1g
+    # 8c32g 后余量充足：512M buffer pool + 2g 上限（1g 时常驻 748MB 已逼近）；
+    # max_connections 160→200 给 growth 线程本地复用与未来多副本留余量
+    mem_limit: 2g
     healthcheck:
       test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" mysqladmin ping -h 127.0.0.1 -uroot --silent']
       interval: 5s

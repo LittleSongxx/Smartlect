@@ -422,12 +422,16 @@ def start_app(service, env, records):
         artifact = artifacts[0]
         runtime_jar, source_sha, stamp = immutable_jar(artifact, ROOT / "run/apps" / service)
         executable = Path(shutil.which("java") or "/missing-java")
-        # JVM 规格 env 化：默认值即 4c16g 共享机的保守配置；升配后按新规格调大
+        # JVM 规格 env 化：默认值即 4c16g 共享机的保守配置；升配后按新规格调大。
+        # 服务级键（SMARTLECT_JAVA_PROCESSORS_GATEWAY 等）优先于全局键，用于给
+        # 网关/热点服务单独提预算；默认行为与纯全局键时代完全一致。
+        def jvm(key, default):
+            return env.get(f"{key}_{service.upper().replace('-', '_')}", env.get(key, default))
         command = [str(executable),
-                   "-Xms" + env.get("SMARTLECT_JAVA_XMS", "64m"),
-                   "-Xmx" + env.get("SMARTLECT_JAVA_XMX", "256m"),
+                   "-Xms" + jvm("SMARTLECT_JAVA_XMS", "64m"),
+                   "-Xmx" + jvm("SMARTLECT_JAVA_XMX", "256m"),
                    "-XX:MaxMetaspaceSize=192m", "-XX:MaxDirectMemorySize=64m",
-                   "-XX:ActiveProcessorCount=" + env.get("SMARTLECT_JAVA_PROCESSORS", "2"),
+                   "-XX:ActiveProcessorCount=" + jvm("SMARTLECT_JAVA_PROCESSORS", "2"),
                    f"-Dcsp.sentinel.log.dir={ROOT}/run/logs/sentinel/{service}",
                    f"-DJM.LOG.PATH={ROOT}/run/logs/{service}",
                    f"-DJM.SNAPSHOT.PATH={ROOT}/run/cache/{service}",

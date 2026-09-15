@@ -13,9 +13,14 @@ import re
 import unicodedata
 import uuid
 
+from prometheus_client import Counter as PrometheusCounter
+
 from smartlect.cache import TtlCache
 from smartlect.events import canonical
 from smartlect.state import SessionStore, StateError, _actor, _expiry, _integer, _json, _public, _text
+
+KNOWLEDGE_CACHE_REQUESTS = PrometheusCounter("growth_knowledge_cache_requests_total",
+                                             "Knowledge search cache outcomes", ["outcome"])
 
 MAX_CHUNKS = 5000
 LEXICAL_VERSION = "zh-bigram-bm25-v1"
@@ -541,7 +546,9 @@ class KnowledgeStore(SessionStore):
                      product_id, category_id, utterance, model_query, revision)
         cached = self._search_cache.get(cache_key)
         if cached is not None:
+            KNOWLEDGE_CACHE_REQUESTS.labels("hit").inc()
             return json.loads(cached)
+        KNOWLEDGE_CACHE_REQUESTS.labels("miss").inc()
         with self._transaction() as cursor:
             # ponytail: derive <=5000 authorized chunks per request; move to a versioned
             # numeric index only when this bounded exact scan is a measured bottleneck.

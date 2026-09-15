@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -211,14 +212,24 @@ public class DiscountCouponCacheComponent {
 
     private void writeLogicalEntry(String cacheKey, String payload) {
         long logicalExpireAt = System.currentTimeMillis()
-                + Constants.COUPON_CACHE_LOGICAL_TTL_SECONDS * 1000L;
+                + jittered(Constants.COUPON_CACHE_LOGICAL_TTL_SECONDS) * 1000L;
         CouponLogicalCacheEntry entry = new CouponLogicalCacheEntry(payload, logicalExpireAt);
         stringRedisTemplate.opsForValue().set(
                 cacheKey,
                 JsonUtils.toJson(entry),
-                Constants.COUPON_CACHE_PHYSICAL_TTL_SECONDS,
+                jittered(Constants.COUPON_CACHE_PHYSICAL_TTL_SECONDS),
                 TimeUnit.SECONDS
         );
+    }
+
+    /**
+     * Cache-avalanche guard: same-batch keys written together would otherwise expire
+     * together; ±10% TTL spread staggers the physical expiry wave. Logical entries are
+     * self-healing (stale-while-revalidate), so only the physical wave matters.
+     */
+    private long jittered(long ttlSeconds) {
+        long spread = Math.max(1, ttlSeconds / 10);
+        return ttlSeconds + ThreadLocalRandom.current().nextLong(-spread, spread + 1);
     }
 
     private boolean isLogicallyExpired(CouponLogicalCacheEntry entry) {

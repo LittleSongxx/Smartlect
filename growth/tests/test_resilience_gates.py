@@ -2,6 +2,7 @@
 
 import asyncio
 import itertools
+import threading
 from unittest.mock import MagicMock, Mock, patch
 import unittest
 
@@ -89,6 +90,41 @@ async def hold_run(**kwargs):
     await asyncio.sleep(0.5)
 
 
+class ConnectionReuseTests(unittest.TestCase):
+    def test_thread_local_reuse_and_dead_connection_fallback(self):
+        import smartlect.events as events
+
+        class FakeConn:
+            def __init__(self):
+                self.fail_ping = False
+                self.closed = False
+
+            def ping(self, reconnect=True):
+                if self.fail_ping:
+                    raise RuntimeError("server has gone away")
+
+            def close(self):
+                self.closed = True
+
+        built = []
+        original_new, original_local = events._new_connection, events._local
+        events._local = threading.local()  # isolate from other tests' thread state
+        try:
+            first = FakeConn()
+            events._new_connection = lambda: (built.append(1), first)[1]
+            self.assertIs(events.connect_from_env(), first)
+            self.assertIs(events.connect_from_env(), first)  # same thread, one connection
+            self.assertEqual(len(built), 1)
+            first.fail_ping = True
+            second = FakeConn()
+            events._new_connection = lambda: (built.append(1), second)[1]
+            self.assertIs(events.connect_from_env(), second)  # dead conn replaced, not reused
+            self.assertTrue(first.closed)
+            self.assertEqual(len(built), 2)
+        finally:
+            events._new_connection, events._local = original_new, original_local
+
+
 class RunAdmissionTests(unittest.IsolatedAsyncioTestCase):
     async def send(self, app, message_id):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://t") as client:
@@ -103,6 +139,9 @@ class RunAdmissionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(first.status_code, 200)
             self.assertEqual(second.status_code, 429)
             self.assertEqual(second.json()["error"], "actor_run_limit")
+            from prometheus_client import REGISTRY
+            self.assertGreaterEqual(REGISTRY.get_sample_value(
+                "growth_run_admission_rejections_total", {"gate": "actor"}), 1.0)
             await asyncio.sleep(0.6)  # drain the held executor task
 
     async def test_global_limit_admits_a_second_actor_only_after_a_slot_frees(self):

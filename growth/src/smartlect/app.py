@@ -24,7 +24,12 @@ from smartlect import __version__
 from smartlect.auth import IdentityBridge
 from smartlect.commerce import AsyncCommerceClient, CommerceError, CommerceRejected
 from smartlect.config import Settings
+from prometheus_client import Counter as PrometheusCounter
+
 from smartlect.events import Ledger, canonical
+
+RUN_ADMISSION_REJECTIONS = PrometheusCounter("growth_run_admission_rejections_total",
+                                             "New runs rejected by the concurrency admission gates", ["gate"])
 from smartlect import mcp
 from smartlect.state import SessionStore, StateError
 from smartlect.tools import Arguments, invoke
@@ -219,8 +224,10 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         counts. Idempotent replays of an already-running run never pass through here."""
         owner = (actor.subject_type, actor.actor_id)
         if sum(1 for held in task_owners.values() if held == owner) >= actor_run_limit:
+            RUN_ADMISSION_REJECTIONS.labels("actor").inc()
             raise StateError("actor_run_limit", 429)
         if len(tasks) >= global_run_limit:
+            RUN_ADMISSION_REJECTIONS.labels("global").inc()
             raise StateError("assistant_busy", 429)
     Instrumentator().instrument(app).expose(app, include_in_schema=False)
 

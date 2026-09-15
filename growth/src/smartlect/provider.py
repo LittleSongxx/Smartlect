@@ -12,9 +12,15 @@ import uuid
 from urllib.parse import urlsplit
 
 import httpx
+from prometheus_client import Counter
 
 from smartlect.cache import TtlCache
 from smartlect.state import SessionStore, StateError, _actor, _integer, _json, _text
+
+MODEL_BREAKER_REJECTIONS = Counter("growth_model_breaker_rejections_total",
+                                    "Fast-fails served while a model endpoint circuit was open", ["endpoint"])
+EMBEDDING_CACHE_REQUESTS = Counter("growth_embedding_cache_requests_total",
+                                    "Query-embedding cache outcomes", ["outcome"])
 
 
 class ProviderError(RuntimeError):
@@ -40,12 +46,14 @@ class _Breaker:
     model_circuit_open instead of waiting out a full 25s timeout; one probe
     request after the cooldown closes (or re-opens) the circuit."""
 
-    def __init__(self, failures, cooldown_s):
+    def __init__(self, failures, cooldown_s, endpoint):
         self.failures, self.cooldown_s = failures, cooldown_s
+        self.endpoint = endpoint
         self._consecutive, self._opened_until = 0, 0.0
 
     def check(self):
         if self._consecutive >= self.failures and time.monotonic() < self._opened_until:
+            MODEL_BREAKER_REJECTIONS.labels(self.endpoint).inc()
             raise ProviderError("model_circuit_open", retryable=False)
 
     def record(self, succeeded):
@@ -181,10 +189,13 @@ class Provider:
         self._config = {k: v for k, v in config.items() if k.startswith((
             "SMARTLECT_MODEL_", "SMARTLECT_EMBEDDING_"))}
         self._transport = transport
-        self._slots = asyncio.Semaphore(2)
+        # The two slots are the deliberate cost valve: concurrency beyond this queues
+        # in front of the provider instead of multiplying paid model calls.
+        self._slots = asyncio.Semaphore(bounded(config.get("SMARTLECT_MODEL_CONCURRENCY"), 2, 1, 8))
         self._client = None  # shared per process; created lazily inside the running loop
         self._breakers = {prefix: _Breaker(bounded(config.get("SMARTLECT_MODEL_BREAKER_FAILURES"), 4, 2, 50),
-                                           bounded(config.get("SMARTLECT_MODEL_BREAKER_COOLDOWN_S"), 30, 1, 600))
+                                           bounded(config.get("SMARTLECT_MODEL_BREAKER_COOLDOWN_S"), 30, 1, 600),
+                                           prefix.lower())
                           for prefix in ("MODEL", "EMBEDDING")}
         self._embedding_cache = TtlCache(512, 1800)
 
@@ -271,7 +282,9 @@ class Provider:
         if cache_key is not None:
             cached = self._embedding_cache.get(cache_key)
             if cached is not None:
+                EMBEDDING_CACHE_REQUESTS.labels("hit").inc()
                 return {**cached, "metadata": {**cached["metadata"], "cache_hit": True}}
+            EMBEDDING_CACHE_REQUESTS.labels("miss").inc()
         result = await self._request("EMBEDDING", "/embeddings", {"model": model, "input": texts,
                                    "dimensions": dimensions, "encoding_format": "float"},
                                    on_trace=on_trace, before_attempt=before_attempt, max_attempts=max_attempts,
