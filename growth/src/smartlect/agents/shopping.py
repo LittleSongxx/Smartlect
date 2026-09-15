@@ -263,6 +263,13 @@ class BudgetExceeded(RuntimeError):
     pass
 
 
+class GuardViolation(ValueError):
+    # A deterministic guard rejection with its own single repair round. Budgeted
+    # apart from answer_repairs so a guard trigger cannot spend the one schema
+    # repair allowance a later contract violation still needs.
+    pass
+
+
 def final_answer_schema():
     # A controller output channel, not a business operation or another Agent.
     schema = tool_schema(FinalAnswer)
@@ -881,6 +888,30 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': encoded})
         return {'messages': messages}
 
+    def repair_round_messages(state, reason):
+        feedback = [{'role':'tool','tool_call_id':call['id'],
+            'content':canonical({'error':reason[:500],'batch_executed':False})}
+            for call in state['response'].get('tool_calls') or []]
+        return state['messages'] + feedback + [{'role': 'user', 'content':
+                 '请仅修复输出格式或引用。校验失败：' + reason[:500] +
+                 '。通过finish_answer提交answer/request_kind/handoff_requested/grounding/citation_chunk_ids/selected_sku_keys/requires_clarification，不要填写answer_status。允许引用chunk_id：' +
+                 canonical(list(citations)) + '；允许sku_key：' + canonical(list(products)) +
+                 '。按request_kind声明诉求，系统编译是否建单。也可单独request_handoff。'
+                 '可用只读工具补充本题事实，也可说明未知并继续可完成的部分；历史对话不代替本轮交易事实。'
+                 '合同修复仍只有这一次，总模型/工具预算不增加，不新增任何批准或执行交易。'}]
+
+    def guard_repair_fits(state, reason):
+        # A repair round is one more model call through bounded_messages. When the
+        # window cannot host it (r-049: seven observation rounds had already filled
+        # the ceiling), model_node would raise context_limit and downgrade a run
+        # that already holds a complete answer, so the guard releases instead.
+        try:
+            bounded_messages(repair_round_messages(state, reason),
+                             schemas(actor, allowed_tools()) + [final_answer_schema()], question)
+        except BudgetExceeded:
+            return False
+        return True
+
     async def answer_node(state):
         calls=state['response'].get('tool_calls') or []
         raw=state['response'].get('content') or ''
@@ -929,15 +960,17 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                                      '若放宽后仍无任何可售商品，再按诚实空集收口')
             state_claims = unsupported_state_claims(final.answer, context.get('accepted_tools'))
             if state_claims:
-                if context.get('state_claim_repair_done'):
-                    # 修复后仍声明状态：放行但留残余旗标，不把坏答案升级成通道失败
+                guard_reason = ('state_claim_without_receipt: '
+                                '答案声明了用户订单/优惠券/账户的当前状态（' + '、'.join(state_claims[:3]) +
+                                '），但本轮没有任何订单查询工具回执——这是编造的观测。'
+                                '请删除这些状态声明，改为请用户提供订单号或转人工核实，只保留有证据支撑的政策内容')
+                if context.get('state_claim_repair_done') or not guard_repair_fits(state, guard_reason):
+                    # 修复后仍声明状态，或窗口已放不下修复轮：放行但留残余旗标，
+                    # 不把坏答案升级成通道失败
                     context['state_claim_residual'] = state_claims
                 else:
                     context['state_claim_repair_done'] = True
-                    raise ValueError('state_claim_without_receipt: '
-                                     '答案声明了用户订单/优惠券/账户的当前状态（' + '、'.join(state_claims[:3]) +
-                                     '），但本轮没有任何订单查询工具回执——这是编造的观测。'
-                                     '请删除这些状态声明，改为请用户提供订单号或转人工核实，只保留有证据支撑的政策内容')
+                    raise GuardViolation(guard_reason)
             if final.grounding == 'no_business_claim' and (final.citation_chunk_ids or final.selected_sku_keys):
                 raise ValueError('no_business_claim_cannot_carry_evidence')
             if final.grounding == 'no_business_claim' and no_business_claim_has_store_conclusion(final.answer):
@@ -1023,20 +1056,13 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                 'error': type(error).__name__, 'reason': reason[:1000],
                 'candidate_output': rejected_output[:12000], 'candidate_output_truncated': len(rejected_output) > 12000,
                 'allowed_chunk_ids': list(citations), 'allowed_sku_keys': list(products)})
-            if context['answer_repairs'] >= 1:
-                await persist()
-                raise BudgetExceeded('answer_contract_failed')
-            context['answer_repairs'] += 1
+            if not isinstance(error, GuardViolation):
+                if context['answer_repairs'] >= 1:
+                    await persist()
+                    raise BudgetExceeded('answer_contract_failed')
+                context['answer_repairs'] += 1
             await persist()
-            feedback=[{'role':'tool','tool_call_id':call['id'],
-                'content':canonical({'error':reason[:500],'batch_executed':False})} for call in calls]
-            return {'repair': 1, 'messages': state['messages'] + feedback + [{'role': 'user', 'content':
-                     '请仅修复输出格式或引用。校验失败：' + reason[:500] +
-                     '。通过finish_answer提交answer/request_kind/handoff_requested/grounding/citation_chunk_ids/selected_sku_keys/requires_clarification，不要填写answer_status。允许引用chunk_id：' +
-                     canonical(list(citations)) + '；允许sku_key：' + canonical(list(products)) +
-                     '。按request_kind声明诉求，系统编译是否建单。也可单独request_handoff。'
-                     '可用只读工具补充本题事实，也可说明未知并继续可完成的部分；历史对话不代替本轮交易事实。'
-                     '合同修复仍只有这一次，总模型/工具预算不增加，不新增任何批准或执行交易。'}]}
+            return {'repair': 1, 'messages': repair_round_messages(state, reason)}
 
     graph = StateGraph(RunState)
     graph.add_node('model', model_node)

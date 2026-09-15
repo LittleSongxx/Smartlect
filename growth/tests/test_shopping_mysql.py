@@ -14,7 +14,8 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from smartlect.agents.shopping import run_shopping
+from smartlect.agents import shopping as shopping_module
+from smartlect.agents.shopping import BudgetExceeded, run_shopping
 from smartlect.attribution import AttributionStore
 from smartlect.business_skills import USER_SKILLS, load_skill
 from smartlect.app import create_app
@@ -485,6 +486,60 @@ class ShoppingMySQLTests(unittest.TestCase):
         self.assertEqual(result['context']['answer_rejections'][0]['candidate_output'],'我先核对资料。')
         self.assertEqual(len(self.knowledge.searches),1)
         self.assertEqual(self.store.get_conversation(self.actor,self.conversation)['proposals'],[])
+
+    def _cited_finish(self, answer):
+        def finish(messages):
+            receipt = json.loads(next(m["content"] for m in messages
+                                      if m["role"] == "tool" and '"citations"' in m["content"]))
+            return tool('finish_answer', {'answer': answer, 'request_kind': 'inquire_fact',
+                'handoff_requested': False, 'grounding': 'store_policy',
+                'citation_chunk_ids': [receipt['citations'][0]['chunk_id']]})
+        return finish
+
+    def test_guard_repair_keeps_schema_repair_allowance(self):
+        # Guard rejection (fabricated coupon state) runs its own repair round and
+        # leaves answer_repairs untouched, so a schema violation in the very next
+        # finish_answer still gets the one contract repair it is entitled to.
+        # Question wording avoids requirement_slots head-noun capture, which would
+        # route the answer through a recommend_skus refresh this fixture cannot serve.
+        claiming = self._cited_finish('退款需要本人确认；受理不代表完成。您账户下暂无可用优惠券。')
+        provider = FakeProvider([
+            tool('search_knowledge', {'query': '退款确认'}), claiming,
+            tool('finish_answer', {'answer': '引用了未见资料。', 'request_kind': 'inquire_fact',
+                'handoff_requested': False, 'grounding': 'store_policy', 'citation_chunk_ids': ['foreign-chunk']}),
+            self._cited_finish('退款需要本人确认；受理不代表完成。')])
+        run, lease = self.begin('账户的退款规则是什么？')
+        result = asyncio.run(self.execute(provider, run, lease))
+        self.assertEqual(result['state'], 'COMPLETED')
+        self.assertEqual(result['result']['answer_status'], 'answered')
+        self.assertEqual([r['error'] for r in result['context']['answer_rejections']],
+                         ['GuardViolation', 'ValueError'])
+        self.assertEqual(result['context']['answer_repairs'], 1)
+        self.assertTrue(result['context']['state_claim_repair_done'])
+        self.assertEqual(result['context']['model_calls'], 4)
+
+    def test_guard_releases_answer_when_repair_round_would_not_fit(self):
+        # r-049 shape: observation rounds already fill the bounded window, so a
+        # guard-triggered extra model call would hit context_limit and downgrade a
+        # finished live run to rule-fallback. The guard releases with the residual
+        # flag instead of becoming a new channel-failure mode.
+        original = shopping_module.bounded_messages
+        def choked(messages, tool_schemas, question):
+            if any(m.get('role') == 'user' and str(m.get('content', '')).startswith('请仅修复输出格式或引用')
+                   for m in messages):
+                raise BudgetExceeded('context_limit')
+            return original(messages, tool_schemas, question)
+        provider = FakeProvider([tool('search_knowledge', {'query': '退款确认'}),
+            self._cited_finish('退款需要本人确认；受理不代表完成。您账户下暂无可用优惠券。')])
+        run, lease = self.begin('账户的退款规则是什么？')
+        with patch('smartlect.agents.shopping.bounded_messages', choked):
+            result = asyncio.run(self.execute(provider, run, lease))
+        self.assertEqual(result['state'], 'COMPLETED')
+        self.assertEqual(result['result']['model_mode'], 'live')
+        self.assertIn('退款需要本人确认', result['result']['answer'])
+        self.assertTrue(result['context']['state_claim_residual'])
+        self.assertNotIn('answer_rejections', result['context'])
+        self.assertEqual(result['context']['model_calls'], 2)
 
     def test_native_final_decision_is_validated_without_becoming_a_business_tool(self):
         def final(messages):
