@@ -41,8 +41,9 @@ HONEST_MARKERS = ('未提及', '未查询到', '没有找到', '未找到', '未
                   '未明确说明', '未明确提及', '没有明确说明')
 
 COVERAGE_SYS = """你是答案覆盖度评审员。给定用户问题、标准答案要点清单、客服答案。
-逐条对照要点清单计数：要点信息在客服答案中有正确体现才算，遗漏、编造或答错都不算。
-返回 JSON：{"covered": 覆盖个数(整数，不超过要点总数), "reason": 一句话依据}。"""
+对每一条要点单独判定：该要点信息在客服答案中有正确体现记 true，遗漏、答错或仅在答案中部分体现该要点时记 false。
+改述算体现，但一条要点含多个事实时必须全部体现才记 true。
+返回 JSON：{"verdicts": [true/false, ...]（长度必须等于要点总数）, "reason": 一句话依据}。"""
 
 FAITH_SYS = """你是回答忠实度评审员。给定检索证据和客服回答，判断回答里的具体事实主张
 （政策规则、金额、时限、条件等）是否都能被证据支撑。忠实度只查「资料里没有、模型自己编」的杜撰，
@@ -226,8 +227,12 @@ def cmd_score(input_dir):
                                          '\n'.join('%d. %s' % (i + 1, p) for i, p in enumerate(points)),
                                          row.get('answer') or '(空)'),
                                      'cov:' + row['id'])
-                if verdict is not None and isinstance(verdict.get('covered'), int):
-                    entry['coverage'] = min(verdict['covered'], len(points)) / len(points)
+                if verdict is not None:
+                    flags = verdict.get('verdicts')
+                    if isinstance(flags, list) and len(flags) == len(points) and all(isinstance(f, bool) for f in flags):
+                        entry['coverage'] = sum(flags) / len(points)
+                    elif isinstance(verdict.get('covered'), int):  # 兼容旧格式
+                        entry['coverage'] = min(verdict['covered'], len(points)) / len(points)
         # Faithfulness 对全部层判（L6 的编造同样要露头）；证据面=用户问题+检索文档+工具观测
         evidence_text = '用户问题:' + row['question'] + '\n检索证据:\n' + '\n'.join(
             '[%d] %s' % (i + 1, docs[doc_id])
