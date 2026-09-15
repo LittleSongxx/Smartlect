@@ -127,11 +127,35 @@ TOTAL_SENT=2430 / TOTAL_RECEIVED=2430 / ZERO_LOSS=PASS
 - **表观吞吐**（含不过网关的静态首页，nginx 直接服务）：800 VU 下 ~585 req/s，node1 CPU 仅 57%——**8c32g 远未饱和，资源天花板未探到**。下一步扩容杠杆是把 `smartlect.gateway.rate-limit.default-qps` 上调（Spring 属性，env 可覆盖、无需改码）后复测；按 CPU 曲线外推，当前硬件 API 上限约在 350-400 QPS。
 - node2/3（压测机兼集群成员）峰值 CPU 38% < 60% 阈值，**无需扩容**。
 
-### 收官期运维实录（三条新教训）
+### 解除限流复测（同日）：真实极限 ~600 req/s，真炸弹在监控栈
+
+方法：`runtime.env` 注入 `SMARTLECT_GATEWAY_RATELIMIT_DEFAULTQPS=2000`（Spring 宽松绑定，零代码改动），300 VU 探针确认解除（0 失败，旧限流下必出 429）后复跑同款压测 + 600/1600 VU 补档；测毕删除键恢复 200 限流（探针 429 重现 14.6% 确认）。
+
+| 并发 | req/s（k6 全档均值） | p95 | p99 | 错误 | node1 CPU（hold 段） |
+|---|---|---|---|---|---|
+| 100 VU | 124 | 20ms | 26ms | 0 | 22-30% |
+| 200 VU | 249 | 22ms | 36ms | 0 | 38-46% |
+| 400 VU | 486 | 93ms | 344ms | 0 | 66-69% |
+| 600 VU | **605** | 858ms | 1.25s | 0 | 72-78% |
+| 800 VU | 582 | 1.67s | 2.13s | 0 | 74-80% |
+| 1600 VU | 501* | 3.67s* | 4.24s | ~0 | 崩溃窗口* |
+
+\* 1600 VU 档后期宿主被 Jaeger OOM 拖入假死（见下），吞吐/延迟数字含污染，仅作崩溃实证。
+
+- **真实极限 = 600 VU / 605 req/s（零错误）**；400 VU（486 req/s、p95 93ms、CPU<70%）是"健康顶格"。800 VU 起吞吐回落、延迟陡升——过峰**纯排队劣化，全程零 5xx**。
+- node1 CPU 峰值 80% 未打满：约束在应用层内部（9 JVM × processors=4 的线程预算、池与 GC），不是机器核数；node2/3 全程 ≤35%。
+- **真系统级瓶颈在监控栈**：Jaeger all-in-one 的 `SPAN_STORAGE_TYPE=memory` 无上界，600 req/s 级持续追踪下 RSS 涨到 **19.4GB** 触发 node OOM——宿主用户态假死 12 分钟（ICMP 通、TCP 握手通、banner/HTTP 全超时），且在压测结束**数分钟后**才引爆（延迟引爆，极易误诊为压测后遗症之外的问题）。修复：`MEMORY_MAX_TRACES=200000` + `mem_limit: 4g` 双保险（超限只杀容器自身）。
+- 意外实测了一次"node1 应用栈不可用"集群自愈：sentinel 5s 判定切主到 node3；RMQ/Nacos 进程未退出、拓扑不变（用户态饿死而非宕机）；事后定向 failover 零丢失切回。
+- 与限流态同档对比（800 VU）：限流态服务 515 req/s / p95 190ms vs 解除态 582 req/s / p95 1.67s——**限流器用 12% 吞吐换 9 倍尾延迟与过载保护**，200 QPS 出厂值合理；若业务需要更高容量，上调 `default-qps` 的同时应同步关注 400-600 req/s 区间的池与 GC 调优。
+
+
+
+### 收官期运维实录（四条新教训）
 
 1. **手动 `REPLICAOF` 会和 sentinel 打架**：node1 重启期间 sentinel 自动把 Redis 主漂到 node3；手动 REPLICAOF 回切被 sentinel 判定为主失效、触发自己的 failover（主落到 node2）。正确做法是**定向 failover**：非目标副本 `CONFIG SET replica-priority 0` → `SENTINEL FAILOVER mymaster` → 目标副本当选 → 恢复 priority=100。本次按此法一次成功，主回 node1、1m2s 收敛。
 2. **RabbitMQ 4.2 无 `rabbitmqctl quorum_status`**：命令在 `rabbitmq-queues` CLI 且必须带 `--vhost smartlect`（verify-cluster.sh 的旧调用会 `not found` 退出）。
 3. **重启竞态的 nacos 变体**：apps 的 runtime.py 预检在 nacos-c1 重组 Raft 期间拿到 503 而失败——等 readiness 200 后 `systemctl restart smartlect-apps` 即愈（seata 变体此前已用 `Restart=on-failure` 根治，nacos 变体目前手动恢复）。
+4. **打极限前先给旁路系统设上界**：压测打爆的第一台"服务"是旁路的 Jaeger（memory 存储 19.4GB → node OOM、宿主假死 12 分钟、压测结束数分钟后才引爆）。任何全链路压测前，追踪/日志/指标栈的内存上限是前置条件；症状识别口诀——ICMP 通 + TCP 握手通 + banner 超时 = 用户态饿死（内存），而非网络或 conntrack 问题。
 
 ## 边界与演进
 
