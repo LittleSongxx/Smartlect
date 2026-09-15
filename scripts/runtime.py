@@ -692,9 +692,10 @@ def self_test():
                     start_app=lambda name, env, records: calls.append(('start', name)),
                     wait_apps=lambda names, records: calls.append(('healthy', tuple(names)))):
         apps_up({})
-    assert calls[:2] == [('start', 'growth-worker'), ('healthy', ('growth-worker',))]
+    assert calls[:2] == [('start', 'user'), ('healthy', ('user',))]
+    assert ('start', 'growth-worker') in calls and calls.index(('start', 'growth-worker')) > calls.index(('healthy', ('stock',)))
     assert ('catalog',) in calls and calls.index(('catalog',)) > calls.index(('healthy', ('stock',)))
-    print('Consumer health precedes every Java producer startup.')
+    print('Java producers redeclare queues before the growth consumer starts.')
 
 
 def main():
