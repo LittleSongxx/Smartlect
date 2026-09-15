@@ -30,7 +30,7 @@ from smartlect.state import SessionStore, StateError
 from smartlect.tools import Arguments, invoke
 from smartlect.worker import worker_health
 from smartlect.agents.shopping import run_shopping
-from smartlect.provider import IndexModelAudit, Provider, ProviderError
+from smartlect.provider import IndexModelAudit, Provider, ProviderError, bounded
 from smartlect.knowledge import KnowledgeStore
 from smartlect.memory import MemoryStore
 from smartlect.privacy import redact_text
@@ -199,6 +199,9 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     ads = ads or (AdsService(commerce, AdsStore(store.connect)) if store else None)
     merchant = merchant or (MerchantService(MerchantStore(store.connect),ads,provider,config) if store else None)
     tasks = {}
+    task_owners = {}  # run_id -> (subject_type, actor_id); admission counts live executors, not stale DB rows
+    actor_run_limit = bounded(config.get("SMARTLECT_GROWTH_RUNS_PER_ACTOR"), 3, 1, 64)
+    global_run_limit = bounded(config.get("SMARTLECT_GROWTH_RUNS_GLOBAL"), 24, 1, 512)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -210,6 +213,15 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         await asyncio.gather(*tasks.values(), return_exceptions=True)
 
     app = FastAPI(title="Smartlect AI API", version=__version__, lifespan=lifespan)
+
+    async def admit_runs(actor):
+        """Two gates before a new run starts executing: per-actor and global live-run
+        counts. Idempotent replays of an already-running run never pass through here."""
+        owner = (actor.subject_type, actor.actor_id)
+        if sum(1 for held in task_owners.values() if held == owner) >= actor_run_limit:
+            raise StateError("actor_run_limit", 429)
+        if len(tasks) >= global_run_limit:
+            raise StateError("assistant_busy", 429)
     Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
     # OTel 追踪（T1-7）：仅在显式配置端点且依赖可用时启用——未装包/未配置的
@@ -374,12 +386,15 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.post('/admin-api/assistant/merchant/runs')
     async def merchant_create_run(payload: MerchantRunRequest,request: Request,response: Response):
         actor=await ads_merchant(request,response,write=True)
+        await admit_runs(actor)
         run,lease=await merchant.prepare_run(actor,payload.model_dump(exclude_none=True))
         if lease is not None:
             task=asyncio.create_task(merchant.run(actor,run,lease))
             key='merchant:'+run['agent_run_id']
+            owner=(actor.subject_type,actor.actor_id)
             tasks[key]=task
-            task.add_done_callback(lambda completed: tasks.pop(key,None))
+            task_owners[key]=owner
+            task.add_done_callback(lambda completed:(tasks.pop(key,None),task_owners.pop(key,None)))
         return run
 
     @app.get('/admin-api/assistant/merchant/runs/{run_id}')
@@ -523,6 +538,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         # create_run checks exact idempotency before rejecting new messages under human control.
         run = await db(memory.recover_handoff_run, actor, run['agent_run_id']) or run
         if run['state'] in {'CREATED', 'RUNNING'} and run['agent_run_id'] not in tasks:
+            await admit_runs(actor)
             try:
                 lease = await db(store.claim_run, actor, run['agent_run_id'], owner='shopping-api', ttl_seconds=90)
             except StateError as error:
@@ -559,7 +575,9 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
                         pass  # A handoff/clear already fenced and cancelled this run.
             task = asyncio.create_task(execute())
             tasks[run['agent_run_id']] = task
-            task.add_done_callback(lambda _: tasks.pop(run['agent_run_id'], None))
+            task_owners[run['agent_run_id']] = (actor.subject_type, actor.actor_id)
+            task.add_done_callback(lambda _: (tasks.pop(run['agent_run_id'], None),
+                                              task_owners.pop(run['agent_run_id'], None)))
         return run
 
     @app.post('/api/assistant/conversations/{conversation_id}/mcp')

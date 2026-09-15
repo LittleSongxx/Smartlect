@@ -502,7 +502,7 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
         if not config.get('SMARTLECT_EMBEDDING_API_KEY') or mode != 'live':
             return {}
         result = await provider.embed([query], before_attempt=before_attempt, on_trace=trace,
-                                      skill_versions=context['skill_versions'])
+                                      skill_versions=context['skill_versions'], cacheable=True)
         meta = result['metadata']
         return {'query_vector': result['embeddings'][0], 'embedding_model': meta['model_id'],
                 'index_version': f"{meta['model_id']}:d{meta['dimensions']}:v1"}

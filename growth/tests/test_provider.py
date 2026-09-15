@@ -328,5 +328,81 @@ class GlmProviderTests(unittest.IsolatedAsyncioTestCase):
                 await bad.chat(MESSAGES)
 
 
+class ResilienceTests(unittest.IsolatedAsyncioTestCase):
+    """Circuit breaker, connection reuse and the embedding cache added 2026-09-15."""
+
+    async def test_breaker_opens_fast_fails_and_half_open_probe_recovers(self):
+        state, calls = {"mode": "fail"}, []
+
+        def handler(request):
+            calls.append(request)
+            if state["mode"] == "fail":
+                return httpx.Response(503, text="SECRET")
+            return httpx.Response(200, json=completion())
+
+        config = {**CONFIG, "SMARTLECT_MODEL_BREAKER_FAILURES": "2", "SMARTLECT_MODEL_BREAKER_COOLDOWN_S": "1"}
+        provider = Provider(config, transport=httpx.MockTransport(handler))
+        for _ in range(2):  # each chat exhausts its own retry, then counts as one breaker failure
+            with self.assertRaises(ProviderError):
+                await provider.chat(MESSAGES)
+        with self.assertRaises(ProviderError) as tripped:
+            await provider.chat(MESSAGES)
+        self.assertEqual(tripped.exception.code, "model_circuit_open")
+        self.assertEqual(len(calls), 4)  # fast-fail issued no new HTTP request
+        await asyncio.sleep(1.05)  # cooldown expires; the next call is the half-open probe
+        state["mode"] = "ok"
+        self.assertEqual((await provider.chat(MESSAGES))["message"]["content"], "ok")
+        self.assertEqual((await provider.chat(MESSAGES))["message"]["content"], "ok")
+
+    async def test_breakers_are_scoped_per_endpoint(self):
+        def handler(request):
+            if request.url.path.endswith("/embeddings"):
+                return httpx.Response(200, json={"model": "text-embedding-v4",
+                    "data": [{"index": 0, "embedding": [0.25] * 64}], "usage": {"total_tokens": 3}})
+            return httpx.Response(503)
+
+        config = {**CONFIG, "SMARTLECT_MODEL_BREAKER_FAILURES": "2", "SMARTLECT_MODEL_BREAKER_COOLDOWN_S": "60"}
+        provider = Provider(config, transport=httpx.MockTransport(handler))
+        for _ in range(2):
+            with self.assertRaises(ProviderError):
+                await provider.chat(MESSAGES)
+        with self.assertRaisesRegex(ProviderError, "model_circuit_open"):
+            await provider.chat(MESSAGES)
+        self.assertEqual(len((await provider.embed(["退款政策"]))["embeddings"][0]), 64)  # chat breaker stays open
+
+    async def test_identical_single_text_embedding_is_cached_without_budget_or_http(self):
+        calls, budget = [], []
+
+        def handler(request):
+            body = json.loads(request.content)
+            calls.append(body)
+            return httpx.Response(200, json={"model": "text-embedding-v4",
+                "data": [{"index": i, "embedding": [0.25] * 64} for i in range(len(body["input"]))],
+                "usage": {"prompt_tokens": 3, "total_tokens": 3}})
+
+        async def before_attempt():
+            budget.append(1)
+
+        provider = Provider(CONFIG, transport=httpx.MockTransport(handler))
+        first = await provider.embed(["退款政策"], before_attempt=before_attempt, cacheable=True)
+        second = await provider.embed(["退款政策"], before_attempt=before_attempt, cacheable=True)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(first["embeddings"], second["embeddings"])
+        self.assertFalse(first["metadata"].get("cache_hit", False))
+        self.assertTrue(second["metadata"]["cache_hit"])
+        self.assertEqual(len(budget), 1)  # the cached call consumed neither a slot nor the run budget
+        await provider.embed(["第一句", "第二句"], cacheable=True)  # batches are the indexing path and stay uncached
+        await provider.embed(["全新的单句"])  # without the flag nothing is cached either
+        self.assertEqual(len(calls), 3)
+
+    async def test_http_client_is_created_once_and_reused(self):
+        provider = Provider(CONFIG, transport=httpx.MockTransport(lambda request: httpx.Response(200, json=completion())))
+        await provider.chat(MESSAGES)
+        client = provider._client
+        self.assertIsNotNone(client)
+        await provider.chat(MESSAGES)
+        self.assertIs(provider._client, client)
+
+
 if __name__ == "__main__":
     unittest.main()

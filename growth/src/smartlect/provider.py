@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import inspect
 import json
 import math
+import random
 import re
 import time
 import uuid
@@ -12,6 +13,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from smartlect.cache import TtlCache
 from smartlect.state import SessionStore, StateError, _actor, _integer, _json, _text
 
 
@@ -22,6 +24,34 @@ class ProviderError(RuntimeError):
         self.retryable = retryable
         self.http_status = http_status
         self.attempts = attempts or []
+
+
+def bounded(raw, default, low, high):
+    """Env knobs are strings; clamp to a sane range and fall back on garbage."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return low if value < low else high if value > high else value
+
+
+class _Breaker:
+    """Consecutive-failure circuit: while open every call fails fast with
+    model_circuit_open instead of waiting out a full 25s timeout; one probe
+    request after the cooldown closes (or re-opens) the circuit."""
+
+    def __init__(self, failures, cooldown_s):
+        self.failures, self.cooldown_s = failures, cooldown_s
+        self._consecutive, self._opened_until = 0, 0.0
+
+    def check(self):
+        if self._consecutive >= self.failures and time.monotonic() < self._opened_until:
+            raise ProviderError("model_circuit_open", retryable=False)
+
+    def record(self, succeeded):
+        self._consecutive = 0 if succeeded else self._consecutive + 1
+        if self._consecutive >= self.failures:
+            self._opened_until = time.monotonic() + self.cooldown_s
 
 
 async def _callback(callback, *args):
@@ -152,6 +182,11 @@ class Provider:
             "SMARTLECT_MODEL_", "SMARTLECT_EMBEDDING_"))}
         self._transport = transport
         self._slots = asyncio.Semaphore(2)
+        self._client = None  # shared per process; created lazily inside the running loop
+        self._breakers = {prefix: _Breaker(bounded(config.get("SMARTLECT_MODEL_BREAKER_FAILURES"), 4, 2, 50),
+                                           bounded(config.get("SMARTLECT_MODEL_BREAKER_COOLDOWN_S"), 30, 1, 600))
+                          for prefix in ("MODEL", "EMBEDDING")}
+        self._embedding_cache = TtlCache(512, 1800)
 
     def _endpoint(self, prefix):
         key = self._config.get(f"SMARTLECT_{prefix}_API_KEY")
@@ -219,7 +254,8 @@ class Provider:
                                    skill_versions=skill_versions, schema_version=schema_version)
 
     async def embed(self, texts, *, on_trace=None, before_attempt=None, max_attempts=2,
-                    prompt_version="embedding-v1", skill_versions=None, schema_version="embedding-v1"):
+                    prompt_version="embedding-v1", skill_versions=None, schema_version="embedding-v1",
+                    cacheable=False):
         if (not isinstance(texts, list) or not 1 <= len(texts) <= 10
                 or any(not isinstance(t, str) or not t.strip() or len(t) > 8000 for t in texts)):
             raise ValueError("embedding_batch_requires_1_to_10_nonempty_texts_max_8000_chars")
@@ -229,16 +265,27 @@ class Provider:
         dimensions = int(self._config.get("SMARTLECT_EMBEDDING_DIMENSIONS", "1024"))
         if dimensions not in {64, 128, 256, 512, 768, 1024, 1536, 2048}:
             raise ValueError("invalid_embedding_dimensions")
-        return await self._request("EMBEDDING", "/embeddings", {"model": model, "input": texts,
+        # Retrieval re-embeds the same user utterances constantly, so the query path opts in;
+        # one-shot knowledge indexing stays uncached (a re-publish must really call the model).
+        cache_key = (model, dimensions, texts[0]) if cacheable and len(texts) == 1 else None
+        if cache_key is not None:
+            cached = self._embedding_cache.get(cache_key)
+            if cached is not None:
+                return {**cached, "metadata": {**cached["metadata"], "cache_hit": True}}
+        result = await self._request("EMBEDDING", "/embeddings", {"model": model, "input": texts,
                                    "dimensions": dimensions, "encoding_format": "float"},
                                    on_trace=on_trace, before_attempt=before_attempt, max_attempts=max_attempts,
                                    prompt_version=prompt_version, skill_versions=skill_versions, schema_version=schema_version)
+        if cache_key is not None and isinstance(result, dict):
+            self._embedding_cache.put(cache_key, result)
+        return result
 
     async def _request(self, prefix, path, body, *, stream=False, on_delta=None, on_trace=None,
                        before_attempt=None, max_attempts=2, prompt_version, skill_versions, schema_version):
         if type(max_attempts) is not int or not 1 <= max_attempts <= 2:
             raise ValueError("model_attempt_limit_must_be_1_or_2")
         base, key, region = self._endpoint(prefix)
+        self._breakers[prefix].check()
         attempts = []
         overall_start = time.monotonic()
         for attempt in range(1, max_attempts + 1):
@@ -271,52 +318,53 @@ class Provider:
                 try:
                     # asyncio enforces a total attempt deadline, including a slowly arriving stream.
                     async with asyncio.timeout(25):
-                        async with httpx.AsyncClient(transport=self._transport, timeout=25, trust_env=False,
-                                                     follow_redirects=False) as client:
-                            async with client.stream("POST", base + path, json=body,
-                                                     headers={"Authorization": "Bearer " + key}) as response:
-                                trace["http_status"] = response.status_code
-                                if response.status_code != 200:
-                                    raise ProviderError("model_http_error", http_status=response.status_code,
-                                                        retryable=response.status_code == 429 or response.status_code >= 500)
-                                if stream:
-                                    result = await self._stream(response, delta)
-                                else:
-                                    result = json.loads(await response.aread())
-                                if not isinstance(result, dict):
+                        if self._client is None:
+                            self._client = httpx.AsyncClient(transport=self._transport, timeout=25,
+                                                             trust_env=False, follow_redirects=False)
+                        async with self._client.stream("POST", base + path, json=body,
+                                                       headers={"Authorization": "Bearer " + key}) as response:
+                            trace["http_status"] = response.status_code
+                            if response.status_code != 200:
+                                raise ProviderError("model_http_error", http_status=response.status_code,
+                                                    retryable=response.status_code == 429 or response.status_code >= 500)
+                            if stream:
+                                result = await self._stream(response, delta)
+                            else:
+                                result = json.loads(await response.aread())
+                            if not isinstance(result, dict):
+                                raise ProviderError("model_invalid_response")
+                            trace["usage"] = _usage(result.get("usage"))
+                            returned_model = result.get("model")
+                            allowed_returned = ({self.model_id, "qwen3.7-plus", "qwen3.7-plus-2026-05-26"}
+                                                if prefix == "MODEL" else {body["model"]})
+                            if returned_model is not None and returned_model not in allowed_returned:
+                                raise ProviderError("model_response_id_mismatch")
+                            trace["returned_model"] = returned_model
+                            if prefix == "MODEL":
+                                if returned_model == "qwen3.7-plus-2026-05-26":
+                                    trace["resolved_snapshot"] = returned_model
+                                self._price(trace)
+                                choices = result.get("choices")
+                                if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
                                     raise ProviderError("model_invalid_response")
-                                trace["usage"] = _usage(result.get("usage"))
-                                returned_model = result.get("model")
-                                allowed_returned = ({self.model_id, "qwen3.7-plus", "qwen3.7-plus-2026-05-26"}
-                                                    if prefix == "MODEL" else {body["model"]})
-                                if returned_model is not None and returned_model not in allowed_returned:
-                                    raise ProviderError("model_response_id_mismatch")
-                                trace["returned_model"] = returned_model
-                                if prefix == "MODEL":
-                                    if returned_model == "qwen3.7-plus-2026-05-26":
-                                        trace["resolved_snapshot"] = returned_model
-                                    self._price(trace)
-                                    choices = result.get("choices")
-                                    if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
-                                        raise ProviderError("model_invalid_response")
-                                    if choices[0].get("finish_reason") not in {"stop", "tool_calls"}:
-                                        raise ProviderError("model_incomplete_response")
-                                    output = {"message": _message(choices[0].get("message"))}
-                                else:
-                                    data = result.get("data")
-                                    if not isinstance(data, list) or len(data) != len(body["input"]):
-                                        raise ProviderError("embedding_invalid_response")
-                                    if any(not isinstance(item, dict) or type(item.get("index")) is not int for item in data):
-                                        raise ProviderError("embedding_invalid_response")
-                                    data = sorted(data, key=lambda item: item["index"])
-                                    vectors = [item.get("embedding") for item in data]
-                                    if ([item["index"] for item in data] != list(range(len(data)))
-                                            or any(not isinstance(v, list) or len(v) != body["dimensions"]
-                                                   or any(type(x) not in {int, float} or not math.isfinite(x) for x in v)
-                                                   or not any(v) for v in vectors)):
-                                        raise ProviderError("embedding_invalid_response")
-                                    output = {"embeddings": vectors}
-                                trace["status"] = "succeeded"
+                                if choices[0].get("finish_reason") not in {"stop", "tool_calls"}:
+                                    raise ProviderError("model_incomplete_response")
+                                output = {"message": _message(choices[0].get("message"))}
+                            else:
+                                data = result.get("data")
+                                if not isinstance(data, list) or len(data) != len(body["input"]):
+                                    raise ProviderError("embedding_invalid_response")
+                                if any(not isinstance(item, dict) or type(item.get("index")) is not int for item in data):
+                                    raise ProviderError("embedding_invalid_response")
+                                data = sorted(data, key=lambda item: item["index"])
+                                vectors = [item.get("embedding") for item in data]
+                                if ([item["index"] for item in data] != list(range(len(data)))
+                                        or any(not isinstance(v, list) or len(v) != body["dimensions"]
+                                               or any(type(x) not in {int, float} or not math.isfinite(x) for x in v)
+                                               or not any(v) for v in vectors)):
+                                    raise ProviderError("embedding_invalid_response")
+                                output = {"embeddings": vectors}
+                            trace["status"] = "succeeded"
                 except ProviderError as exc:
                     error = exc
                 except (httpx.TimeoutException, TimeoutError):
@@ -337,9 +385,11 @@ class Provider:
             if error:
                 error.attempts = attempts
                 if not error.retryable or emitted or attempt == max_attempts:
+                    self._breakers[prefix].record(False)
                     raise error from None
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(min(0.2 * (2 ** (attempt - 1)), 2.0) + random.uniform(0, 0.1))
                 continue
+            self._breakers[prefix].record(True)
             metadata = {**trace, "attempts": len(attempts),
                         "latency_ms": round((time.monotonic() - overall_start) * 1000, 2)}
             if prefix == "EMBEDDING":

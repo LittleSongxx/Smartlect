@@ -13,6 +13,7 @@ import re
 import unicodedata
 import uuid
 
+from smartlect.cache import TtlCache
 from smartlect.events import canonical
 from smartlect.state import SessionStore, StateError, _actor, _expiry, _integer, _json, _public, _text
 
@@ -353,6 +354,10 @@ def evidence_result(rows, retrieval):
 
 
 class KnowledgeStore(SessionStore):
+    def __init__(self, connect):
+        super().__init__(connect)
+        self._search_cache = TtlCache(256, 300)
+
     @staticmethod
     def _catalog(cursor, scope):
         cursor.execute("INSERT IGNORE INTO knowledge_catalog (execution_scope_id) VALUES (%s)", (scope,))
@@ -523,6 +528,20 @@ class KnowledgeStore(SessionStore):
             if value is not None:
                 filters.append(f"AND (JSON_LENGTH(d.{field})=0 OR JSON_CONTAINS(d.{field},%s))")
                 values.append(canonical(_text(value, field, 128)))
+        # Identical authorized searches repeat within a turn and across sessions. The exact
+        # scan pair below is the measured hot path, so reuse its result for 5 minutes; a
+        # publish bumps catalog revision (key part), while expiry/ACL shifts can lag by the TTL.
+        with self._transaction() as cursor:
+            cursor.execute("SELECT revision FROM knowledge_catalog WHERE execution_scope_id=%s", (scope,))
+            catalog = cursor.fetchone()
+        revision = catalog["revision"] if catalog else 0
+        vector_key = (sha256(canonical(query_vector).encode()).hexdigest()
+                      if isinstance(query_vector, list) else None)
+        cache_key = (scope, kind, actor_id, query, vector_key, embedding_model, index_version,
+                     product_id, category_id, utterance, model_query, revision)
+        cached = self._search_cache.get(cache_key)
+        if cached is not None:
+            return json.loads(cached)
         with self._transaction() as cursor:
             # ponytail: derive <=5000 authorized chunks per request; move to a versioned
             # numeric index only when this bounded exact scan is a measured bottleneck.
@@ -545,6 +564,7 @@ class KnowledgeStore(SessionStore):
         metadata["acl_denied"] = denied
         result = evidence_result(ranked, metadata)
         result["acl_denied"] = denied
+        self._search_cache.put(cache_key, canonical(result))
         return result
 
     def validate_citations(self, actor, citations):
