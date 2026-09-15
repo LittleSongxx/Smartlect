@@ -1,6 +1,6 @@
 # Handoff：六个修复优化项（质量指标收尾战役）
 
-日期：2026-09-15。仓库：`/home/song/code/Smartlect`，分支 `main`，HEAD `035e0f7`。
+日期：2026-09-15。仓库：`/home/song/code/Smartlect`，分支 `main`，HEAD `d1d8e94`（本文提交；其间 `035e0f7…d1d8e94` 有生产加固战役的并行提交，与本战役无关，勿动 `run/`、`docs/prod-hardening/` 相关）。
 本文给**新开的 AI 对话**接手用。先读本文，再速读 `IMPLEMENTATION_STATUS.md`（本地、唯一现状来源，含完整战役史；评测条目集中在"2026-09-14 评测体系转向"及其后续条目）。
 
 一句话：**客服线 support-eval 五指标已官方定稿（fix3：Recall@5 0.949 / MRR 0.865 / 覆盖率 0.848 / Faithfulness 0.9605 / 库外诚实率 1.0），导购/广告维持 quality-v2 v15 基线（0.974 / 0.962 / 1.0）。用户已委托六个修复优化项（本文 §3），按 T3→T1→T5→T2→T4 顺序执行，T6 明确不修。**
