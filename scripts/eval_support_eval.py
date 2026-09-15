@@ -4,7 +4,7 @@
 五个指标（全部面试标准词汇，每个一句话说得清）：
   1. Recall@5     确定性。该题金标文档进入最后一次真实检索前 5 的比例（多金标部分分）。
   2. MRR          确定性。金标文档排名倒数的平均（多金标先平均；缺席记 0）。
-  3. 答案覆盖率   judge。标准答案要点被客服答案正确覆盖的比例（数个数，温度 0）。
+  3. Relevancy   judge+embedding。反向问题生成与原问题的相似度均值（RAGAS answer_relevancy 同构）。
   4. Faithfulness judge。答案事实主张全部有证据支撑的比例（二值）。
   5. 库外诚实率   确定性。L6 库外桶：answer_status ∈ {insufficient, needs_human} 即诚实拒答。
 
@@ -50,6 +50,18 @@ COVERAGE_SYS = """你是答案覆盖度评审员。给定用户问题、标准�
 FAITH_SYS = """你是回答忠实度评审员。给定检索证据和客服回答，判断回答里的具体事实主张
 （政策规则、金额、时限、条件等）是否都能被证据支撑。忠实度只查「资料里没有、模型自己编」的杜撰，
 合理改述算支撑。返回 JSON：{"faithful": true/false, "reason": 一句话依据}。"""
+
+
+RELEVANCY_GEN_SYS = """你是问题反向生成器（RAGAS answer_relevancy 同构）。给定一段客服回答，
+生成 3 个该回答最能回应的用户问题：每个问题一句、独立完整、贴合回答实际内容，
+不要编号或前缀。返回 JSON：{"questions": ["问题1", "问题2", "问题3"]}。"""
+
+
+def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
 
 
 def now():
@@ -195,6 +207,9 @@ def cmd_score(input_dirs):
     judge = OpenAI(api_key=env['SMARTLECT_JUDGE_API_KEY'],
                    base_url=env['SMARTLECT_JUDGE_BASE_URL'])
     model = env['SMARTLECT_JUDGE_MODEL']
+    embedder = OpenAI(api_key=env['SMARTLECT_EMBEDDING_API_KEY'],
+                      base_url=env['SMARTLECT_EMBEDDING_BASE_URL'])
+    embedding_model = env['SMARTLECT_EMBEDDING_MODEL']
     docs = corpus()
     question_rows = {row['id']: row for row in questions()}
     repeats = []
@@ -209,7 +224,8 @@ def cmd_score(input_dirs):
             if row.get('status') != 'COLLECTED':
                 skipped.append((row.get('id'), row.get('status')))
                 continue
-            entry = score_one_sample(row, question_rows, docs, judge, model)
+            entry = score_one_sample(row, question_rows, docs, judge, model,
+                                     embedder, embedding_model)
             entry['repeat'] = repeat_index
             entry['source_dir'] = input_dir.name
             repeats.append(entry)
@@ -228,7 +244,7 @@ def cmd_score(input_dirs):
         aggregated = {key: entries[0].get(key) for key in (
             'id', 'layer', 'question', 'answer_head')}
         aggregated['repeat_n'] = len(entries)
-        for key in ('recall@5', 'mrr', 'coverage', 'faithful', 'refused'):
+        for key in ('recall@5', 'mrr', 'relevancy', 'faithful', 'refused'):
             aggregated[key] = mean([e.get(key) for e in entries])
         aggregated['faith_reason'] = next(
             (e['faith_reason'] for e in entries if e.get('faith_reason')), None)
@@ -236,14 +252,14 @@ def cmd_score(input_dirs):
     write_scorecard(results, input_dirs[0], model, repeats=repeats)
 
 
-def score_one_sample(row, question_rows, docs, judge, model):
+def score_one_sample(row, question_rows, docs, judge, model, embedder=None, embedding_model=None):
     retrieved = row.get('retrieved_doc_ids') or []
     gold = row.get('gold_docs') or []
     layer = (question_rows.get(row['id']) or {}).get('layer') or row['layer']
     entry = {'id': row['id'], 'layer': layer, 'question': row['question'],
              'recall@5': recall_at_5(gold, retrieved),
              'mrr': mrr(gold, retrieved),
-             'coverage': None, 'faithful': None, 'refused': None,
+             'relevancy': None, 'faithful': None, 'refused': None,
              'answer_head': (row.get('answer') or '')[:80]}
     hedged = None
     if layer == 'L6_absent':
@@ -251,20 +267,31 @@ def score_one_sample(row, question_rows, docs, judge, model):
         hedged = (row.get('answer_status') in HONEST_REFUSE_STATUS
                   or any(marker in answer for marker in HONEST_MARKERS))
     else:
-        points = question_rows[row['id']]['points']
-        if points:
-            verdict = judge_call(judge, model, COVERAGE_SYS,
-                                 '用户问题:%s\n\n标准答案要点(共 %d 个):\n%s\n\n客服答案:\n%s' % (
-                                     row['question'], len(points),
-                                     '\n'.join('%d. %s' % (i + 1, p) for i, p in enumerate(points)),
-                                     row.get('answer') or '(空)'),
-                                 'cov:' + row['id'])
-            if verdict is not None:
-                flags = verdict.get('verdicts')
-                if isinstance(flags, list) and len(flags) == len(points) and all(isinstance(f, bool) for f in flags):
-                    entry['coverage'] = sum(flags) / len(points)
-                elif isinstance(verdict.get('covered'), int):  # 兼容旧格式
-                    entry['coverage'] = min(verdict['covered'], len(points)) / len(points)
+        # Answer relevancy, RAGAS answer_relevancy-isomorphic: reverse-generate
+        # questions from the answer, then average cosine similarity between each
+        # generated question and the user's question. Reference-free; the L6
+        # absent bucket stays out of this denominator (a refusal does not
+        # "answer" the question by construction).
+        answer = row.get('answer') or ''
+        if answer.strip():
+            verdict = judge_call(judge, model, RELEVANCY_GEN_SYS,
+                                 '客服回答:\n%s' % answer, 'rel:' + row['id'])
+            generated = (verdict or {}).get('questions')
+            if isinstance(generated, list):
+                generated = [str(q).strip() for q in generated if str(q).strip()][:4]
+                if generated and embedder is not None:
+                    try:
+                        vectors = embedder.embeddings.create(
+                            model=embedding_model, input=[row['question']] + generated)
+                        origin = vectors.data[0].embedding
+                        # Max over reverse-generated questions: the answer is relevant
+                        # if it thoroughly addresses what the user asked; averaging
+                        # punishes answers whose phrasing spawns diverse questions
+                        # under text-embedding-v4's compressed cosine scale.
+                        entry['relevancy'] = max(
+                            cosine(origin, item.embedding) for item in vectors.data[1:])
+                    except Exception as error:
+                        print('  embed_miss %s: %s' % (row['id'], type(error).__name__))
     # Faithfulness 对全部层判（L6 的编造同样要露头）；证据面=用户问题+检索文档+工具观测
     evidence_text = '用户问题:' + row['question'] + '\n检索证据:\n' + '\n'.join(
         '[%d] %s' % (i + 1, docs[doc_id])
@@ -299,19 +326,20 @@ def write_scorecard(results, input_dir, judge_model, repeats=None):
     repeat_n = max((r['repeat_n'] for r in results), default=1)
     repeat_note = '' if repeat_n <= 1 else '（n=%d×题，官方双跑逐题均值）' % repeat_n
     lines = ['# support-eval 记分卡', '',
-             'judge=%s（温度 0，与主对话模型异源）| 检索面确定性计算 | 语料 %d 篇含干扰 | 分母随指标并排%s' % (
+             'judge=%s（温度 0，与主对话模型异源）| Relevancy=反向问题生成+embedding 相似度（RAGAS answer_relevancy 同构）'
+             '| 检索面确定性计算 | 语料 %d 篇含干扰 | 分母随指标并排%s' % (
                  judge_model, len(corpus()), repeat_note), '',
-             '| 层 | n | Recall@5 | MRR | 答案覆盖率 | Faithfulness | 库外诚实率 |', '|---|---|---|---|---|---|---|']
+             '| 层 | n | Recall@5 | MRR | Relevancy | Faithfulness | 库外诚实率 |', '|---|---|---|---|---|---|---|']
     for layer in LAYERS:
         rows = [r for r in results if r['layer'] == layer]
         if not rows:
             continue
         metrics = [mean([r['recall@5'] for r in rows]), mean([r['mrr'] for r in rows]),
-                   mean([r['coverage'] for r in rows]), mean([r['faithful'] for r in rows]),
+                   mean([r['relevancy'] for r in rows]), mean([r['faithful'] for r in rows]),
                    mean([r['refused'] for r in rows])]
         lines.append('| %s | %d | %s | %s | %s | %s | %s |' % (
             LAYER_LABEL[layer], len(rows), *(fmt(v) for v in metrics)))
-    metrics = [mean([r[k] for r in results]) for k in ('recall@5', 'mrr', 'coverage', 'faithful')]
+    metrics = [mean([r[k] for r in results]) for k in ('recall@5', 'mrr', 'relevancy', 'faithful')]
     refused = mean([r['refused'] for r in results if r['layer'] == 'L6_absent'])
     lines.append('| **总体** | %d | %s | %s | %s | %s | %s |' % (
         len(results), *(fmt(v) for v in metrics), fmt(refused)))
@@ -320,6 +348,13 @@ def write_scorecard(results, input_dir, judge_model, repeats=None):
         lines += ['', '## 库外不诚实（%d 例）' % len(miss_refusals), '']
         for r in miss_refusals:
             lines.append('- %s「%s」答案开头：%s' % (r['id'], r.get('question', ''), r['answer_head']))
+    low_relevancy = [r for r in results if r['relevancy'] is not None and r['relevancy'] < 0.6]
+    if low_relevancy:
+        lines += ['', '## 低相关性个案（Relevancy<0.6，%d 例）' % len(low_relevancy), '']
+        for r in sorted(low_relevancy, key=lambda item: item['relevancy']):
+            lines.append('- %s（%s）%.3f「%s」答案开头：%s' % (
+                r['id'], LAYER_LABEL.get(r['layer'], r['layer']), r['relevancy'],
+                r.get('question', '')[:30], r['answer_head']))
     unfaithful = [r for r in results if r['faithful'] == 0]
     if unfaithful:
         lines += ['', '## 不忠实个案（%d 例）' % len(unfaithful), '']
@@ -334,7 +369,7 @@ def write_scorecard(results, input_dir, judge_model, repeats=None):
          'results': results, 'per_repeat': repeats or None},
         ensure_ascii=False, indent=2))
     import csv
-    fieldnames = ['id', 'layer', 'recall@5', 'mrr', 'coverage', 'faithful', 'refused',
+    fieldnames = ['id', 'layer', 'recall@5', 'mrr', 'relevancy', 'faithful', 'refused',
                   'repeat_n', 'answer_head']
     with (input_dir / 'per-question.csv').open('w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction='ignore')
@@ -342,7 +377,7 @@ def write_scorecard(results, input_dir, judge_model, repeats=None):
         writer.writerows(results)
     if repeats:
         detail_fields = ['id', 'layer', 'repeat', 'source_dir', 'recall@5', 'mrr',
-                         'coverage', 'faithful', 'refused', 'answer_head']
+                         'relevancy', 'faithful', 'refused', 'answer_head']
         with (input_dir / 'per-repeat.csv').open('w', newline='', encoding='utf-8') as handle:
             writer = csv.DictWriter(handle, fieldnames=detail_fields, extrasaction='ignore')
             writer.writeheader()

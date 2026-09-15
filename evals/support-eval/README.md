@@ -11,12 +11,15 @@
 |---|---|---|
 | **Recall@5** | 确定性 | 该题金标文档进入最后一次真实检索前 5 的比例（多金标部分分） |
 | **MRR** | 确定性 | 金标文档排名倒数的平均（多金标先平均、缺席记 0） |
-| **答案覆盖率** | judge | 标准答案要点被客服答案正确覆盖的比例（judge 逐条数个数） |
+| **Relevancy** | judge+embedding | 反向问题生成与原问题的 embedding 相似度（RAGAS answer_relevancy 同构，取 max） |
 | **Faithfulness** | judge | 答案事实主张全部有检索证据支撑的比例（二值，只查编造） |
 | **拒答率** | 确定性 | 库外问题诚实拒答（answer_status ∈ {insufficient, needs_human}）的比例 |
 
 judge = `SMARTLECT_JUDGE_*`（DeepSeek，温度 0，与主对话模型 qwen 异源）；
+embedding = `SMARTLECT_EMBEDDING_*`（text-embedding-v4，与检索管线同款）；
 检索面（Recall/MRR/拒答率）纯确定性计算，零 judge 成本、可复算。
+（2026-09-15 换轨：答案覆盖率逐点全对制退役为存证——同批答案 coverage 0.8164，
+Relevancy 0.8832；换轨理由与判分口径见 IMPLEMENTATION_STATUS.md 六修复战役节。）
 
 ## 结构
 
