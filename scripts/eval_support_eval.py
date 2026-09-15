@@ -12,10 +12,12 @@
 报告：分层 × 指标矩阵 + 总体 + 逐题 CSV + 该拒没拒/不忠实个案（带证据与理由）。
 
 用法：
-  collect（需活栈，系统 python3）:
-    python3 scripts/eval_support_eval.py collect --output artifacts/support-eval/<日期>
+  collect（需活栈，venv python）:
+    growth/.venv/bin/python scripts/eval_support_eval.py collect --output artifacts/support-eval/<日期>-r1
   score（需 judge 密钥，系统 python3，无第三方新依赖之外的要求）:
-    python3 scripts/eval_support_eval.py score --input artifacts/support-eval/<日期>
+    python3 scripts/eval_support_eval.py score --input artifacts/support-eval/<日期>-r1[,<日期>-r2,...]
+  官方数字 = 双跑均值：两次独立 collect（-r1/-r2）后 score 传两目录，逐题取均值再聚合
+  （judge 指标单试验 ±2–4pt 方差，双跑把读数稳定在带内；scorecard 注明 n=R×题）。
 """
 import argparse
 import json
@@ -185,7 +187,7 @@ def mrr(gold, retrieved):
     return total / len(gold)
 
 
-def cmd_score(input_dir):
+def cmd_score(input_dirs):
     env = model_env()
     if not env.get('SMARTLECT_JUDGE_API_KEY'):
         raise SystemExit('missing judge keys in run/model.env')
@@ -195,68 +197,93 @@ def cmd_score(input_dir):
     model = env['SMARTLECT_JUDGE_MODEL']
     docs = corpus()
     question_rows = {row['id']: row for row in questions()}
-    results, skipped = [], []
-    for path in sorted(input_dir.glob('*.json')):
-        if path.name in ('collect-meta.json', 'scorecard.json'):
-            continue
-        row = json.loads(path.read_text())
-        if not isinstance(row, dict) or 'question' not in row:
-            continue
-        if row.get('status') != 'COLLECTED':
-            skipped.append((row.get('id'), row.get('status')))
-            continue
-        retrieved = row.get('retrieved_doc_ids') or []
-        gold = row.get('gold_docs') or []
-        layer = (question_rows.get(row['id']) or {}).get('layer') or row['layer']
-        entry = {'id': row['id'], 'layer': layer, 'question': row['question'],
-                 'recall@5': recall_at_5(gold, retrieved),
-                 'mrr': mrr(gold, retrieved),
-                 'coverage': None, 'faithful': None, 'refused': None,
-                 'answer_head': (row.get('answer') or '')[:80]}
-        hedged = None
-        if layer == 'L6_absent':
-            answer = row.get('answer') or ''
-            hedged = (row.get('answer_status') in HONEST_REFUSE_STATUS
-                      or any(marker in answer for marker in HONEST_MARKERS))
-        else:
-            points = question_rows[row['id']]['points']
-            if points:
-                verdict = judge_call(judge, model, COVERAGE_SYS,
-                                     '用户问题:%s\n\n标准答案要点(共 %d 个):\n%s\n\n客服答案:\n%s' % (
-                                         row['question'], len(points),
-                                         '\n'.join('%d. %s' % (i + 1, p) for i, p in enumerate(points)),
-                                         row.get('answer') or '(空)'),
-                                     'cov:' + row['id'])
-                if verdict is not None:
-                    flags = verdict.get('verdicts')
-                    if isinstance(flags, list) and len(flags) == len(points) and all(isinstance(f, bool) for f in flags):
-                        entry['coverage'] = sum(flags) / len(points)
-                    elif isinstance(verdict.get('covered'), int):  # 兼容旧格式
-                        entry['coverage'] = min(verdict['covered'], len(points)) / len(points)
-        # Faithfulness 对全部层判（L6 的编造同样要露头）；证据面=用户问题+检索文档+工具观测
-        evidence_text = '用户问题:' + row['question'] + '\n检索证据:\n' + '\n'.join(
-            '[%d] %s' % (i + 1, docs[doc_id])
-            for i, doc_id in enumerate(retrieved) if doc_id in docs)
-        for receipt in row.get('tool_receipts') or []:
-            evidence_text += '\n[工具观测] %s -> %s' % (receipt.get('tool_name'), receipt.get('receipt') or '(空)')
-        verdict = judge_call(judge, model, FAITH_SYS,
-                             '检索证据:\n%s\n\n客服回答:\n%s' % (
-                                 evidence_text or '(本轮无检索证据)',
-                                 row.get('answer') or '(空)'),
-                             'faith:' + row['id'])
-        if verdict is not None and isinstance(verdict.get('faithful'), bool):
-            entry['faithful'] = 1 if verdict['faithful'] else 0
-            if not verdict['faithful']:
-                entry['faith_reason'] = str(verdict.get('reason') or '')[:120]
-        if layer == 'L6_absent':
-            # 诚实 = 声明了未命中/不足收口 ∧ 没有编造（judge 失败时退回声明面，不因没评上落零）
-            entry['refused'] = 1 if hedged and entry['faithful'] != 0 else 0
-        results.append(entry)
-    if skipped:
-        print('skipped_not_collected:', json.dumps(skipped, ensure_ascii=False))
-    if not results:
+    repeats = []
+    for repeat_index, input_dir in enumerate(input_dirs, start=1):
+        skipped = []
+        for path in sorted(input_dir.glob('*.json')):
+            if path.name in ('collect-meta.json', 'scorecard.json'):
+                continue
+            row = json.loads(path.read_text())
+            if not isinstance(row, dict) or 'question' not in row:
+                continue
+            if row.get('status') != 'COLLECTED':
+                skipped.append((row.get('id'), row.get('status')))
+                continue
+            entry = score_one_sample(row, question_rows, docs, judge, model)
+            entry['repeat'] = repeat_index
+            entry['source_dir'] = input_dir.name
+            repeats.append(entry)
+        if skipped:
+            print('repeat %d skipped_not_collected: %s' % (
+                repeat_index, json.dumps(skipped, ensure_ascii=False)))
+    if not repeats:
         raise SystemExit('no_collected_samples')
-    write_scorecard(results, input_dir, model)
+    # Judge metrics swing ±2–4pt per single collect; official numbers average every
+    # question over independent repeats first, then aggregate layers (n=R×N).
+    by_question = {}
+    for entry in repeats:
+        by_question.setdefault(entry['id'], []).append(entry)
+    results = []
+    for qid, entries in sorted(by_question.items()):
+        aggregated = {key: entries[0].get(key) for key in (
+            'id', 'layer', 'question', 'answer_head')}
+        aggregated['repeat_n'] = len(entries)
+        for key in ('recall@5', 'mrr', 'coverage', 'faithful', 'refused'):
+            aggregated[key] = mean([e.get(key) for e in entries])
+        aggregated['faith_reason'] = next(
+            (e['faith_reason'] for e in entries if e.get('faith_reason')), None)
+        results.append(aggregated)
+    write_scorecard(results, input_dirs[0], model, repeats=repeats)
+
+
+def score_one_sample(row, question_rows, docs, judge, model):
+    retrieved = row.get('retrieved_doc_ids') or []
+    gold = row.get('gold_docs') or []
+    layer = (question_rows.get(row['id']) or {}).get('layer') or row['layer']
+    entry = {'id': row['id'], 'layer': layer, 'question': row['question'],
+             'recall@5': recall_at_5(gold, retrieved),
+             'mrr': mrr(gold, retrieved),
+             'coverage': None, 'faithful': None, 'refused': None,
+             'answer_head': (row.get('answer') or '')[:80]}
+    hedged = None
+    if layer == 'L6_absent':
+        answer = row.get('answer') or ''
+        hedged = (row.get('answer_status') in HONEST_REFUSE_STATUS
+                  or any(marker in answer for marker in HONEST_MARKERS))
+    else:
+        points = question_rows[row['id']]['points']
+        if points:
+            verdict = judge_call(judge, model, COVERAGE_SYS,
+                                 '用户问题:%s\n\n标准答案要点(共 %d 个):\n%s\n\n客服答案:\n%s' % (
+                                     row['question'], len(points),
+                                     '\n'.join('%d. %s' % (i + 1, p) for i, p in enumerate(points)),
+                                     row.get('answer') or '(空)'),
+                                 'cov:' + row['id'])
+            if verdict is not None:
+                flags = verdict.get('verdicts')
+                if isinstance(flags, list) and len(flags) == len(points) and all(isinstance(f, bool) for f in flags):
+                    entry['coverage'] = sum(flags) / len(points)
+                elif isinstance(verdict.get('covered'), int):  # 兼容旧格式
+                    entry['coverage'] = min(verdict['covered'], len(points)) / len(points)
+    # Faithfulness 对全部层判（L6 的编造同样要露头）；证据面=用户问题+检索文档+工具观测
+    evidence_text = '用户问题:' + row['question'] + '\n检索证据:\n' + '\n'.join(
+        '[%d] %s' % (i + 1, docs[doc_id])
+        for i, doc_id in enumerate(retrieved) if doc_id in docs)
+    for receipt in row.get('tool_receipts') or []:
+        evidence_text += '\n[工具观测] %s -> %s' % (receipt.get('tool_name'), receipt.get('receipt') or '(空)')
+    verdict = judge_call(judge, model, FAITH_SYS,
+                         '检索证据:\n%s\n\n客服回答:\n%s' % (
+                             evidence_text or '(本轮无检索证据)',
+                             row.get('answer') or '(空)'),
+                         'faith:' + row['id'])
+    if verdict is not None and isinstance(verdict.get('faithful'), bool):
+        entry['faithful'] = 1 if verdict['faithful'] else 0
+        if not verdict['faithful']:
+            entry['faith_reason'] = str(verdict.get('reason') or '')[:120]
+    if layer == 'L6_absent':
+        # 诚实 = 声明了未命中/不足收口 ∧ 没有编造（judge 失败时退回声明面，不因没评上落零）
+        entry['refused'] = 1 if hedged and entry['faithful'] != 0 else 0
+    return entry
 
 
 def mean(values):
@@ -268,10 +295,12 @@ def fmt(value):
     return '未评上' if value is None else '%.4f' % value
 
 
-def write_scorecard(results, input_dir, judge_model):
+def write_scorecard(results, input_dir, judge_model, repeats=None):
+    repeat_n = max((r['repeat_n'] for r in results), default=1)
+    repeat_note = '' if repeat_n <= 1 else '（n=%d×题，官方双跑逐题均值）' % repeat_n
     lines = ['# support-eval 记分卡', '',
-             'judge=%s（温度 0，与主对话模型异源）| 检索面确定性计算 | 语料 %d 篇含干扰 | 分母随指标并排' % (
-                 judge_model, len(corpus())), '',
+             'judge=%s（温度 0，与主对话模型异源）| 检索面确定性计算 | 语料 %d 篇含干扰 | 分母随指标并排%s' % (
+                 judge_model, len(corpus()), repeat_note), '',
              '| 层 | n | Recall@5 | MRR | 答案覆盖率 | Faithfulness | 库外诚实率 |', '|---|---|---|---|---|---|---|']
     for layer in LAYERS:
         rows = [r for r in results if r['layer'] == layer]
@@ -300,14 +329,24 @@ def write_scorecard(results, input_dir, judge_model):
     report = '\n'.join(lines) + '\n'
     (input_dir / 'scorecard.md').write_text(report)
     (input_dir / 'scorecard.json').write_text(json.dumps(
-        {'generated_at': now(), 'judge_model': judge_model, 'results': results},
+        {'generated_at': now(), 'judge_model': judge_model,
+         'repeats': len({r['repeat'] for r in repeats}) if repeats else 1,
+         'results': results, 'per_repeat': repeats or None},
         ensure_ascii=False, indent=2))
     import csv
-    fieldnames = ['id', 'layer', 'recall@5', 'mrr', 'coverage', 'faithful', 'refused', 'answer_head']
+    fieldnames = ['id', 'layer', 'recall@5', 'mrr', 'coverage', 'faithful', 'refused',
+                  'repeat_n', 'answer_head']
     with (input_dir / 'per-question.csv').open('w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction='ignore')
         writer.writeheader()
         writer.writerows(results)
+    if repeats:
+        detail_fields = ['id', 'layer', 'repeat', 'source_dir', 'recall@5', 'mrr',
+                         'coverage', 'faithful', 'refused', 'answer_head']
+        with (input_dir / 'per-repeat.csv').open('w', newline='', encoding='utf-8') as handle:
+            writer = csv.DictWriter(handle, fieldnames=detail_fields, extrasaction='ignore')
+            writer.writeheader()
+            writer.writerows(repeats)
     print(report)
 
 
@@ -321,10 +360,11 @@ def main():
     if args.command == 'collect':
         cmd_collect(args)
         return
-    input_dir = Path(args.input) if args.input else None
-    if not input_dir or not input_dir.exists():
-        raise SystemExit('missing_input; score needs --input <collect dir>')
-    cmd_score(input_dir)
+    input_spec = args.input or ''
+    input_dirs = [Path(item.strip()) for item in input_spec.split(',') if item.strip()]
+    if not input_dirs or not all(path.exists() for path in input_dirs):
+        raise SystemExit('missing_input; score needs --input <collect dir>[,<dir2>...]')
+    cmd_score(input_dirs)
 
 
 if __name__ == '__main__':

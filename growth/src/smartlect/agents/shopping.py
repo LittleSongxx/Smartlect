@@ -21,6 +21,7 @@ from smartlect.knowledge import misses_utterance_constraints
 from smartlect.decision_record import attach_shopping_audit
 from smartlect.catalog_gate import _fold
 from smartlect.shopping_mission import (MAX_REQUIRED, _unique, explicit_from_request, extract_mission,
+                                        looks_like_product_request,
                                         ground_tool_params, merge_mission, mission_retrieve_params,
                                         normalize_mission, requirement_slots, retrieve_matches_mission,
                                         shopping_request, shopping_turn_changed)
@@ -1004,6 +1005,27 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             decision = compile_decision(request_kind, evidence_kind, proposal=proposal,
                                         quarantined=bool(context.get('quarantined')),
                                         handoff_requested=final.handoff_requested)
+            if (decision['answer_status'] == 'insufficient'
+                    and not context.get('selection_repair_done')
+                    and looks_like_product_request(question)
+                    and not ({'recommend_skus', 'search_skus', 'compare_skus'}
+                             & set(context.get('accepted_tools') or []))):
+                # Selection closeout gate (shop-d-56 shape): a product request that
+                # ends insufficient without any selection attempt skipped the
+                # selection plane entirely — the user is owed at least the honest
+                # state of the catalog (real prices, or an honest empty set), not a
+                # bare "no policy found". Guard-rules apply: own repair round
+                # (GuardViolation budgeting) and window feasibility precheck.
+                gate_reason = ('selection_request_requires_selection: '
+                               '本轮以资料不足收口，但用户请求带选品信号（价格/数量/排除/购买词）且未做任何选品。'
+                               '若这是购物请求：请先用 recommend_skus 按用户约束（必含词/价格/排除）选品，'
+                               '有货按可售商品推荐；约束无法满足时如实说明哪条约束买不到（诚实空集）。'
+                               '若确非购物请求（纯政策咨询）：按资料不足原样收口。')
+                if not guard_repair_fits(state, gate_reason):
+                    context['selection_gate_skipped'] = 'window'
+                else:
+                    context['selection_repair_done'] = True
+                    raise GuardViolation(gate_reason)
             extracted = extract_mission(question)
             slots = requirement_slots(question)
             if shopping_turn_changed(extracted, slots):

@@ -446,6 +446,21 @@ def retrieval_variants(request, mission):
     return variants[:3]
 
 
+def looks_like_product_request(utterance):
+    """Narrow shopping-intent probe for the selection closeout gate: a price
+    phrase, an exclusion in either word order, a buy/order verb, or count+
+    measure. Support questions that merely reference a past purchase ("我买的
+    键盘能退吗") carry none of these shapes and stay untouched — the gate only
+    matters when a turn ends insufficient without any selection attempt."""
+    text = str(utterance or '')
+    return bool(
+        re.search(r'[0-9０-９一二两三四五六七八九十百千]+\s*(?:元|块)', text)
+        or re.search(r'(?:的\s*)?(?:不要|别要|不买|排除|不含|除了)', text)
+        or re.search(r'(?:卖我|想买|要买|购买|下单|建单|来一[个只条台把张件套支]|推荐几|看看有什么)', text)
+        or re.search(r'[0-9０-９一二两三四五六七八九十]+\s*[个只条台把张件套支根]', text)
+    )
+
+
 def shopping_turn_changed(extracted, slots=()):
     """This turn wrote or replaced a conversation shopping slot."""
     extracted = extracted if isinstance(extracted, dict) else {}

@@ -179,6 +179,18 @@ class ShoppingRetrieve:
             for variant in variants:
                 rows.extend(await self._search_on_sale(request, scope, variant, category_id=request['category_id'], errors=errors))
         if not rows:
+            if variants and not request.get('required_terms'):
+                # A keyword search that matched nothing on sale in scope is an honest
+                # empty set: relaxing to whole-scope enumeration here hands the model
+                # unrelated bestsellers (shop-d-65 asked for USB cables, got mice) —
+                # the keyword names the product the user wants, not a soft hint.
+                # Recall relaxation stays for keyword-less browse; requests that also
+                # carry required_terms keep the post-gate rescue below, so paraphrased
+                # terms ("工学椅" vs catalog "人体工学椅") still resolve.
+                return self._finish([], ranked=[], cards=[], mode='content_rule', rerank_error=None,
+                                    initial_removed={}, final_removed={},
+                                    empty_reason='hard_constraint_unsatisfied' if hard else 'no_eligible_sku',
+                                    variants=variants, browse=False, relaxed=False, errors=errors)
             # Recall and eligibility are separate concerns. Every hard slot in this
             # design is a post-filter predicate on the snapshot, so empty-keyword
             # recall plus the eligibility gate is filtered enumeration — never
