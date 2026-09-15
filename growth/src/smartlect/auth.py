@@ -37,6 +37,7 @@ class IdentityBridge:
             raise ValueError("SMARTLECT_VISITOR_SECRET must contain at least 32 bytes")
         self.origins = frozenset(config.get("SMARTLECT_ALLOWED_ORIGINS", "").split(",")) - {""}
         self.transport = transport
+        self._client = None  # shared; AsyncClient() construction loads CA certs, never per call
 
     def _sign(self, purpose, payload):
         encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
@@ -70,9 +71,10 @@ class IdentityBridge:
             if not re.fullmatch(r"[A-Za-z0-9_.-]{1,512}", token):
                 raise HTTPException(401, "invalid_session")
             try:
-                async with httpx.AsyncClient(transport=self.transport, timeout=5, trust_env=False) as client:
-                    result = await client.post(self.url, json={"realm": realm}, headers={
-                        "X-Internal-Token": self.internal_token, "Cookie": f"{cookie_name}={token}"})
+                if self._client is None:
+                    self._client = httpx.AsyncClient(transport=self.transport, timeout=5, trust_env=False)
+                result = await self._client.post(self.url, json={"realm": realm}, headers={
+                    "X-Internal-Token": self.internal_token, "Cookie": f"{cookie_name}={token}"})
                 if result.status_code == 401:
                     raise HTTPException(401, "invalid_session")
                 result.raise_for_status()

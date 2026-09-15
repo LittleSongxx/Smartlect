@@ -35,6 +35,10 @@ def connect_from_env():
                            password=required_env("SMARTLECT_GROWTH_MYSQL_PASSWORD"), database=database,
                            charset="utf8mb4", cursorclass=pymysql.cursors.DictCursor,
                            autocommit=False, connect_timeout=5, read_timeout=10, write_timeout=10,
+                           # MySQL is loopback-only for growth. pymysql's PREFERRED mode would
+                           # build a fresh TLS context (full system CA load) per connection —
+                           # hundreds of ms of CPU each — which flattened concurrency to ~3 rps.
+                           ssl_disabled=True,
                            init_command="SET time_zone = '+00:00'")
 
 

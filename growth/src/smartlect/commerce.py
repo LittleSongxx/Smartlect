@@ -24,6 +24,7 @@ class AsyncCommerceClient:
     def __init__(self, config, *, transport=None):
         self.config = config
         self.transport = transport
+        self._client = None  # shared; AsyncClient() construction loads CA certs, never per call
 
     async def request(self, service, path, *, actor=None, data=None, key=None):
         if service not in {"user", "product", "stock", "order", "coupon", "pay"} or not path.startswith("/internal/"):
@@ -35,8 +36,9 @@ class AsyncCommerceClient:
             headers["Idempotency-Key"] = key
         url = f"http://127.0.0.1:{int(self.config[f'SMARTLECT_{service.upper()}_PORT'])}{path}"
         try:
-            async with httpx.AsyncClient(transport=self.transport, timeout=10, trust_env=False) as client:
-                response = await client.post(url, json=data or {}, headers=headers)
+            if self._client is None:
+                self._client = httpx.AsyncClient(transport=self.transport, timeout=10, trust_env=False)
+            response = await self._client.post(url, json=data or {}, headers=headers)
         except httpx.HTTPError:
             raise CommerceError("commerce_outcome_unknown") from None
         if response.status_code >= 500:
