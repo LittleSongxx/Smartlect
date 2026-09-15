@@ -29,7 +29,7 @@ from smartlect.shopping_retrieve import ShoppingRetrieve
 from smartlect.tools import Arguments, REGISTRY, ToolReceipt, invoke, schemas, tool_schema
 
 PROMPT_VERSION = 'shopping-react-v24'
-SCHEMA_VERSION = 'shopping-answer-v5'
+SCHEMA_VERSION = 'shopping-answer-v6'
 MODEL_CALL_LIMIT = max(1, int(os.environ.get('SMARTLECT_MODEL_CALL_LIMIT') or 6))
 EMPTY_EVIDENCE_ANSWER = '本轮没有当前有效资料，无法依据已发布政策作答。可补充信息后重试，也可以选择人工客服。'
 PROVIDER_FAULT_ANSWER = '本轮模型通道未能完成回答，已转人工核实。'
@@ -192,6 +192,25 @@ def close_degraded_turn(reason, *, citations, legal_empty=False, utterance='', o
             'handoff_origin': 'provider_fault', 'closeout': 'provider_fault'}
 
 
+def attach_policy_facts(answer, facts):
+    """Policy parameter template: every cited parameter the answer text does not
+    already spell out is appended as an explicit line. Multi-parameter answers
+    kept dropping a value the user asked about (coverage plateau 0.85 across four
+    rounds; prompt-level completeness clauses moved L3 numerals only) — a
+    structured per-fact list restates what the evidence wrote, at zero faith
+    risk since nothing enters the answer that was not declared with a citation."""
+    lines = [str(answer or '').rstrip()]
+    appended = False
+    for fact in facts or []:
+        text = str(getattr(fact, 'text', '') or '').strip()
+        kind = str(getattr(fact, 'kind', '') or '').strip()
+        if len(text) < 2 or text in lines[0]:
+            continue
+        lines.append('%s：%s' % (kind or '规则', text))
+        appended = True
+    return '\n'.join(lines) if appended else lines[0]
+
+
 def attach_proposal_confirmation(answer, *, intent_note=None):
     """Keep this-turn explanation; append the confirmation the card still requires.
     A compiled intent note (quantity departed from what the user asked) is appended
@@ -227,6 +246,14 @@ def proposal_intent_note(proposal, mission):
             '请核对数量差异后再决定是否确认。')
 
 
+class PolicyFact(Arguments):
+    kind: Literal['金额', '时限', '数量', '条件', '规则'] = Field(
+        description='该参数的类型：金额（元/分/比例）、时限（天/小时/工作日）、数量（次数/件数）、'
+                    '条件（资格/门槛/前提）、规则（其余关键条款）')
+    text: str = Field(min_length=2, max_length=120,
+        description='参数原文复述，只写检索证据明确写明的内容，禁止推断或补充')
+
+
 class FinalAnswer(Arguments):
     answer: str = Field(min_length=1, max_length=4000)
     # The model states the request type. The controller compiles answer_status and tickets.
@@ -250,6 +277,10 @@ class FinalAnswer(Arguments):
         description="仅search_knowledge本轮返回的chunk_id；其它工具的call_id/evidence_id不能填，未检索时必须空列表")
     selected_sku_keys: list[str] = Field(default_factory=list, max_length=8,
         description="本轮 recommend_skus 或 compare_skus 返回的 sku_key；商品级信息不能当可售SKU，下单/规格选购前先查")
+    policy_facts: list[PolicyFact] = Field(default_factory=list, max_length=8,
+        description='政策答复的参数模板：凡引用政策文档（citation_chunk_ids 非空）且答案依赖具体参数时，'
+                    '把每个关键参数（金额/时限/数量/条件/规则）逐条填入，只填证据明确写明的内容；'
+                    '用户问到的每个数值、期限、条件各占一条，不要合并。未引用政策或纯选品答复留空')
     requires_clarification: bool = False
 
 
@@ -274,9 +305,13 @@ class GuardViolation(ValueError):
 def final_answer_schema():
     # A controller output channel, not a business operation or another Agent.
     schema = tool_schema(FinalAnswer)
-    schema['required'] = list(schema['properties'])
+    # policy_facts stays optional at the wire level: selections, handoffs and
+    # bare clarifications never carry policy parameters.
+    schema['required'] = [key for key in schema['properties'] if key != 'policy_facts']
     return {'type':'function','function':{'name':'finish_answer',
-        'description':'提交最终答复，无业务副作用。每个参数显式填写，特别是request_kind和handoff_requested；不要填写answer_status。不能与其它工具放在同一批调用，也不要在content输出正文。',
+        'description':'提交最终答复，无业务副作用。每个参数显式填写，特别是request_kind和handoff_requested；不要填写answer_status。'
+                      '引用了政策文档的答复必须把答案依赖的每个关键参数（金额/时限/数量/条件/规则）逐条填入policy_facts，只填证据写明的内容。'
+                      '不能与其它工具放在同一批调用，也不要在content输出正文。',
         'parameters':schema}}
 
 
@@ -972,6 +1007,20 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                 else:
                     context['state_claim_repair_done'] = True
                     raise GuardViolation(guard_reason)
+            if final.citation_chunk_ids and not final.policy_facts and not context.get('policy_facts_repair_done'):
+                # Policy parameter template gate: an answer built on cited policy
+                # with zero declared parameters is exactly the multi-parameter
+                # drop shape the plateau rounds measured. One GuardViolation round
+                # asks for the per-fact list; a second bare answer passes as-is.
+                facts_reason = ('policy_facts_required: '
+                                '本答复引用了政策文档但没有填写任何 policy_facts 参数。'
+                                '请把答案依赖的每个关键参数（金额/时限/数量/条件/规则）逐条填入 policy_facts，'
+                                '每参数一条、只写检索证据明确写明的内容；answer 正文保持不变或补充参数说明。')
+                if not guard_repair_fits(state, facts_reason):
+                    context['policy_facts_gate_skipped'] = 'window'
+                else:
+                    context['policy_facts_repair_done'] = True
+                    raise GuardViolation(facts_reason)
             if final.grounding == 'no_business_claim' and (final.citation_chunk_ids or final.selected_sku_keys):
                 raise ValueError('no_business_claim_cannot_carry_evidence')
             if final.grounding == 'no_business_claim' and no_business_claim_has_store_conclusion(final.answer):
@@ -1044,12 +1093,15 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             request = context.get('shopping_request') or {}
             selected = [key for key in final.selected_sku_keys
                         if key in products and sku_obeys_request(products[key], request)]
-            result = {'answer': final.answer, 'answer_status': decision['answer_status'],
+            result = {'answer': attach_policy_facts(final.answer, final.policy_facts),
+                      'answer_status': decision['answer_status'],
                       'request_kind': request_kind, 'handoff_requested': final.handoff_requested,
                       'requires_clarification': final.requires_clarification, 'grounding': final.grounding,
                       'evidence_kind': evidence_kind, 'compiled': decision,
                       'citations': [{**citations[key], 'text': citations[key]['content']} for key in final.citation_chunk_ids],
                       'products': [products[key] for key in selected], 'orders': orders, 'proposal': proposal}
+            if final.policy_facts:
+                result['policy_facts'] = [{'kind': fact.kind, 'text': fact.text} for fact in final.policy_facts]
             if context.get('empty_reason') and not selected:
                 result['empty_reason'] = context['empty_reason']
             if context.get('comparison'):
@@ -1063,7 +1115,7 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                     result['missing_targets'] = context['comparison_missing_targets']
             if proposal:
                 note = context.get('proposal_intent_note')
-                result.update(answer=attach_proposal_confirmation(final.answer, intent_note=note),
+                result.update(answer=attach_proposal_confirmation(result['answer'], intent_note=note),
                               answer_status='answered')
                 if note:
                     result['proposal_intent_note'] = note

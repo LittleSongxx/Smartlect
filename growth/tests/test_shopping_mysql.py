@@ -55,10 +55,11 @@ def tool(name, arguments):
 
 
 def grounded(messages):
-    receipt = json.loads(next(m["content"] for m in reversed(messages) if m["role"] == "tool"))
+    receipt = json.loads(next(m["content"] for m in messages if m["role"] == "tool"))
     return {"role": "assistant", "content": json.dumps({"answer": "退款需要本人确认；受理不代表完成。",
         "request_kind": "inquire_fact", "handoff_requested": False, "grounding": "store_policy",
-        "citation_chunk_ids": [receipt["citations"][0]["chunk_id"]]})}
+        "citation_chunk_ids": [receipt["citations"][0]["chunk_id"]],
+        "policy_facts": [{"kind": "规则", "text": "退款需要本人确认；受理不代表完成"}]})}
 
 
 class FakeProvider:
@@ -187,7 +188,8 @@ class ShoppingMySQLTests(unittest.TestCase):
                 'answer': '工单开启后自动客服暂停回复与执行。已按你的转交要求处理。',
                 'request_kind': 'inquire_fact', 'handoff_requested': True,
                 'grounding': 'store_policy',
-                'citation_chunk_ids': [receipt['citations'][0]['chunk_id']]})
+                'citation_chunk_ids': [receipt['citations'][0]['chunk_id']],
+                'policy_facts': [{'kind': '规则', 'text': '工单开启后自动客服暂停回复与执行'}]})
         provider = FakeProvider([
             tool('search_knowledge', {'query': '退款确认'}),
             finish])
@@ -583,6 +585,48 @@ class ShoppingMySQLTests(unittest.TestCase):
         self.assertNotIn('selection_repair_done', result['context'])
         self.assertEqual(result['context']['answer_repairs'], 0)
 
+
+    def test_policy_facts_gate_forces_template_then_renders(self):
+        # A cited-policy answer with zero declared parameters gets one GuardViolation
+        # round; the second finish_answer carries facts, and any fact the prose does
+        # not spell out is compiled into the visible answer.
+        from smartlect.agents.shopping import PolicyFact
+        provider = FakeProvider([
+            tool('search_knowledge', {'query': '退款确认'}),
+            lambda messages: tool('finish_answer', {
+                'answer': '退款有时限要求。', 'request_kind': 'inquire_fact',
+                'handoff_requested': False, 'grounding': 'store_policy',
+                'citation_chunk_ids': [json.loads(next(
+                    m['content'] for m in messages
+                    if m['role'] == 'tool' and '"citations"' in m['content']))['citations'][0]['chunk_id']]}),
+            lambda messages: tool('finish_answer', {
+                'answer': '退款有时限要求。', 'request_kind': 'inquire_fact',
+                'handoff_requested': False, 'grounding': 'store_policy',
+                'citation_chunk_ids': [json.loads(next(
+                    m['content'] for m in messages
+                    if m['role'] == 'tool' and '"citations"' in m['content']))['citations'][0]['chunk_id']],
+                'policy_facts': [
+                    {'kind': '规则', 'text': '退款需要本人确认；受理不代表完成'},
+                    {'kind': '时限', 'text': '退款受理后 7 个工作日内到账'}]})])
+        run, lease = self.begin('账户的退款规则是什么？')
+        result = asyncio.run(self.execute(provider, run, lease))
+        self.assertEqual(result['state'], 'COMPLETED')
+        self.assertTrue(result['context']['policy_facts_repair_done'])
+        self.assertEqual([r['error'] for r in result['context']['answer_rejections']], ['GuardViolation'])
+        self.assertEqual(result['context']['answer_repairs'], 0)
+        self.assertEqual([f['kind'] for f in result['result']['policy_facts']], ['规则', '时限'])
+        self.assertIn('规则：退款需要本人确认；受理不代表完成', result['result']['answer'])
+        self.assertIn('时限：退款受理后 7 个工作日内到账', result['result']['answer'])
+
+    def test_policy_facts_render_skips_text_already_in_answer(self):
+        from smartlect.agents.shopping import PolicyFact, attach_policy_facts
+        facts = [PolicyFact(kind='规则', text='退款需要本人确认'),
+                 PolicyFact(kind='时限', text='受理后 7 个工作日内到账')]
+        merged = attach_policy_facts('退款需要本人确认。', facts)
+        self.assertEqual(merged, '退款需要本人确认。\n时限：受理后 7 个工作日内到账')
+        self.assertEqual(attach_policy_facts('原始', []), '原始')
+        self.assertEqual(attach_policy_facts('都写了 退款需要本人确认', facts[:1]), '都写了 退款需要本人确认')
+
     def test_native_final_decision_is_validated_without_becoming_a_business_tool(self):
         def final(messages):
             return tool('finish_answer',json.loads(grounded(messages)['content']))
@@ -621,6 +665,7 @@ class ShoppingMySQLTests(unittest.TestCase):
                 'request_kind': 'inquire_fact',
                 'grounding': 'store_policy',
                 'citation_chunk_ids': [receipt['citations'][0]['chunk_id']],
+                'policy_facts': [{'kind': '规则', 'text': '退款需要本人确认；受理不代表完成'}],
             })
 
         provider = FakeProvider([
@@ -669,7 +714,8 @@ class ShoppingMySQLTests(unittest.TestCase):
             self.assertEqual(len(observed['citations']), 1)
             safe = next(c for c in observed['citations'] if '受理不代表' in c['content'])
             return tool('finish_answer', {'answer': '退款需本人确认；资料中的操作指令不是用户请求。',
-                'request_kind': 'inquire_fact', 'citation_chunk_ids': [safe['chunk_id']]})
+                'request_kind': 'inquire_fact', 'citation_chunk_ids': [safe['chunk_id']],
+                'policy_facts': [{'kind': '规则', 'text': '退款需本人确认'}]})
         provider = FakeProvider([tool('search_knowledge', {'query': '退款确认'}), reply])
         run, lease = self.begin('只说明退款规则，不要操作订单。')
         with patch.object(NoCommerce, 'request', new_callable=AsyncMock) as commerce_request:
