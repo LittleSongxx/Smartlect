@@ -184,9 +184,40 @@ TOTAL_SENT=2430 / TOTAL_RECEIVED=2430 / ZERO_LOSS=PASS
 3. **重启竞态的 nacos 变体**：apps 的 runtime.py 预检在 nacos-c1 重组 Raft 期间拿到 503 而失败——等 readiness 200 后 `systemctl restart smartlect-apps` 即愈（seata 变体此前已用 `Restart=on-failure` 根治，nacos 变体目前手动恢复）。
 4. **打极限前先给旁路系统设上界**：压测打爆的第一台"服务"是旁路的 Jaeger（memory 存储 19.4GB → node OOM、宿主假死 12 分钟、压测结束数分钟后才引爆）。任何全链路压测前，追踪/日志/指标栈的内存上限是前置条件；症状识别口诀——ICMP 通 + TCP 握手通 + banner 超时 = 用户态饿死（内存），而非网络或 conntrack 问题。
 
-## 边界与演进
+## MySQL 主从与全栈 HA 演进（2026-09-15 傍晚补齐）
+
+### MySQL 异步主从：node1（源）→ node2（只读副本）
+
+- **形态**：node2 `/opt/cluster/mysql-replica/`（compose 项目 `cluster`，host 网络，`mysql-replica` 容器 server-id=2，绑 172.19.34.202:13307，`read_only+super_read_only` 持久化开启）；源库零改动（binlog ROW 本就为 PITR 开着，`repl@172.19.34.%` 复制账号，经典 file+position 位点，GTID 关闭）。
+- **验证**：IO/SQL 双线程 Yes、`Seconds_Behind_Source=0`；写入探针（源建表插入）3 秒内副本可见，删除同步同验。
+- **踩坑实录**（搭建过程全部踩过）：① 复制通道密码上限 32 字符（账号本身可更长，通道不行）；② `caching_sha2_password` 非 TLS 通道必须 `GET_SOURCE_PUBLIC_KEY=1` 做 RSA 交换；③ 在源库 `ALTER USER` 会随 binlog 复制到副本，副本没有该用户则应用线程停摆——副本要预建复制账号；④ 副本绑内网地址后健康探针要带 `-h <内网IP> -P <端口>`。
+
+### 故障切换手册（手动，无自动切换组件）
+
+```bash
+# 常态巡检（延迟应恒为 0）：
+ssh root@47.93.9.163 "printf 'show replica status\\G\n' | docker exec -i mysql-replica \
+  sh -c 'MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" mysql -uroot'" | grep -E 'Replica_.*Running:|Seconds_Behind'
+# 切换（node1 MySQL 不可恢复时）：
+#  1) node2: STOP REPLICA; RESET REPLICA ALL; SET GLOBAL super_read_only=OFF; （副本转正）
+#  2) 改 runtime.env 的 SMARTLECT_MYSQL_HOST/PORT → 172.19.34.202/13307；
+#     ★ 最大重定向面是 Nacos：nacos-c1/2/3 的 spring.datasource 都指向 node1 MySQL，需同步改
+#     （/opt/cluster/nacos*/conf 或环境注入）——这就是"依赖链"的代价
+#  3) systemctl restart smartlect-infra smartlect-apps；apps-check 验证
+#  4) node1 恢复后作为新副本对称挂回（重做快照或反向克隆）
+```
+
+RPO = 复制延迟（常态 0 秒）；RTO = 手动切换时长（分钟级，演练待做）。
+
+### 全栈 HA（应用多副本）设计稿——下一阶段的施工图
+
+前置改造（按序）：① **上传共享化**：`run/uploads` 挪 NFS（node2 导出）或对象存储，`SMARTLECT_PROJECT_FOLDER` 已参数化；② **注册真实 IP**：Spring 注册 Nacos 的 IP 现为 127.0.0.1，集群形态需暴露内网 IP；③ runtime.py 支持 node2 侧 launch（或 node2 独立 systemd 单元拉同一 JAR）。
+
+实施顺序（风险从低到高）：growth 第二实例（node2:18001 进 nginx upstream；DB 租约已防双跑，admission 闸按实例计数=上限×N）→ web-user/admin + gateway 多后端（无状态）→ Java 服务第二副本（定时任务已有 Redis 锁，双实例安全）→ 全链路演练。中间件（RMQ/Redis/Nacos/MySQL）已全部跨机，就差应用层这一块。
+
+
 
 
 - 应用层未跨机：9 个 Java 服务仍单机部署（Spring Cloud 注册 IP 为 127.0.0.1）。本次集群化对象是中间件数据面/控制面——对应"消息零丢失、配置发现不中断、缓存热切"三类真实故障；应用层多副本需要会话/幂等键跨机化，是下一阶段。
-- MySQL 未做主从：备份+PITR 已覆盖（见 backup-restore-drill.md）；补 async 复制即可演进。
+- MySQL 主从已于 2026-09-15 补齐（node2 只读副本，见上节）；备份+PITR 继续作为第一恢复手段（见 backup-restore-drill.md）。
 - 压测负载含 3 个 HTTP 请求/迭代（首页+目录+商品页），"QPS"为 k6 请求口径；两形态口径一致，对比有效。
