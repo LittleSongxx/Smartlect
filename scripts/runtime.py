@@ -520,7 +520,11 @@ def apps_up(env):
             'MYSQL_PWD="$SMARTLECT_FLYWAY_PASSWORD" mysql -usmartlect_flyway -e "$1"',
             "seata-schema", (ROOT / "deploy/sql/16-seata-undo.sql").read_text())
     records = load_processes()
-    for services in (('growth-worker',), APPS[1:9], ('admin', 'gateway'), ('web-user', 'web-admin')):
+    # growth-worker passively declares queues Java owns, and the growth app's
+    # health requires a connected worker — so both start after the Java services
+    # have redeclared their queues (a volume reset otherwise leaves the worker
+    # in a 404 retry loop that fails the whole `up` batch).
+    for services in (APPS[2:9], ('growth-worker', 'growth'), ('admin', 'gateway'), ('web-user', 'web-admin')):
         for service in services:
             start_app(service, env, records)
             # Warm one JVM at a time on the shared WSL host.
