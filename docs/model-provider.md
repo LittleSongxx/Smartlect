@@ -108,3 +108,17 @@ Java 模拟支付与退款均为 1,000 分，净额 0 分、库存 5 → 5。它
 已冻结 44 条 RAG 合同中的 12 条 holdout 仍未执行，不得从本次 smoke 推导其成绩。
 
 最终独立协议重跑见 [f2-provider-final.json](../artifacts/f2-provider-final.json)：7类能力、8次实际HTTP请求全部通过，新增可省略整数工具参数的真实类型验证。初次7请求报告保留；不把两个报告简单累加成模型质量样本。最终源码hash随报告保存，生产运行与索引调用另保存在各自审计记录。
+
+
+## 运行时模型切换（ai-ops，2026-09）
+
+`model_runtime_config` 表存储 chat 角色的激活模型选择（admin 端「AI 资产 · 模型配置」页）。
+约束与边界：
+
+- 仅允许当前 `SMARTLECT_MODEL_BASE_URL` 端点族可服务的模型（dashscope↔qwen 系、
+  zhipu↔glm-5.3）；跨厂商切换需更换端点（部署操作）。
+- Provider 以 5s TTL 读取该表；空表、DB 异常时回落 env 快照（`SMARTLECT_MODEL_ID`）。
+- API Key、Base URL、embedding 模型与维度白名单不受此表影响，仍由 run/model.env 托管。
+- 保存时白名单校验 + updated_by 审计；「测试连接」走一次 1-attempt 的小额探测并
+  返回延迟/错误码。
+- trace 中的 model_id 始终为当次调用实际生效的模型。
