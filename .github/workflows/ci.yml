@@ -31,7 +31,7 @@ jobs:
 
   growth:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,6 +43,14 @@ jobs:
           pip install --no-deps --no-build-isolation ./growth
       - name: unittest
         working-directory: growth
+        run: python -m unittest discover -s tests
+      # The MySQL-backed contract tests own one disposable container each and skip
+      # themselves without this flag; leaving it unset is how 18 real failures stayed
+      # invisible while the suite reported green (142 skips).
+      - name: unittest（真实 MySQL 契约测试）
+        working-directory: growth
+        env:
+          SMARTLECT_RUN_MYSQL_TESTS: "1"
         run: python -m unittest discover -s tests
 
   web:

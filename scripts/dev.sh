@@ -33,6 +33,9 @@ case "$command" in
   check)
     "$runtime_python" scripts/check_independence.py
     "$runtime_python" scripts/runtime.py self-test
+    # growth is installed non-editable, so the suite imports site-packages: reinstall first
+    # or `check` happily tests the previous revision's source.
+    growth/.venv/bin/python -m pip install --no-index --no-deps --no-build-isolation ./growth
     mvn -B -f backend/pom.xml test "$@"
     growth/.venv/bin/python -m unittest discover -s growth/tests
     npm --prefix web/user run test
