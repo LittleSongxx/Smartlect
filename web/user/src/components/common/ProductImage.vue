@@ -6,6 +6,7 @@
     class="product-image"
     :class="{ 'is-dense': dense }"
     :style="sizeStyle"
+    @error="onError"
   >
     <template #placeholder>
       <div class="img-placeholder">
@@ -21,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Picture } from '@element-plus/icons-vue';
 import { pickProductCover, resolveImageUrl } from '@/utils/image';
 
@@ -40,9 +41,27 @@ const props = withDefaults(
   { fit: 'cover', lazy: true, useThumbnail: true, dense: false }
 );
 
+const rawSource = computed(() => props.source ?? (props.product ? pickProductCover(props.product) : ''));
+
+// 主图（useThumbnail=false）请求的是去掉 _thumbnail 的原图。只存了缩略图的商品原图并不
+// 存在，服务端现在会回退到缩略图，但已经被缓存成空响应的那条 URL 换不掉——只能在这里失败
+// 后换一个 URL 重新取（缩略图那条通常在缓存里是好的）。
+const failedFullSize = ref(false);
+const onError = () => {
+  if (props.useThumbnail === false && !failedFullSize.value) {
+    failedFullSize.value = true;
+  }
+};
+watch(rawSource, () => {
+  failedFullSize.value = false;
+});
+
 const src = computed(() => {
-  const raw = props.source ?? (props.product ? pickProductCover(props.product) : '');
-  return resolveImageUrl(raw, { useThumbnail: props.useThumbnail });
+  if (!rawSource.value) return '';
+  if (props.useThumbnail || !failedFullSize.value) {
+    return resolveImageUrl(rawSource.value, { useThumbnail: props.useThumbnail });
+  }
+  return resolveImageUrl(rawSource.value, { useThumbnail: true });
 });
 
 const toCssSize = (val?: number | string) => {

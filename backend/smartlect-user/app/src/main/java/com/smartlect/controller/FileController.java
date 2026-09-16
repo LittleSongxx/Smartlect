@@ -1,11 +1,10 @@
 package com.smartlect.controller;
 
 import com.smartlect.annotation.GlobalInterceptor;
-import com.smartlect.constants.Constants;
-import com.smartlect.entity.config.AppConfig;
 import com.smartlect.api.dto.ImageUploadResultDTO;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.biz.ImageModerationService;
+import com.smartlect.utils.FileUtils;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,10 +30,10 @@ import java.io.OutputStream;
 public class FileController extends ABaseController{
 
     @Resource
-    private AppConfig appConfig;
+    private ImageModerationService imageModerationService;
 
     @Resource
-    private ImageModerationService imageModerationService;
+    private FileUtils fileUtils;
 
     @GlobalInterceptor(checkLogin = true)
     @PostMapping("/uploadImage")
@@ -54,38 +53,34 @@ public class FileController extends ABaseController{
     @GetMapping("/getResource")
     public void getResource(HttpServletResponse response, @NotNull String sourceName) throws IOException {
         if(!StringTools.pathIsOK(sourceName)){
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+        // 只存了另一个变体时（例如商品图只有缩略图）回退到实际存在的那个；长缓存只在真的
+        // 找到文件时下发——以前对缺失文件回 200 空体并带 max-age，浏览器会把这个空响应缓存
+        // 近一天，表现就是“大图一直加载不出来”。
+        File file = fileUtils.resolveReadableStoredFile(sourceName);
+        if (file == null) {
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
             return;
         }
         String suffix = StringTools.getFileSuffix(sourceName);
         response.setContentType(resolveImageContentType(suffix));
         response.setHeader("Cache-Control", "max-age=100000");
-        readFile(response,sourceName);
+        writeFile(response, file);
     }
 
-    protected void readFile(HttpServletResponse response,String filePath){
-        if(!StringTools.pathIsOK(filePath)){
-            return;
-        }
-        File file = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + filePath);
-        if(!file.exists()){
-            String fallbackPath = filePath.replace("_thumbnail", "");
-            if (!fallbackPath.equals(filePath)) {
-                file = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + fallbackPath);
-            }
-        }
-        if(!file.exists()){
-            return;
-        }
+    protected void writeFile(HttpServletResponse response, File file){
         try (OutputStream out = response.getOutputStream();
             FileInputStream in = new FileInputStream(file)) {
-                byte[] byteData =  new byte[1024];
+                byte[] byteData =  new byte[8192];
                 int len = 0;
                 while((len = in.read(byteData)) != -1){
                     out.write(byteData,0,len);
                 }
                 out.flush();
         } catch (Exception e) {
-            log.error("读取文件异常");
+            log.error("读取文件异常", e);
         }
     }
 

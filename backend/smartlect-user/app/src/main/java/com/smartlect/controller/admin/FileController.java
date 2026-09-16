@@ -1,8 +1,6 @@
 package com.smartlect.controller.admin;
 
 
-import com.smartlect.constants.Constants;
-import com.smartlect.entity.config.AppConfig;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.utils.FileUtils;
 import com.smartlect.utils.StringTools;
@@ -29,9 +27,6 @@ import java.io.OutputStream;
 public class FileController extends com.smartlect.controller.admin.ABaseController{
 
     @Resource
-    private AppConfig appConfig;
-
-    @Resource
     private FileUtils fileUtils;
 
     @PostMapping("/uploadImage")
@@ -43,38 +38,33 @@ public class FileController extends com.smartlect.controller.admin.ABaseControll
     @GetMapping("/getResource")
     public void getResource(HttpServletResponse response, @NotNull String sourceName) throws IOException {
         if(!StringTools.pathIsOK(sourceName)){
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+        // 与用户端 /file/getResource 同一套语义：只存了另一个变体时回退到存在的那一个，
+        // 真的缺失就回 404，绝不回 200 空体（空体带长缓存会让浏览器把破图缓存近一天）。
+        File file = fileUtils.resolveReadableStoredFile(sourceName);
+        if (file == null) {
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
             return;
         }
         String suffix = StringTools.getFileSuffix(sourceName);
         response.setContentType(resolveImageContentType(suffix));
         response.setHeader("Cache-Control", "max-age=100000");
-        readFile(response,sourceName);
+        writeFile(response, file);
     }
 
-    protected void readFile(HttpServletResponse response,String filePath){
-        if(!StringTools.pathIsOK(filePath)){
-            return;
-        }
-        File file = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + filePath);
-        if(!file.exists()){
-            String fallbackPath = filePath.replace("_thumbnail", "");
-            if (!fallbackPath.equals(filePath)) {
-                file = new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + fallbackPath);
-            }
-        }
-        if(!file.exists()){
-            return;
-        }
+    protected void writeFile(HttpServletResponse response, File file){
         try (OutputStream out = response.getOutputStream();
             FileInputStream in = new FileInputStream(file)) {
-                byte[] byteData =  new byte[1024];
+                byte[] byteData =  new byte[8192];
                 int len = 0;
                 while((len = in.read(byteData)) != -1){
                     out.write(byteData,0,len);
                 }
                 out.flush();
         } catch (Exception e) {
-            log.error("读取文件异常");
+            log.error("读取文件异常", e);
         }
     }
 

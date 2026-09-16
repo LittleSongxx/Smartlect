@@ -240,6 +240,57 @@ public class FileUtils {
         return base + Constants.IMAGE_THUMBNAIL_SUFFIX + suffix;
     }
 
+    /** 与 {@link #toThumbnailRelativePath} 对称：缩略图路径对应回原图路径，非缩略图返回 null。 */
+    public static String fromThumbnailRelativePath(String relativePath) {
+        if (StringTools.isEmpty(relativePath)) {
+            return null;
+        }
+        String suffix = StringTools.getFileSuffix(relativePath);
+        if (StringTools.isEmpty(suffix)) {
+            return null;
+        }
+        String base = relativePath.substring(0, relativePath.length() - suffix.length());
+        if (!base.endsWith(Constants.IMAGE_THUMBNAIL_SUFFIX)) {
+            return null;
+        }
+        return base.substring(0, base.length() - Constants.IMAGE_THUMBNAIL_SUFFIX.length()) + suffix;
+    }
+
+    /**
+     * 请求路径的候选顺序：原样 → 缩略图 → 原图。
+     *
+     * 双向回退是必要的：展示大图的前端会把路径里的 _thumbnail 去掉去请求原图，而只存了缩略图
+     * 的商品（历史种子数据就是这样）原图根本不存在；反过来只存原图的路径也会被请求成缩略图。
+     */
+    public static java.util.List<String> readableCandidates(String relativePath) {
+        java.util.List<String> candidates = new java.util.ArrayList<>(3);
+        if (StringTools.isEmpty(relativePath)) {
+            return candidates;
+        }
+        candidates.add(relativePath);
+        for (String variant : new String[] {
+                toThumbnailRelativePath(relativePath), fromThumbnailRelativePath(relativePath)}) {
+            if (variant != null && !candidates.contains(variant)) {
+                candidates.add(variant);
+            }
+        }
+        return candidates;
+    }
+
+    /** 读取用解析：返回实际存在的那一个变体，都不存在时返回 null（由调用方决定 404 还是抛错）。 */
+    public File resolveReadableStoredFile(String relativePath) {
+        if (StringTools.isEmpty(relativePath) || !StringTools.pathIsOK(relativePath)) {
+            return null;
+        }
+        for (String candidate : readableCandidates(relativePath)) {
+            File file = resolveStoredFile(candidate);
+            if (file.isFile()) {
+                return file;
+            }
+        }
+        return null;
+    }
+
     private File resolveStoredFile(String relativePath) {
         return new File(appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE + relativePath);
     }
