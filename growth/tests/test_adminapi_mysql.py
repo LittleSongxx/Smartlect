@@ -31,6 +31,9 @@ class AdminApiMySQLTests(unittest.TestCase):
     def test_product_knowledge_import_creates_auto_draft_and_publishes(self):
         asyncio.run(self.exercise_import())
 
+    def test_prompt_templates_seed_edit_activate_and_resolve(self):
+        asyncio.run(self.exercise_prompts())
+
     async def exercise_import(self):
         suffix = uuid.uuid4().hex
         origin = "http://smartlect.test"
@@ -246,6 +249,117 @@ class AdminApiMySQLTests(unittest.TestCase):
             no_csrf = await client.post("/admin-api/assistant/tools/invoke",
                                         json={"name": "get_product_offer", "arguments": {"productId": "p-debug"}})
             self.assertEqual(no_csrf.status_code, 403)
+
+
+
+    async def exercise_prompts(self):
+        from smartlect import prompts as prompt_registry
+        suffix = uuid.uuid4().hex
+        origin = "http://smartlect.test"
+        config = {"SMARTLECT_USER_PORT": "18105", "SMARTLECT_INTERNAL_TOKEN": "synthetic",
+                  "SMARTLECT_VISITOR_SECRET": "s" * 48, "SMARTLECT_ALLOWED_ORIGINS": origin}
+
+        def java(request):
+            if request.url.path == "/internal/identity/introspect":
+                data = {"subjectType": "merchant", "actorId": "boss-" + suffix, "sessionId": "s",
+                        "permissions": ["admin:legacy", "shopping:read"]}
+                return httpx.Response(200, json={"status": "success", "data": data})
+            raise AssertionError(request.url.path)
+
+        transport = httpx.MockTransport(java)
+
+        def app():
+            return create_app(Settings(), config=config, store=SessionStore(self.connect),
+                              identity=IdentityBridge(config, transport=transport),
+                              commerce=AsyncCommerceClient(config, transport=transport))
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
+            client.cookies.set("adminToken", "boss-" + suffix)
+            session = await client.get("/admin-api/assistant/session")
+            headers = {"Origin": origin, "X-CSRF-Token": session.json()["csrf_token"]}
+
+            keys = (await client.get("/admin-api/assistant/prompts", params={"domain": "shopping"})).json()
+            shopping_keys = keys["domains"]["shopping"]
+            self.assertTrue(any(k["kind"] == "system_prompt" and k["active_count"] == 1 for k in shopping_keys))
+            self.assertTrue(any(k["key"] == "support_policy" for k in shopping_keys))
+
+            versions = (await client.get("/admin-api/assistant/prompts/shopping/system_prompt/system/versions")).json()["items"]
+            self.assertEqual(versions[0]["version"], 24)  # continuity with the code label
+            seeded_body = (await client.get("/admin-api/assistant/prompts/shopping/system_prompt/system/24")).json()["body"]
+
+            edited = await client.post("/admin-api/assistant/prompts/shopping/system_prompt/system",
+                                       headers=headers, json={"body": seeded_body + "\n补充规则：测试追加。"})
+            self.assertEqual(edited.status_code, 200, edited.text)
+            self.assertEqual(edited.json()["version"], 25)
+
+            activated = await client.post("/admin-api/assistant/prompts/shopping/system_prompt/system/25/activate",
+                                          headers=headers, json={})
+            self.assertEqual(activated.json()["status"], "active")
+
+            body, label = prompt_registry.resolve_system(self.connect, "shopping", "DEFAULT", "shopping-react-v24")
+            self.assertIn("补充规则：测试追加。", body)
+            self.assertEqual(label, "shopping-react-v25")
+
+            bad = await client.post("/admin-api/assistant/prompts/shopping/skill/brand_new",
+                                    headers=headers, json={"body": "{}"})
+            self.assertEqual(bad.status_code, 422)
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+
+    async def exercise_prompts(self):
+        from smartlect import prompts as prompt_registry
+        suffix = uuid.uuid4().hex
+        origin = "http://smartlect.test"
+        config = {"SMARTLECT_USER_PORT": "18105", "SMARTLECT_INTERNAL_TOKEN": "synthetic",
+                  "SMARTLECT_VISITOR_SECRET": "s" * 48, "SMARTLECT_ALLOWED_ORIGINS": origin}
+
+        def java(request):
+            if request.url.path == "/internal/identity/introspect":
+                data = {"subjectType": "merchant", "actorId": "boss-" + suffix, "sessionId": "s",
+                        "permissions": ["admin:legacy", "shopping:read"]}
+                return httpx.Response(200, json={"status": "success", "data": data})
+            raise AssertionError(request.url.path)
+
+        transport = httpx.MockTransport(java)
+
+        def app():
+            return create_app(Settings(), config=config, store=SessionStore(self.connect),
+                              identity=IdentityBridge(config, transport=transport),
+                              commerce=AsyncCommerceClient(config, transport=transport))
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
+            client.cookies.set("adminToken", "boss-" + suffix)
+            headers = {"Origin": origin, "X-CSRF-Token": (await client.get("/admin-api/assistant/session")).json()["csrf_token"]}
+
+            keys = (await client.get("/admin-api/assistant/prompts", params={"domain": "shopping"})).json()
+            shopping_keys = keys["domains"]["shopping"]
+            self.assertTrue(any(k["kind"] == "system_prompt" and k["active_count"] == 1 for k in shopping_keys))
+            self.assertTrue(any(k["key"] == "support_policy" for k in shopping_keys))
+
+            versions = (await client.get("/admin-api/assistant/prompts/shopping/system_prompt/system/versions")).json()["items"]
+            self.assertEqual(versions[0]["version"], 24)  # continuity with the code label
+            seeded_body = (await client.get("/admin-api/assistant/prompts/shopping/system_prompt/system/24")).json()["body"]
+
+            edited = await client.post("/admin-api/assistant/prompts/shopping/system_prompt/system",
+                                       headers=headers, json={"body": seeded_body + "\n补充规则：测试追加。"})
+            self.assertEqual(edited.status_code, 200, edited.text)
+            self.assertEqual(edited.json()["version"], 25)
+
+            activated = await client.post("/admin-api/assistant/prompts/shopping/system_prompt/system/25/activate",
+                                          headers=headers, json={})
+            self.assertEqual(activated.json()["status"], "active")
+
+            body, label = prompt_registry.resolve_system(self.connect, "shopping", "DEFAULT", "shopping-react-v24")
+            self.assertIn("补充规则：测试追加。", body)
+            self.assertEqual(label, "shopping-react-v25")
+
+            # Structural edits stay code-owned: unknown skill ids and broken JSON are rejected.
+            bad = await client.post("/admin-api/assistant/prompts/shopping/skill/brand_new",
+                                    headers=headers, json={"body": "{}"})
+            self.assertEqual(bad.status_code, 422)
 
 
 if __name__ == "__main__":

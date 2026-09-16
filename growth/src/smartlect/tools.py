@@ -10,6 +10,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from smartlect.commerce import CommerceError, CommerceRejected, ORDER_ACTION_STATUS_PATH
+from smartlect import prompts
 from smartlect.ads.analytics import to_cents
 from smartlect.business_skills import load_skill
 from smartlect.knowledge import compose_search_query
@@ -268,7 +269,7 @@ async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, e
                 raise ValueError(error.code) from None
             raise
     if name == "load_skill":
-        return load_skill(params["skill_id"])
+        return prompts.resolve_skill(getattr(store, "connect", None), "shopping", params["skill_id"])
     if name == "search_knowledge":
         if knowledge is None:
             raise ValueError("knowledge_unavailable")

@@ -209,10 +209,26 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     actor_run_limit = bounded(config.get("SMARTLECT_GROWTH_RUNS_PER_ACTOR"), 3, 1, 64)
     global_run_limit = bounded(config.get("SMARTLECT_GROWTH_RUNS_GLOBAL"), 24, 1, 512)
 
+    from smartlect import prompts as prompt_registry
+    from smartlect.agents.shopping import PROMPT_VERSION as SHOPPING_PROMPT_VERSION, SYSTEM_POLICY_BODY
+    from smartlect.agents.merchant import MERCHANT_POLICY_BODY, PROMPT_VERSION as MERCHANT_PROMPT_VERSION
+    from smartlect.business_skills import MERCHANT_SKILLS, USER_SKILLS, load_skill
+    prompt_registry.register_default('shopping', 'system_prompt', 'system', SYSTEM_POLICY_BODY,
+                                     version=prompt_registry._code_version(SHOPPING_PROMPT_VERSION))
+    prompt_registry.register_default('merchant', 'system_prompt', 'system', MERCHANT_POLICY_BODY,
+                                     version=prompt_registry._code_version(MERCHANT_PROMPT_VERSION))
+    for domain, names in (('shopping', USER_SKILLS), ('merchant', MERCHANT_SKILLS)):
+        for skill_id in names:
+            skill = load_skill(skill_id, domain=domain)
+            prompt_registry.register_default(domain, 'skill', skill_id,
+                                             json.dumps(skill, ensure_ascii=False),
+                                             version=1)
+
     @asynccontextmanager
     async def lifespan(app):
         if store is not None:
             await db(store.initialize)
+            prompt_registry.seed(store.connect)
         if indexing is not None:
             await indexing.resume_stale()
         yield
