@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="商品管理" description="在售商品的检索、上下架与编辑入口；发布新商品从这里开始。" />
   <div class="search-panel">
     <el-form :model="searchForm" @submit.prevent>
       <el-row :gutter="10">

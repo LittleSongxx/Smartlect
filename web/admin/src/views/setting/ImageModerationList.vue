@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="图片违规复核" description="机器初筛后的图片人工复核。" />
   <div class="top-panel">
     <el-form :model="searchForm" @submit.prevent>
       <el-row :gutter="10">

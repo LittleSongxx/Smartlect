@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="敏感词管理" description="文本敏感词库维护，用于内容初筛。" />
   <div class="search-panel">
     <el-form @submit.prevent>
       <el-row :gutter="10">

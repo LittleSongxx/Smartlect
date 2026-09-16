@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="优惠券管理" description="优惠券模板与发放记录管理。" />
   <div class="search-panel">
     <el-form :model="searchForm" @submit.prevent>
       <el-row :gutter="10">

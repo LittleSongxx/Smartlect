@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="会员升级礼券" description="会员升级奖励礼券配置。" />
   <div class="member-reward-page">
     <el-card class="config-card">
       <template #header>

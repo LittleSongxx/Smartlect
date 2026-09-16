@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="分类管理" description="商品类目树维护，影响前台导航与检索聚合。" />
   <el-button @click="showEdit({ pCategoryId: '0' })" type="primary">新增分类</el-button>
   <el-tree class="category-tree" :expand-on-click-node="false" :data="categoryList" draggable default-expand-all
     node-key="categoryId" :allow-drop="allowDrop" @node-drop="handleDrop">

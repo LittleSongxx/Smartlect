@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="MQ 补偿审查" description="消息补偿记录审查，核对最终一致性。" />
   <div class="top-panel">
     <el-form :model="searchForm" @submit.prevent>
       <el-row :gutter="10">

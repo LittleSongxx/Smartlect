@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="收货地址" description="用户收货地址查询（脱敏展示）。" />
   <div class="search-panel">
     <el-form :model="searchForm" @submit.prevent>
       <el-row :gutter="10">

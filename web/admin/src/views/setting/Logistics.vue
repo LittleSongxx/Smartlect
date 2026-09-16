@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="发货信息管理" description="发货地址与物流模板维护。" />
   <div class="logistics-panel">
     <el-form :model="formData" :rules="rules" ref="formDataRef" label-width="80px" @submit.prevent>
       <el-form-item label="发件人" prop="">

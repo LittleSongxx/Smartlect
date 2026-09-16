@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="统计明细" description="经营数据的明细查询。" />
   <div class="search-panel">
     <el-form :model="searchForm" @submit.prevent>
       <el-row :gutter="10">

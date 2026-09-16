@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="签到发券配置" description="签到奖励发券规则配置。" />
   <div class="sign-reward-page">
     <el-card class="config-card">
       <template #header>

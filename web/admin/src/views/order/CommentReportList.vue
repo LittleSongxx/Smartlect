@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="举报管理" description="评价举报的人工复核入口。" />
   <div class="top-panel">
     <el-form :model="searchForm" @submit.prevent>
       <el-row :gutter="10">

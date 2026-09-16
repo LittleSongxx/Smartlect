@@ -1,4 +1,5 @@
 <template>
+  <PageHeader title="订单管理" description="订单检索、发货与状态流转；交易事实以订单域为准。" />
   <div class="search-panel">
     <el-form :model="searchForm" @submit.prevent>
       <el-row :gutter="10">
