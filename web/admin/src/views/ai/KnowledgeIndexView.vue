@@ -151,9 +151,6 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .ai-page {
-  .table-gap {
-    margin-bottom: 12px;
-  }
 
   .progress-card {
     padding: 14px 16px;
@@ -174,19 +171,6 @@ onMounted(async () => {
     margin-top: 8px;
     font-size: 13px;
     color: var(--text2);
-  }
-
-  .card-title {
-    margin: 0 0 6px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .muted-note {
-    margin: 0 0 10px;
-    font-size: 12px;
-    color: var(--text3);
   }
 
   .probe-card {

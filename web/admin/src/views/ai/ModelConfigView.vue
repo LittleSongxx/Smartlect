@@ -109,31 +109,9 @@ onMounted(load)
 
 <style scoped lang="scss">
 .ai-page {
-  .table-gap {
-    margin-bottom: 12px;
-  }
 
   .form-card {
     margin-top: 12px;
-  }
-
-  .card-title {
-    margin: 0 0 8px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .muted-note {
-    margin: 8px 0 0;
-    font-size: 12px;
-    line-height: 1.6;
-    color: var(--text3);
-  }
-
-  .mono {
-    font-family: var(--mono-font);
-    font-size: 12px;
   }
 }
 </style>

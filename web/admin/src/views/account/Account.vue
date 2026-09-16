@@ -156,8 +156,8 @@ const doSubmit = () => {
 
 <style lang="scss" scoped>
 .login-page {
-  --accent: #0f766e;
-  --accent-hover: #0b665f;
+  --accent: var(--primary);
+  --accent-hover: var(--primary-hover);
   --accent-soft: #ecfdf5;
   --brand-ink: #ffffff;
   --brand-muted: rgba(255, 255, 255, 0.78);
@@ -195,7 +195,7 @@ const doSubmit = () => {
 .panel-brand {
   position: relative;
   padding: 48px 40px;
-  background: #0f766e;
+  background: var(--grad-cta, linear-gradient(100deg, #149aad, #2479c9));
   color: var(--brand-ink);
   overflow: hidden;
 

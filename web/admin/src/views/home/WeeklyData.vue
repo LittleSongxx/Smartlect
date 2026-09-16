@@ -74,7 +74,7 @@ const asideStats = computed(() => {
 const getChartOption = () => {
   const isSale = activeTab.value === 'sale'
   const data = isSale ? saleData.value : refundData.value
-  const accent = isSale ? '#0f766e' : '#e85d3f'
+  const accent = isSale ? 'var(--money)' : 'var(--price)'
   const accentSoft = isSale ? 'rgba(15, 118, 110, 0.14)' : 'rgba(232, 93, 63, 0.12)'
 
   return {

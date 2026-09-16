@@ -1,0 +1,74 @@
+// AI 资产 / 经营分析页面的共享版面（原先这 7 个页面各自复制了 .ai-page/.card-title/
+// .stat-row/.table-gap/.muted-note/.mono 等工具类，是同一套东西的 7 份副本）。
+//
+// 版面口径与全站一致：白底卡片 + 1px 细边 + 8px 圆角；卡头 14/16 内缩 + 细分隔线；
+// 非表格内容一律套 .card-body 保证 16px 内缩，文字不再贴边；统计块用中性浅底而不是
+// Element 的浅主色底（后者会随主题变化成一大片淡蓝）。
+.ai-page {
+    .table-gap {
+        margin-bottom: 12px;
+    }
+}
+
+.table-data-card {
+    .card-title {
+        margin: 0;
+        padding: 14px 16px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text);
+        border-bottom: 1px solid var(--border-soft);
+    }
+
+    // 卡片里的普通内容（表单、段落、统计块）统一 16px 内缩；纯表格卡保持 0 内缩
+    > .card-body,
+    > form,
+    > .stat-row,
+    > .probe-result,
+    > .suggestion-list,
+    > p,
+    > ol,
+    > ul,
+    > .el-descriptions {
+        padding: 16px;
+    }
+
+    > .stat-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 12px;
+    }
+}
+
+.stat-row .stat {
+    padding: 14px 16px;
+    background: var(--surface-soft);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+
+    span {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        color: var(--text-2);
+    }
+
+    strong {
+        font-size: 22px;
+        line-height: 1.2;
+        color: var(--money);
+    }
+}
+
+.muted-note {
+    margin: 4px 0;
+    font-size: 13px;
+    color: var(--text-2);
+}
+
+.mono {
+    font-family: var(--mono-font);
+    font-size: 12px;
+    color: var(--text-2);
+    word-break: break-all;
+}

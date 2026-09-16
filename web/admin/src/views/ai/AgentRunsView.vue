@@ -206,14 +206,6 @@ onMounted(load)
 
 <style scoped lang="scss">
 .ai-page {
-  .table-gap {
-    margin-bottom: 12px;
-  }
-
-  .mono {
-    font-family: var(--mono-font);
-    font-size: 12px;
-  }
 
   .detail-section {
     margin-top: 16px;
@@ -224,12 +216,6 @@ onMounted(load)
       font-weight: 600;
       color: var(--text2);
     }
-  }
-
-  .muted-note {
-    margin-top: 12px;
-    font-size: 12px;
-    color: var(--text3);
   }
 }
 </style>

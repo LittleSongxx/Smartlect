@@ -4,8 +4,8 @@
   --ios26-alert-radius: 8px;
   --ios26-alert-title: #17202a;
   --ios26-alert-body: #3c3c43;
-  --ios26-alert-blue: #0f766e;
-  --ios26-alert-blue-hover: #0b665f;
+  --ios26-alert-blue: var(--primary);
+  --ios26-alert-blue-hover: var(--primary-hover);
 }
 
 .el-overlay.is-message-box {

@@ -155,28 +155,6 @@ onMounted(loadCatalog)
 
 <style scoped lang="scss">
 .ai-page {
-  .table-gap {
-    margin-bottom: 12px;
-  }
-
-  .mono {
-    font-family: var(--mono-font);
-    font-size: 12px;
-  }
-
-  .card-title {
-    margin: 0 0 6px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .muted-note {
-    margin: 0 0 12px;
-    font-size: 12px;
-    line-height: 1.6;
-    color: var(--text3);
-  }
 
   .tag-gap {
     margin-left: 6px;

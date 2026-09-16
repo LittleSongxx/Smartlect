@@ -118,18 +118,6 @@ onMounted(load)
 
 <style scoped lang="scss">
 .ai-page {
-  .table-gap { margin-bottom: 12px; }
-  .card-title { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--text); }
-  .mono { font-family: var(--mono-font); font-size: 12px; }
-
-  .stat-row {
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px;
-    .stat {
-      background: var(--primary-muted); border-radius: var(--card-radius); padding: 12px 14px;
-      span { display: block; font-size: 12px; color: var(--text3); margin-bottom: 4px; }
-      strong { font-size: 20px; font-variant-numeric: tabular-nums; }
-    }
-  }
 
   .suggestion-list { margin: 0; padding-left: 1.4em; font-size: 13px; line-height: 2; }
 }

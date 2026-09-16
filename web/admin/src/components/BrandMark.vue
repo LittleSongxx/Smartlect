@@ -7,7 +7,13 @@
     role="img"
     aria-label="Smartlect"
   >
-    <rect x="2" y="2" width="28" height="28" rx="7" :fill="tileColor" />
+    <defs>
+      <linearGradient id="brand-cta" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#149aad" />
+        <stop offset="100%" stop-color="#2479c9" />
+      </linearGradient>
+    </defs>
+    <rect x="2" y="2" width="28" height="28" rx="7" :fill="tileFill" />
     <path
       fill="none"
       :stroke="checkColor"
@@ -37,9 +43,11 @@ const props = defineProps({
   },
 })
 
-const tileColor = computed(() => (props.variant === 'light' ? '#ffffff' : '#0f766e'))
-const checkColor = computed(() => (props.variant === 'light' ? '#0f766e' : '#ffffff'))
-const sparkColor = computed(() => (props.variant === 'light' ? '#2563eb' : '#bfdbfe'))
+// 品牌渐变与 token 里的 --grad-cta 同源（青 → 蓝），不再是旧的墨绿。
+// light 变体用于深色/图片背景：白底 + 蓝勾。
+const tileFill = computed(() => (props.variant === 'light' ? '#ffffff' : 'url(#brand-cta)'))
+const checkColor = computed(() => (props.variant === 'light' ? '#2563eb' : '#ffffff'))
+const sparkColor = computed(() => (props.variant === 'light' ? '#149aad' : '#bfdbfe'))
 </script>
 
 <style scoped>

@@ -68,7 +68,7 @@ const todayDataField = ref([
     name: '今日销售额',
     icon: 'sale-amount',
     color: '#fff',
-    bg: 'linear-gradient(135deg, #0f766e 0%, #2563eb 100%)',
+    bg: 'linear-gradient(135deg, #149aad 0%, #2479c9 100%)',
     key: 'orderAmount',
     amount: true,
     dataValue: {},
@@ -170,7 +170,7 @@ onMounted(() => {
 
   &--orderAmount {
     grid-area: hero;
-    background: linear-gradient(145deg, #0f766e 0%, #0b665f 100%);
+    background: linear-gradient(145deg, #149aad 0%, #2479c9 100%);
     border-color: rgba(255, 255, 255, 0.08);
 
     .metric-label,

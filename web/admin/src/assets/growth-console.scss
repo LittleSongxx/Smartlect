@@ -5,7 +5,7 @@
   --gc-line: var(--header-border, #dde5e8);
   --gc-card: #f7fafb;
   --gc-surface: var(--surface, #fff);
-  --gc-primary: var(--primary, #0f766e);
+  --gc-primary: var(--primary);
   --gc-accent: var(--accent, #2563eb);
   color: var(--gc-ink);
   max-width: 1100px;
@@ -158,7 +158,7 @@
   display: inline-flex;
   align-items: center;
   background: #e8f3ee;
-  color: #0f766e;
+  color: var(--link);
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 12px;
