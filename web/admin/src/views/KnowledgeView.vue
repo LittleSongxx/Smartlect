@@ -70,7 +70,7 @@
         <p class="creative-copy">{{ selected.body }}</p>
         <GrowthTechDetails title="校验信息" :value="{ checksum: selected.checksum, source_uri: selected.source_uri, acl: selected.acl, acl_actor_id: selected.acl_actor_id }" />
       </details>
-      <p v-if="selected.action === 'publish'" class="muted">发布后此版本成为当前知识；实际索引方式由服务端配置决定。</p>
+      <p v-if="selected.action === 'publish'" class="muted">发布后进入异步向量索引（未配置向量模型时直接以关键词检索上线）；进度在「AI 资产 · 知识索引」查看。</p>
       <div class="button-row">
         <button class="primary" :disabled="busy || !canWrite">确认{{ selected.action === 'publish' ? '发布此版本' : '撤回此版本' }}</button>
         <button type="button" @click="selected = null" :disabled="busy">关闭</button>
@@ -109,6 +109,16 @@ async function edit(item) { await work(async () => {
   productIds.value = (document.product_ids || []).join(','); categoryIds.value = (document.category_ids || []).join(','); factsText.value = JSON.stringify(document.facts || {}, null, 2); uncertain.value = false;
   notice.value = `已读取 ${item.doc_id} v${item.version}；保存时会新增 DRAFT 版本。`;
 }); }
-async function transition() { await work(async () => { const item = selected.value; await aiWrite(`/knowledge/${encodeURIComponent(item.doc_id)}/${item.version}/${item.action}`, {}); selected.value = null; notice.value = '生命周期操作已返回，当前版本如下。'; await read(); }); }
+async function transition() { await work(async () => {
+  const item = selected.value;
+  const result = await aiWrite(`/knowledge/${encodeURIComponent(item.doc_id)}/${item.version}/${item.action}`, {});
+  selected.value = null;
+  if (item.action === 'publish' && result.job_id) {
+    notice.value = `已提交发布：向量索引任务 ${result.job_id.slice(0, 8)} 排队中，索引完成后自动上线；进度见「AI 资产 · 知识索引」。`;
+  } else {
+    notice.value = '生命周期操作已返回，当前版本如下。';
+  }
+  await read();
+}); }
 onMounted(refresh);
 </script>

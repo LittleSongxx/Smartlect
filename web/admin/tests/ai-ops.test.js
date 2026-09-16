@@ -6,6 +6,10 @@ import { response, installJsdomPolyfills } from './helpers'
 import { clearSession, session } from '../src/api/client'
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import PageHeader from '../src/components/PageHeader.vue'
+import StatusTag from '../src/components/StatusTag.vue'
+import DetailText from '../src/components/DetailText.vue'
+import JsonCollapse from '../src/components/JsonCollapse.vue'
 
 installJsdomPolyfills()
 
@@ -53,6 +57,7 @@ const mountView = async (component) => {
     attachTo: document.body,
     global: {
       plugins: [ElementPlus],
+      components: { PageHeader, StatusTag, DetailText, JsonCollapse },
     },
   })
   await flushPromises()
@@ -92,4 +97,40 @@ it('tool debug lists catalog, blocks non-debuggable tools and posts only filled 
   table.vm.$emit('current-change', catalog.tools[2])
   await flushPromises()
   expect(wrapper.text()).toContain('从左侧选择一个可调试的工具')
+})
+
+it('knowledge index page polls a running job and stops at terminal state', async () => {
+  const { default: KnowledgeIndexView } = await import('../src/views/ai/KnowledgeIndexView.vue')
+  let jobState = 'RUNNING'
+  handler = (path) => {
+    if (path.endsWith('/knowledgeIndex/jobs')) {
+      return response({ items: [{ job_id: 'j1', doc_id: 'doc', version: 1, state: jobState, total_chunks: 10, processed_chunks: 4, message: null, created_at: '2026-09-16T10:00:00Z' }] })
+    }
+    return null
+  }
+  const wrapper = await mountView(KnowledgeIndexView)
+  expect(wrapper.text()).toContain('正在索引：doc v1')
+  expect(wrapper.text()).toContain('已处理 4 / 10 条切片')
+  jobState = 'DONE'  // flip before the next 2s poll tick fires
+  await new Promise((resolve) => setTimeout(resolve, 2300))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(wrapper.text()).toContain('已完成')
+  wrapper.unmount()
+})
+
+it('knowledge publish surfaces the async job notice', async () => {
+  const { default: KnowledgeView } = await import('../src/views/KnowledgeView.vue')
+  handler = (path, options) => {
+    if (path.endsWith('/knowledge')) return response([{ doc_id: 'd1', version: 2, title: '文档', status: 'DRAFT', acl: 'MERCHANT', valid_from: '2026-01-01T00:00:00Z', valid_until: '2030-01-01T00:00:00Z' }])
+    if (path.endsWith('/d1/2')) return response({ doc_id: 'd1', version: 2, title: '文档', status: 'DRAFT', acl: 'MERCHANT', body: '正文', checksum: 'c', source_uri: 's', valid_from: '2026-01-01T00:00:00Z', valid_until: '2030-01-01T00:00:00Z' })
+    if (path.endsWith('/d1/2/publish')) return response({ job_id: 'job123456', state: 'PENDING', total_chunks: 3 })
+    return null
+  }
+  const wrapper = await mountView(KnowledgeView)
+  await wrapper.findAll('button').find((item) => item.text() === '核对发布').trigger('click')
+  await flushPromises()
+  await wrapper.find('form.operation').trigger('submit')
+  await flushPromises()
+  expect(wrapper.text()).toContain('向量索引任务 job12345')
+  wrapper.unmount()
 })

@@ -82,7 +82,7 @@ const TOOL_FORMS = {
   search_knowledge: {
     fields: [{ name: 'query', label: '检索问题', type: 'text', placeholder: '如：支持几天退款' }],
     summarize: (data) => {
-      const results = data?.results || []
+      const results = data?.citations || []
       return [
         { label: '召回条数', value: String(results.length) },
         { label: '检索通道', value: data?.retrieval?.strategy_version || '—' },
