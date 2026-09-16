@@ -23,16 +23,26 @@ public class ProductBloomFilterComponent {
     private ProductInfoMapper<?, ?> productInfoMapper;
 
     private volatile boolean ready;
+    // 这个写入是可选的加速项（布隆过滤器只用于提前挡掉不存在的商品 id）。Redis 只读或抖动时
+    // 每次重试要数秒，会让商品详情这类热路径变慢，所以失败后进入冷却：冷却期内直接跳过写入，
+    // 让它退化成"不加缓存"，而不是"每请求卡几秒"。
+    private static final long WRITE_COOLDOWN_MILLIS = 60_000L;
+    private volatile long writeCooldownUntil;
 
     public void add(String productId) {
         if (StringTools.isEmpty(productId)) {
+            return;
+        }
+        if (System.currentTimeMillis() < writeCooldownUntil) {
             return;
         }
         try {
             ensureInitialized();
             getBloomFilter().add(productId);
         } catch (Exception e) {
-            log.warn("商品布隆过滤器写入失败 productId={}", productId, e);
+            writeCooldownUntil = System.currentTimeMillis() + WRITE_COOLDOWN_MILLIS;
+            log.warn("商品布隆过滤器写入失败，{} 秒内跳过该可选写入 productId={}",
+                    WRITE_COOLDOWN_MILLIS / 1000, productId, e);
         }
     }
 
