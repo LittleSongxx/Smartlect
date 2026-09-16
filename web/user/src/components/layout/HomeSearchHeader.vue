@@ -49,7 +49,7 @@ const { openAgent } = useOpenAgent();
 const authStore = useAuthStore();
 const { unreadCount } = useUnreadCount();
 
-const goSearchPortal = () => router.push('/search-portal');
+const goSearchPortal = () => router.push('/search-result');
 const goNotifications = () => router.push('/notifications');
 const goAgent = () => openAgent();
 </script>

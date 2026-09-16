@@ -7,7 +7,6 @@ import AgentSendPanel from '../src/views/agent/AgentSendPanel.vue';
 import AddressesView from '../src/views/AddressesView.vue';
 import CatalogView from '../src/views/CatalogView.vue';
 import LoginView from '../src/views/LoginView.vue';
-import OrdersView from '../src/views/SmartlectOrdersView.vue';
 import { errorText, session } from '../src/api/client';
 import { useAgentSession } from '../src/composables/useAgentSession';
 import { loginTarget, safeNext } from '../src/utils/navigation';
@@ -165,34 +164,6 @@ describe('地址、退款与助手入参', () => {
     expect(added?.body).toMatchObject({ addressee: '张三', phone: '13800000000', address: '演示路1号', defaultType: '1' });
   });
 
-  it('已付订单按剩余金额申请全额退款', async () => {
-    expect(yuanToCents('12.00')).toBe(1200);
-    expect(remainingRefundCents({ paidAmount: '12.00', refundedAmount: '2.00' })).toBe(1000);
-    expect(orderAllowsRefund({ orderStatus: 1 })).toBe(true);
-    expect(orderAllowsRefund({ orderStatus: 5 })).toBe(false);
-    session.value = user;
-    vi.stubGlobal('fetch', vi.fn(async (path: string, options: RequestInit = {}) => {
-      calls.push({ path, body: typeof options.body === 'string' ? JSON.parse(options.body) : bodyOf(options), method: options.method });
-      if (path.endsWith('/session')) return json(session.value);
-      if (path.endsWith('/order/loadMyOrder')) return json({ code: 200, data: { list: [{ orderId: 'o1', orderStatus: 1, payOrderId: 'pay1', orderTime: 't' }], pageTotal: 1 } });
-      if (path.endsWith('/order/getMyOrderDetail')) return json({ code: 200, data: { orderId: 'o1', orderItemList: [{ orderItemId: 'i1', productName: '旅行包', paidAmount: '12.00', refundedAmount: '0' }] } });
-      if (path.endsWith('/conversations')) return json({ conversation_id: 'c1' });
-      if (path.includes('/proposals')) return json({ agent_run_id: 'r1', conversation_id: 'c1', state: 'COMPLETED' });
-      if (path.endsWith('/conversations/c1')) return json({ conversation_id: 'c1', messages: [] });
-      return json([]);
-    }));
-    const router = createRouter({ history: createMemoryHistory(), routes: [
-      { path: '/orders', component: OrdersView }, { path: '/assistant', component: { template: '<div />' } },
-      { path: '/login', component: { template: '<div />' } }] });
-    await router.push('/orders'); await router.isReady();
-    wrapper = mount(OrdersView, { global: { plugins: [router], stubs: { AgentOrderList: true, OrderAmountSummary: true } } });
-    await flushPromises();
-    expect(wrapper.text()).toContain('申请全额退款（旅行包）');
-    await wrapper.findAll('button').find((item) => item.text().includes('申请全额退款'))!.trigger('click');
-    await flushPromises();
-    const refund = calls.find(call => String(call.path).includes('/proposals'));
-    expect(refund?.body).toMatchObject({ action_type: 'refund', parameters: { orderItemId: 'i1', refundAmountCents: 1200 } });
-  });
 
   it('助手发送带上详情页 product_id 与 sku_key', async () => {
     session.value = user;

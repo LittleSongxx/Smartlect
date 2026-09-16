@@ -89,7 +89,7 @@
             >
               {{ word }}
             </button>
-            <button type="button" class="hot-word hot-more" @click="router.push('/search-portal')">
+            <button type="button" class="hot-word hot-more" @click="router.push('/search-result')">
               更多
             </button>
           </div>
@@ -217,7 +217,7 @@ const onSearchBlur = () => {
 const goSearch = async () => {
   const keyWords = keyword.value.trim();
   if (!keyWords) {
-    router.push('/search-portal');
+    router.push('/search-result');
     return;
   }
   if (authStore.isLoggedIn) {

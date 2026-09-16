@@ -4,7 +4,7 @@
     <template v-if="!isDesktop">
       <div class="productSort smartlect-goods-cate">
         <header class="header header-fixed">
-          <button type="button" class="input" @click="router.push('/search-portal')">
+          <button type="button" class="input" @click="router.push('/search-result')">
             <el-icon class="search-icon"><Search /></el-icon>
             <span class="placeholder">搜索商品名称</span>
           </button>

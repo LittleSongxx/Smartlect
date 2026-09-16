@@ -73,7 +73,6 @@ const router = createRouter({
       component: () => import('@/layouts/AdaptiveMainLayout.vue'),
       children: mainChildren
     },
-    subPage('/search-portal', () => import('@/views/SearchPortalView.vue'), { title: '搜索' }),
     subPage(
       '/search-result',
       () => import('@/views/SearchResultView.vue'),
@@ -111,7 +110,6 @@ const router = createRouter({
     subPage('/notifications', () => import('@/views/NotificationView.vue'), { title: '消息中心', requiresAuth: true }),
     subPage('/after-sale', () => import('@/views/AfterSaleView.vue'), { title: '售后管理' }),
     subPage('/shopping-profile', () => import('@/views/ShoppingProfileView.vue'), { title: '购物偏好', requiresAuth: true }),
-    { path: '/support-cases', redirect: '/assistant' },
     subPage('/recommend', () => import('@/views/RecommendView.vue'), { title: '编辑精选' }),
     subPage('/login', () => import('@/views/LoginView.vue'), {
       title: '登录',
@@ -183,12 +181,8 @@ const router = createRouter({
       title: 'AI 数据与隐私',
       requiresAuth: true
     }),
-    subPage(
-      '/ai-assistant',
-      () => import('@/views/AIAssistantView.vue'),
-      { title: '智能导购', hideTabBar: true, hidePcPageHead: true },
-      () => import('@/views/pc/PcAIAssistantView.vue')
-    ),
+    // 旧链接：/ai-assistant 与 /assistant 是同一个页面，保留一条路径（重定向不 404）
+    { path: '/ai-assistant', redirect: '/assistant' },
     subPage(
       '/assistant',
       () => import('@/views/AIAssistantView.vue'),
@@ -197,7 +191,6 @@ const router = createRouter({
     ),
     subPage('/browse', () => import('@/views/BrowseView.vue'), { title: '全部商品' }),
     subPage('/catalog', () => import('@/views/CatalogView.vue'), { title: '导购精选' }),
-    subPage('/preferences', () => import('@/views/ShoppingProfileView.vue'), { title: '购物偏好', requiresAuth: true }),
     subPage('/addresses', () => import('@/views/AddressesView.vue'), { title: '收货地址', requiresAuth: true }),
   ],
   scrollBehavior(_to, _from, savedPosition) {

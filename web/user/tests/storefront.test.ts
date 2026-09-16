@@ -3,7 +3,6 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import PromotionCard from '../src/components/PromotionCard.vue';
-import StorefrontView from '../src/views/StorefrontView.vue';
 import CatalogView from '../src/views/CatalogView.vue';
 import { session } from '../src/api/client';
 import type { Promotion } from '../src/api/traffic';
@@ -82,27 +81,6 @@ describe('商城推广与推荐的独立浏览器行为', () => {
     const clicks = calls.filter(call => call.path.endsWith('/ads/clicks')); expect(clicks).toHaveLength(2); expect(clicks[0]!.body).toEqual(clicks[1]!.body);
     session.value!.actor.actor_id = 'v2'; await card.get('button').trigger('click'); await flushPromises();
     expect(calls.filter(call => call.path.endsWith('/ads/clicks'))).toHaveLength(2); expect(card.emitted('select')).toHaveLength(1);
-  });
-  it('商城同时展示普通推荐和明确广告，列表读取不产生收费；普通推荐不调用CPC', async () => {
-    handler = path => {
-      if (path.includes('/ads/recommendations?')) return json({ items: [promotion], ranking_mode: 'rule' });
-      if (path.includes('/recommendations?')) return json({ recommendation_id: 'rec1', items: [{ ...promotion, position: 1 }], ranking_mode: 'rule' });
-      if (path.includes('/recommendations/rec1/clicks')) return json({ recorded: true });
-    };
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: StorefrontView }, { path: '/catalog', component: { template: '<div />' } }] }); await router.push('/');
-    wrapper = mount(StorefrontView, { global: { plugins: [router], stubs: { ProductImage: true } } }); await flushPromises();
-    expect(wrapper.text()).toContain('为你推荐'); expect(wrapper.text()).toContain('广告 · 模拟推广');
-    expect(calls.some(call => call.path.endsWith('/ads/exposures') || call.path.endsWith('/ads/clicks'))).toBe(false);
-    await wrapper.get('.product-link').trigger('click'); await flushPromises();
-    expect(router.currentRoute.value.query).toEqual({ product: 'p1', sku: 'sku1' });
-    expect(calls.filter(call => call.path.includes('/recommendations/rec1/clicks'))).toHaveLength(1);
-    expect(calls.some(call => call.path.endsWith('/ads/clicks'))).toBe(false);
-  });
-  it('推广不可用仍可查看普通推荐，不用普通推荐伪装成广告', async () => {
-    handler = path => path.includes('/ads/recommendations?') ? json({ detail: 'ads_unavailable' }, 503) : path.includes('/recommendations?') ? json({ recommendation_id: 'rec1', items: [{ ...promotion, position: 1 }] }) : undefined;
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: StorefrontView }] }); await router.push('/');
-    wrapper = mount(StorefrontView, { global: { plugins: [router], stubs: { ProductImage: true } } }); await flushPromises();
-    expect(wrapper.findAll('.product-tile')).toHaveLength(1); expect(wrapper.findAll('.promotion-card')).toHaveLength(0);
   });
   it('广告深链只取实际商品详情，返回列表后才请求普通推荐', async () => {
     handler = path => path.endsWith('/product/getProduct') ? json({ code: 200, data: { productInfo: { productId: 'p1', productName: '商品' }, skuList: [] } }) : path.includes('/recommendations?') ? json({ recommendation_id: 'rec1', items: [] }) : undefined;

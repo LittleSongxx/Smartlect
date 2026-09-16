@@ -266,7 +266,7 @@ const openSearchPortal = () => {
       categoryId: searchCategoryId.value || ''
     });
   }
-  router.push('/search-portal');
+  router.push('/search-result');
 };
 
 const goSearch = () => {
