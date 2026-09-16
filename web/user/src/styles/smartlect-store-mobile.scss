@@ -231,19 +231,16 @@
       background: transparent;
     }
 
-    .search-portal,
     .search-result-page,
     .orders-page,
     .coupons-page,
     .wishlist-page,
     .footprint-page,
     .checkout-page,
-    .notifications-page,
     .member-center-page,
     .sign-page,
     .address-page,
     .pay-record-page,
-    .payment-page,
     .order-detail-page,
     .my-coupons-page,
     .recommend-page {
@@ -282,77 +279,6 @@
         font-size: 11px;
         color: $color-text-muted;
       }
-    }
-
-    .search-portal.store-search-portal {
-      padding: 0;
-      gap: 0;
-      background: transparent;
-    }
-
-    .store-search-sticky {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      padding: 10px $app-page-gutter;
-      background: #fff;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    .store-search-box {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-
-      .keyword-input {
-        flex: 1;
-
-        .el-input__wrapper {
-          border-radius: 8px !important;
-          background: $color-bg-subtle !important;
-          box-shadow: none !important;
-        }
-      }
-
-      .store-search-btn {
-        flex-shrink: 0;
-        height: 34px;
-        padding: 0 16px;
-        border: none;
-        border-radius: 8px;
-        background: $color-primary;
-        color: #fff;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-
-        &:active {
-          background: $color-primary-hover;
-        }
-      }
-    }
-
-    .store-search-body {
-      padding: 10px $app-page-gutter 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .store-search-portal .section {
-      padding: 14px;
-      border-radius: 8px;
-      background: #fff;
-    }
-
-    .store-search-portal .tag-chip.hot .rank {
-      color: $color-primary;
-    }
-
-    .store-search-portal .tag-chip:active {
-      border-color: $color-primary;
-      color: $color-primary;
-      background: $color-primary-soft;
     }
 
     .search-result-page .search-bar,

@@ -44,46 +44,7 @@ html[data-platform='desktop'] {
   }
 
   
-  .home-page.ignore .home-desktop {
-    gap: 12px;
-    align-items: flex-start;
-  }
-
-  .pc-cat-aside.ignore,
-  .pc-home-aside.ignore {
-    background: $color-card;
-    border: 1px solid $color-border-light;
-    border-radius: $radius-card;
-    box-shadow: none;
-  }
-
-  .pc-home-block,
-  .desktop-shortcuts {
-    background: $color-card;
-    border: 1px solid $color-border-light;
-    border-radius: $radius-card;
-    box-shadow: none;
-  }
-
-  .desktop-shortcut-card {
-    border: 1px solid $color-border-light;
-    border-radius: $radius-card;
-    background: $color-bg-subtle;
-    transition: border-color $transition-fast, background $transition-fast;
-
-    &:hover {
-      border-color: $color-border-gray;
-      background: $color-card;
-    }
-
-    .ds-icon {
-      color: $color-text-title;
-    }
-  }
-
-  .pc-hot-item,
-  .pc-home__tile,
-  .pc-product-tile,
+    .pc-product-tile,
   .product-card.is-compact.ignore {
     border: 1px solid $color-border-light;
     box-shadow: none;

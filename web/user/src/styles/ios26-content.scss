@@ -2,18 +2,15 @@
 
 :root {
   --ios-surface-bg: #ffffff;
-  --ios-surface-border: rgba(0, 0, 0, 0.045);
-  --ios-surface-shadow:
-    0 0.5px 0 rgba(255, 255, 255, 0.9) inset,
-    0 1px 2px rgba(0, 0, 0, 0.03),
-    0 4px 14px rgba(0, 0, 0, 0.035);
+  --ios-surface-border: #{$color-border};
+  --ios-surface-shadow: none;
   --ios-surface-radius: 8px;
   --ios-surface-radius-sm: 6px;
   --ios-fill-muted: #eef3f5;
   --ios-fill-elevated: #ffffff;
   --ios-separator: rgba(60, 60, 67, 0.1);
   --ios-hero-bg: #{$color-primary};
-  --ios-page-bg: #f4f7f8;
+  --ios-page-bg: #{$color-page};
 }
 
 @mixin ios-surface-card {
@@ -33,24 +30,14 @@
 }
 
 $ios-content-selectors: (
-  '.app-surface',
   '.card-flat',
   '.card',
   '.order-card',
   '.menu-card',
   '.block',
-  '.shortcut-nav',
-  '.home-section',
-  '.feed-section',
-  '.detail-block',
-  '.info-section',
   '.info-card',
   '.address-card',
-  '.coupon-item',
   '.order-detail-card',
-  '.product-section',
-  '.search-portal .card-flat',
-  '.search-portal .card',
   '.search-result-page .card-flat',
   '.search-result-page .card',
   '.orders-page .card-flat',
@@ -67,8 +54,6 @@ $ios-content-selectors: (
   '.cart-page .card',
   '.checkout-page .card-flat',
   '.checkout-page .card',
-  '.notifications-page .card-flat',
-  '.notifications-page .card',
   '.member-center-page .card-flat',
   '.member-center-page .card',
   '.member-center-page .info-card',

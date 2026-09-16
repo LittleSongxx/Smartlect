@@ -16,10 +16,9 @@
 
   .pc-plain-body {
     background: $color-card;
-    border: 1px solid $color-border-gray;
+    border: 1px solid $color-border;
     border-radius: $radius-card;
     padding: 16px 20px 20px;
-    box-shadow: $shadow-card;
 
     &.is-product-detail {
       padding: 0;

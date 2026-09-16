@@ -40,12 +40,11 @@
   }
 
   .panel {
-    border: 1px solid $color-border-gray;
+    border: 1px solid $color-border;
     border-radius: $radius-card;
-    padding: 18px 18px 16px;
+    padding: 16px;
     background: $color-card;
-    margin-bottom: 14px;
-    box-shadow: $shadow-xs;
+    margin-bottom: 10px;
   }
 
   .panel h2 {

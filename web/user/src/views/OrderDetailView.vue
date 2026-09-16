@@ -80,9 +80,19 @@
         <OrderAmountSummary :order="order" />
       </section>
 
-      <div v-if="showPayBtn || showLogisticsBtn" class="detail-actions">
+      <div v-if="showPayBtn || showLogisticsBtn || refundableItems.length" class="detail-actions">
         <el-button v-if="showPayBtn" type="primary" round @click="goPay">去支付</el-button>
         <el-button v-if="showLogisticsBtn" type="primary" plain round @click="goLogistics">查看物流</el-button>
+        <el-button
+          v-if="refundableItems.length"
+          type="danger"
+          plain
+          round
+          :loading="refunding"
+          @click="refundRemaining"
+        >
+          申请全额退款 ¥{{ formatMoney(refundTotalCents / 100) }}
+        </el-button>
       </div>
     </template>
 
@@ -103,6 +113,9 @@ import { usePageRefresh } from '@/composables/pullRefresh';
 import { confirmAction } from '@/utils/confirm';
 import { toast } from '@/utils/toast';
 import { hasOrderCouponDiscount, orderCouponSummaryText } from '@/utils/orderAmount';
+import { orderAllowsRefund, remainingRefundCents } from '@/utils/orderRefund';
+import { useAgentSession } from '@/composables/useAgentSession';
+import { useOpenAgent } from '@/composables/useOpenAgent';
 
 const route = useRoute();
 const router = useRouter();
@@ -140,6 +153,45 @@ const showLogisticsBtn = computed(() => {
 });
 
 const itemOrderStatus = (item: Record<string, any>) => Number(item.orderItemStatus ?? 1);
+
+const { propose } = useAgentSession();
+const { openAgent } = useOpenAgent();
+const refunding = ref(false);
+
+// 全额退款 = 该订单所有还有未退金额的明细之和；金额先摆给用户核对，再由确认卡执行
+const refundableItems = computed(() => {
+  if (!orderAllowsRefund(order.value) || isCouponOrder.value) return [];
+  return itemList.value.filter((item) => remainingRefundCents(item) > 0);
+});
+
+const refundTotalCents = computed(() =>
+  refundableItems.value.reduce((sum, item) => sum + remainingRefundCents(item), 0)
+);
+
+const refundRemaining = async () => {
+  const items = refundableItems.value;
+  if (!items.length || refunding.value) return;
+  const ok = await confirmAction(
+    `将按原支付方式退回 ¥${formatMoney(refundTotalCents.value / 100)}，共 ${items.length} 件商品。提交后请在下单确认卡里再次确认。`,
+    { title: '申请全额退款', confirmButtonText: '生成退款确认卡' }
+  );
+  if (!ok) return;
+  refunding.value = true;
+  try {
+    for (const item of items) {
+      await propose('refund', {
+        orderItemId: item.orderItemId,
+        refundAmountCents: remainingRefundCents(item)
+      });
+    }
+    toast.success('退款确认卡已生成，请在助手会话中确认');
+    openAgent({ draft: `请带我核对订单 ${order.value?.orderId} 的退款确认卡` });
+  } catch (reason: any) {
+    toast.error(reason?.info || reason?.message || '退款申请提交失败');
+  } finally {
+    refunding.value = false;
+  }
+};
 
 const canRefundItem = (item: Record<string, any>) => {
   if (isCouponOrder.value) return false;

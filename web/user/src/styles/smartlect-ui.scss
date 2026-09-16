@@ -1,8 +1,7 @@
 @use './variables' as *;
 
 .card,
-.card-flat,
-.app-surface {
+.card-flat {
   background: $color-card;
   border: 1px solid $color-border-light;
   border-radius: $radius-card;
@@ -61,8 +60,7 @@
   }
 }
 
-.toolbar-row,
-.toolbar-chip-row {
+.toolbar-row {
   display: flex;
   flex-wrap: nowrap;
   gap: 8px;
@@ -92,19 +90,6 @@
   padding: 48px 20px;
   text-align: center;
   color: $color-text-muted;
-}
-
-.list-cell {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  background: $color-card;
-  border-bottom: 1px solid $color-border-light;
-
-  &:last-child {
-    border-bottom: none;
-  }
 }
 
 .smartlect-page {

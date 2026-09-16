@@ -57,9 +57,7 @@ html[data-platform='desktop'] {
   }
 
   .feed-grid,
-  .skeleton-feed,
-  .pc-hot-grid,
-  .pc-home__grid {
+  .skeleton-feed {
     gap: 14px !important;
   }
 
@@ -129,28 +127,21 @@ html[data-platform='desktop'] {
   .wishlist-page .grid,
   .category-page .sub-grid,
   .account-page .recommend-grid,
-  .search-portal .recommend-grid,
   .pc-result-grid {
     gap: 14px !important;
   }
 
-  .pc-product-tile,
-  .pc-home__tile,
-  .pc-hot-item {
+  .pc-product-tile {
     padding: 10px 10px 12px;
     border-radius: $radius-sm;
 
-    .pc-product-tile__name,
-    .pc-home__name,
-    .pc-hot-name {
+    .pc-product-tile__name {
       font-size: 14px;
       line-height: 1.45;
       margin-bottom: 6px;
     }
 
-    .pc-product-tile__price,
-    .pc-home__price,
-    .pc-hot-price {
+    .pc-product-tile__price {
       font-size: 18px;
 
       .sym {
@@ -158,9 +149,7 @@ html[data-platform='desktop'] {
       }
     }
 
-    .pc-product-tile__cover,
-    .pc-home__cover,
-    .pc-hot-cover {
+    .pc-product-tile__cover {
       margin-bottom: 8px;
       border-radius: $radius-xs;
     }
@@ -270,139 +259,4 @@ html[data-platform='desktop'] {
     margin-left: auto;
     margin-right: auto;
   }
-
-  .search-portal.store-search-portal {
-    max-width: 720px;
-    margin: 0 auto;
-    animation: searchPortalIn 0.6s cubic-bezier(0.25, 0.1, 0.25, 1) both;
-  }
-
-  @keyframes searchPortalIn {
-    from {
-      opacity: 0;
-      transform: translateY(24px) scale(0.98);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  .store-search-sticky {
-    position: relative !important;
-    padding: 24px 0 16px;
-    background: transparent !important;
-    border-bottom: none !important;
-  }
-
-  .store-search-box {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-
-    .keyword-input {
-      flex: 1;
-      min-width: 0;
-
-      .el-input__wrapper {
-        height: 44px;
-        border-radius: $radius-search !important;
-        background: $color-bg-subtle !important;
-        box-shadow: none !important;
-        border: 1px solid $color-border;
-        transition: border-color $transition-fast, box-shadow $transition-fast;
-
-        &:focus-within,
-        &.is-focus {
-          border-color: $color-primary;
-          box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
-        }
-      }
-    }
-
-    .store-search-btn {
-      flex-shrink: 0;
-      height: 44px;
-      padding: 0 24px;
-      border: none;
-      border-radius: $radius-search;
-      background: $color-primary;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: $font-family;
-      transition:
-        background $transition-fast,
-        transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
-        box-shadow $transition-fast,
-        filter $transition-fast;
-
-      &:hover {
-        background: $color-primary-hover;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
-        transform: translateY(-1px);
-        filter: brightness(1.03);
-      }
-
-      &:active {
-        transform: scale(0.94);
-        background: $color-primary-active;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        filter: brightness(0.92);
-      }
-    }
-  }
-
-  .store-search-body {
-    padding: 16px 0 24px;
-    gap: 16px;
-  }
-
-  .store-search-portal .section {
-    padding: 20px;
-    border-radius: $radius-card;
-    background: $color-card;
-    border: 1px solid $color-border;
-    box-shadow: $shadow-card;
-    transition: box-shadow $transition-normal;
-
-    &:hover {
-      box-shadow: $shadow-card-hover;
-    }
-  }
-
-  .store-search-portal .tag-chip {
-    transition:
-      border-color $transition-fast,
-      color $transition-fast,
-      background $transition-fast,
-      transform $transition-fast;
-
-    &:hover {
-      border-color: $color-primary;
-      color: $color-primary;
-      background: $color-primary-soft;
-      transform: translateY(-1px);
-    }
-  }
-
-  .store-search-portal .recommend-grid {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-  }
-
-  .store-search-portal .recommend-item {
-    border-radius: $radius-sm;
-    border: 1px solid $color-border-light;
-    transition:
-      transform 0.4s cubic-bezier(0.25, 0.1, 0.25, 1),
-      box-shadow 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
-
-    &:hover {
-      transform: translateY(-3px);
-      box-shadow: $shadow-card-hover;
-    }
-  }
-
 }
