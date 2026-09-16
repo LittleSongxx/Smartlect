@@ -110,7 +110,7 @@ async function load() {
     const sortQuery = normalizeSort(sort.value);
     if (sortQuery.sortKey) {
       values.sortKey = sortQuery.sortKey;
-      values.sortDirection = sortQuery.sortDirection;
+      if (sortQuery.sortDirection) values.sortDirection = sortQuery.sortDirection;
     }
     const excluded = excludeProductIds(await loadProductScope(requestedOwner));
     if (excluded) values.excludeProductIds = excluded;

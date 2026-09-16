@@ -394,6 +394,91 @@ def immutable_jar(source, directory):
         temporary.unlink(missing_ok=True)
 
 
+def java_launch_args(service, env):
+    """Java 服务的 JAR 与命令行参数（start_app 与 smoke 共用一份，冒烟才真的等价）。"""
+    module = ROOT / "backend" / f"smartlect-{service}"
+    target = module / ("target" if service in ("admin", "gateway") else "app/target")
+    artifacts = list(target.glob(f"smartlect-{service}-*.jar"))
+    if len(artifacts) != 1:
+        raise RuntimeError(f"Expected one executable JAR for {service}; run build first")
+    artifact = artifacts[0]
+    runtime_jar, source_sha, stamp = immutable_jar(artifact, ROOT / "run/apps" / service)
+    executable = Path(shutil.which("java") or "/missing-java")
+    # JVM 规格 env 化：默认值即 4c16g 共享机的保守配置；升配后按新规格调大。
+    # 服务级键（SMARTLECT_JAVA_PROCESSORS_GATEWAY 等）优先于全局键，用于给
+    # 网关/热点服务单独提预算；默认行为与纯全局键时代完全一致。
+    def jvm(key, default):
+        return env.get(f"{key}_{service.upper().replace('-', '_')}", env.get(key, default))
+    command = [str(executable),
+               "-Xms" + jvm("SMARTLECT_JAVA_XMS", "64m"),
+               "-Xmx" + jvm("SMARTLECT_JAVA_XMX", "256m"),
+               "-XX:MaxMetaspaceSize=192m", "-XX:MaxDirectMemorySize=64m",
+               "-XX:ActiveProcessorCount=" + jvm("SMARTLECT_JAVA_PROCESSORS", "2"),
+               f"-Dcsp.sentinel.log.dir={ROOT}/run/logs/sentinel/{service}",
+               f"-DJM.LOG.PATH={ROOT}/run/logs/{service}",
+               f"-DJM.SNAPSHOT.PATH={ROOT}/run/cache/{service}",
+               "-jar", str(runtime_jar), "--server.address=127.0.0.1", "--spring.cloud.nacos.discovery.ip=127.0.0.1"]
+    # OTel javaagent 只能经命令行注入（JAVA_TOOL_OPTIONS 已剥离）；agent 文件
+    # 不存在时（本地无追踪）完全不影响原命令。约束 #7：改本函数后
+    # check_independence + 进程身份核验必须仍过。
+    agent = env.get("SMARTLECT_OTEL_AGENT") or str(ROOT / "run" / "opentelemetry-javaagent.jar")
+    if not Path(agent).is_file():
+        agent = "/opt/otel/opentelemetry-javaagent.jar"
+    if Path(agent).is_file():
+        # SMARTLECT_OTEL_EXPORTER 同时供 growth(Python, 需含 /v1/traces 全路径)；
+        # Java agent 只要基址（自动追加 /v1/traces、/v1/logs），必须剥掉后缀。
+        endpoint = env.get("SMARTLECT_OTEL_EXPORTER", "http://127.0.0.1:4318").rstrip("/")
+        if endpoint.endswith("/v1/traces"):
+            endpoint = endpoint[: -len("/v1/traces")]
+        command[1:1] = [f"-javaagent:{agent}",
+                        f"-Dotel.service.name=smartlect-{service}",
+                        f"-Dotel.exporter.otlp.endpoint={endpoint}",
+                        "-Dotel.exporter.otlp.protocol=http/protobuf"]
+    return executable, command, source_sha, stamp
+
+
+def launch_env_for(service, env):
+    launch_env = launch_env_for(service, env)
+    return launch_env
+
+
+def smoke_apps(env, timeout=180):
+    """启动前冒烟：同一份 JAR、同一份 env，只多一个 --spring.main.web-application-type=none。
+
+    装配期错误（缺构造器、Bean 冲突、Flyway 连不上库）会让上下文刷新直接失败并退出非零，
+    而不必等全部应用停掉再发现——2026-09-16 就是因为没有这一步把整站停在了 502 上。
+    非 web 应用在上下文刷新成功后 main() 自然返回，进程以 0 退出。
+    """
+    failures = []
+    for service in APPS:
+        if service in {"growth", "growth-worker", "web-user", "web-admin"}:
+            continue
+        executable, command, _, _ = java_launch_args(service, env)
+        if not executable.exists():
+            failures.append((service, f"missing java: {executable}"))
+            continue
+        smoke = [*command, "--spring.main.web-application-type=none",
+                 "--spring.main.banner-mode=off", "--logging.level.root=WARN"]
+        started = time.monotonic()
+        try:
+            result = subprocess.run(smoke, cwd=ROOT, env=launch_env_for(service, env),
+                                    capture_output=True, text=True, timeout=timeout)
+            code, output = result.returncode, f"{result.stdout}\n{result.stderr}"
+        except subprocess.TimeoutExpired as error:
+            code, output = -1, f"{error.stdout or ''}\n{error.stderr or ''}（{timeout}s 未退出）"
+        elapsed = time.monotonic() - started
+        if code == 0:
+            print(f"smoke: {service} ok ({elapsed:.0f}s)")
+            continue
+        tail = [line for line in output.splitlines() if line.strip()][-6:]
+        failures.append((service, "\n".join(tail)))
+        print(f"smoke: {service} FAILED rc={code} ({elapsed:.0f}s)")
+    if failures:
+        for service, detail in failures:
+            print(f"smoke failure [{service}]:\n{detail}", file=sys.stderr)
+        raise RuntimeError(f"启动冒烟失败：{', '.join(service for service, _ in failures)}")
+
+
 def start_app(service, env, records):
     if service in {"growth", "growth-worker"}:
         env = {**env, **model_env()}
@@ -414,44 +499,7 @@ def start_app(service, env, records):
         command = [str(executable), str(frontend / 'node_modules/vite/bin/vite.js'), 'preview',
                    str(frontend), '--config', str(config)]
     else:
-        module = ROOT / "backend" / f"smartlect-{service}"
-        target = module / ("target" if service in ("admin", "gateway") else "app/target")
-        artifacts = list(target.glob(f"smartlect-{service}-*.jar"))
-        if len(artifacts) != 1:
-            raise RuntimeError(f"Expected one executable JAR for {service}; run build first")
-        artifact = artifacts[0]
-        runtime_jar, source_sha, stamp = immutable_jar(artifact, ROOT / "run/apps" / service)
-        executable = Path(shutil.which("java") or "/missing-java")
-        # JVM 规格 env 化：默认值即 4c16g 共享机的保守配置；升配后按新规格调大。
-        # 服务级键（SMARTLECT_JAVA_PROCESSORS_GATEWAY 等）优先于全局键，用于给
-        # 网关/热点服务单独提预算；默认行为与纯全局键时代完全一致。
-        def jvm(key, default):
-            return env.get(f"{key}_{service.upper().replace('-', '_')}", env.get(key, default))
-        command = [str(executable),
-                   "-Xms" + jvm("SMARTLECT_JAVA_XMS", "64m"),
-                   "-Xmx" + jvm("SMARTLECT_JAVA_XMX", "256m"),
-                   "-XX:MaxMetaspaceSize=192m", "-XX:MaxDirectMemorySize=64m",
-                   "-XX:ActiveProcessorCount=" + jvm("SMARTLECT_JAVA_PROCESSORS", "2"),
-                   f"-Dcsp.sentinel.log.dir={ROOT}/run/logs/sentinel/{service}",
-                   f"-DJM.LOG.PATH={ROOT}/run/logs/{service}",
-                   f"-DJM.SNAPSHOT.PATH={ROOT}/run/cache/{service}",
-                   "-jar", str(runtime_jar), "--server.address=127.0.0.1", "--spring.cloud.nacos.discovery.ip=127.0.0.1"]
-        # OTel javaagent 只能经命令行注入（JAVA_TOOL_OPTIONS 已剥离）；agent 文件
-        # 不存在时（本地无追踪）完全不影响原命令。约束 #7：改本函数后
-        # check_independence + 进程身份核验必须仍过。
-        agent = env.get("SMARTLECT_OTEL_AGENT") or str(ROOT / "run" / "opentelemetry-javaagent.jar")
-        if not Path(agent).is_file():
-            agent = "/opt/otel/opentelemetry-javaagent.jar"
-        if Path(agent).is_file():
-            # SMARTLECT_OTEL_EXPORTER 同时供 growth(Python, 需含 /v1/traces 全路径)；
-            # Java agent 只要基址（自动追加 /v1/traces、/v1/logs），必须剥掉后缀。
-            endpoint = env.get("SMARTLECT_OTEL_EXPORTER", "http://127.0.0.1:4318").rstrip("/")
-            if endpoint.endswith("/v1/traces"):
-                endpoint = endpoint[: -len("/v1/traces")]
-            command[1:1] = [f"-javaagent:{agent}",
-                            f"-Dotel.service.name=smartlect-{service}",
-                            f"-Dotel.exporter.otlp.endpoint={endpoint}",
-                            "-Dotel.exporter.otlp.protocol=http/protobuf"]
+        executable, command, source_sha, stamp = java_launch_args(service, env)
     if not executable.exists():
         raise RuntimeError(f"Missing runtime executable for {service}; run build first")
     env_stamp = hashlib.sha256(json.dumps(env, sort_keys=True).encode()).hexdigest()
@@ -745,6 +793,8 @@ def main():
         apps_up(env)
     elif command == "apps-check":
         apps_check(env)
+    elif command == "smoke":
+        smoke_apps(env)
     elif command == "apps-down":
         apps_down()
     elif command == "down":

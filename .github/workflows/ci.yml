@@ -70,6 +70,17 @@ jobs:
         run: |
           npm --prefix web/${{ matrix.dir }} ci
           npm --prefix web/${{ matrix.dir }} test
+      # 前端产物在这里构建，部署时只下发 dist：服务器没有 npm 构建的 CPU/依赖开销，
+      # 也避免"服务器构建和 CI 构建不一致"。CI 的构建失败会直接拦住部署。
+      - name: npm run build + 上传 dist
+        run: |
+          npm --prefix web/${{ matrix.dir }} run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-${{ matrix.dir }}
+          path: web/${{ matrix.dir }}/dist
+          retention-days: 7
+          if-no-files-found: error
 
   deploy:
     if: github.event_name == 'workflow_dispatch'
@@ -83,7 +94,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: 配置 deploy key（服务器网关仅放行 upload/deploy/status/rollback）
+      - name: 配置 deploy key（服务器网关仅放行 upload/upload-dist/deploy/status/rollback）
         run: |
           install -m600 /dev/stdin ~/deploy_key <<<"${{ secrets.SMARTLECT_DEPLOY_KEY }}"
           mkdir -p ~/.ssh
@@ -96,6 +107,22 @@ jobs:
         run: |
           git bundle create deploy.bundle HEAD
           $SSH_CMD root@39.107.102.244 upload < deploy.bundle
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.rollback }}
+        with:
+          name: web-dist-user
+          path: web/user/dist
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.rollback }}
+        with:
+          name: web-dist-admin
+          path: web/admin/dist
+      - name: 下发前端 dist（网关 verb: upload-dist）
+        if: ${{ !inputs.rollback }}
+        run: |
+          tar czf web-dist.tar.gz web/user/dist web/admin/dist
+          ls -la web-dist.tar.gz
+          $SSH_CMD root@39.107.102.244 upload-dist < web-dist.tar.gz
       - name: 部署 + 健康门禁（失败即 exit 1）
         if: ${{ !inputs.rollback }}
         run: $SSH_CMD root@39.107.102.244 deploy
