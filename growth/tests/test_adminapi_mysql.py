@@ -28,6 +28,63 @@ class AdminApiMySQLTests(unittest.TestCase):
     def test_publish_runs_async_index_job_to_published(self):
         asyncio.run(self.exercise_indexing())
 
+    def test_product_knowledge_import_creates_auto_draft_and_publishes(self):
+        asyncio.run(self.exercise_import())
+
+    async def exercise_import(self):
+        suffix = uuid.uuid4().hex
+        origin = "http://smartlect.test"
+        config = {"SMARTLECT_USER_PORT": "18105", "SMARTLECT_ORDER_PORT": "18104",
+                  "SMARTLECT_PRODUCT_PORT": "18102", "SMARTLECT_STOCK_PORT": "18103",
+                  "SMARTLECT_INTERNAL_TOKEN": "synthetic", "SMARTLECT_VISITOR_SECRET": "s" * 48,
+                  "SMARTLECT_ALLOWED_ORIGINS": origin}
+
+        def java(request):
+            path = request.url.path
+            if path == "/internal/identity/introspect":
+                data = {"subjectType": "merchant", "actorId": "boss-" + suffix, "sessionId": "boss-session",
+                        "permissions": ["admin:legacy", "shopping:read"]}
+            elif path == "/internal/product/commerce/batchDetail":
+                self.assertEqual(json.loads(request.content), {"productIds": ["p-imp-" + suffix]})
+                data = [{"productId": "p-imp-" + suffix, "productName": "导入测试商品", "status": 1,
+                         "minPrice": "10.00", "maxPrice": "20.00", "totalStock": 3, "inStock": True,
+                         "description": "导入的商品描述，用于知识生成。",
+                         "propertyValues": [{"propertyName": "品牌", "propertyValue": "Smartlect"}]}]
+            else:
+                raise AssertionError(path)
+            return httpx.Response(200, json={"status": "success", "data": data})
+
+        transport = httpx.MockTransport(java)
+
+        def app():
+            return create_app(Settings(), config=config, store=SessionStore(self.connect),
+                              identity=IdentityBridge(config, transport=transport),
+                              commerce=AsyncCommerceClient(config, transport=transport))
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
+            client.cookies.set("adminToken", "boss-" + suffix)
+            session = (await client.get("/admin-api/assistant/session")).json()
+            headers = {"Origin": origin, "X-CSRF-Token": session["csrf_token"]}
+
+            imported = await client.post("/admin-api/assistant/knowledgeImport/products", headers=headers,
+                                         json={"productIds": ["p-imp-" + suffix]})
+            self.assertEqual(imported.status_code, 200, imported.text)
+            summary = imported.json()
+            if summary["imported"] != ["p-imp-" + suffix]: self.fail(repr(summary))
+
+            documents = (await client.get("/admin-api/assistant/knowledge")).json()
+            row = next(item for item in documents if item["doc_id"] == "product-p-imp-" + suffix)
+            self.assertEqual(row["status"], "DRAFT")
+            self.assertEqual(row["source_type"], "PRODUCT_AUTO")
+
+            # Re-import is an overlay: the previous auto draft is replaced, doc_id stays stable.
+            again = await client.post("/admin-api/assistant/knowledgeImport/products", headers=headers,
+                                      json={"productIds": ["p-imp-" + suffix]})
+            self.assertEqual(again.json()["imported"], ["p-imp-" + suffix])
+            documents = (await client.get("/admin-api/assistant/knowledge")).json()
+            versions = [item for item in documents if item["doc_id"] == "product-p-imp-" + suffix]
+            self.assertEqual(len(versions), 1)  # old DRAFT discarded, not stacked
+
     async def exercise_indexing(self):
         suffix = uuid.uuid4().hex
         origin = "http://smartlect.test"

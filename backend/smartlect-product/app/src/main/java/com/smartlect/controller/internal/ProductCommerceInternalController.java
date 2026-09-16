@@ -144,6 +144,36 @@ public class ProductCommerceInternalController extends ABaseController {
         if (p == null) {
             return getSuccessResponseVO(null);
         }
+        return getSuccessResponseVO(buildDetail(p));
+    }
+
+    /**
+     * Batch variant of getDetail for the growth-side knowledge import: one call per import
+     * batch instead of one HTTP round-trip per product. Same sanitized fields and shape as
+     * getDetail; products that do not exist are simply absent from the list.
+     */
+    @PostMapping("/batchDetail")
+    public ResponseVO<List<Map<String, Object>>> batchDetail(@RequestBody Map<String, Object> body) {
+        List<String> productIds = productIds(body, "productIds");
+        if (productIds == null || productIds.isEmpty()) {
+            return getSuccessResponseVO(List.of());
+        }
+        if (productIds.size() > 50) {
+            throw new BusinessException("批量详情一次最多 50 个商品");
+        }
+        ProductInfoQuery query = new ProductInfoQuery();
+        query.setProductIdList(productIds);
+        List<ProductInfo> products = productInfoMapper.selectList(query);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ProductInfo p : products) {
+            if (p != null) {
+                result.add(buildDetail(p));
+            }
+        }
+        return getSuccessResponseVO(result);
+    }
+
+    private Map<String, Object> buildDetail(ProductInfo p) {
         Map<String, Object> m = toProductCard(p);
         m.put("status", p.getStatus());
         m.put("maxPrice", p.getMaxPrice());
@@ -153,13 +183,13 @@ public class ProductCommerceInternalController extends ABaseController {
         m.put("productDesc", searchableDescription);
 
         ProductSkuQuery skuQuery = new ProductSkuQuery();
-        skuQuery.setProductId(productId);
+        skuQuery.setProductId(p.getProductId());
         skuQuery.setOrderBy(com.smartlect.entity.query.SafeSort.of("sort asc"));
         List<ProductSku> skus = productSkuMapper.selectList(skuQuery);
         m.put("skus", skus == null ? Collections.emptyList() : skus);
 
         ProductPropertyValueQuery pvQuery = new ProductPropertyValueQuery();
-        pvQuery.setProductId(productId);
+        pvQuery.setProductId(p.getProductId());
         List<ProductPropertyValue> pvs = productPropertyValueMapper.selectList(pvQuery);
         m.put("propertyValues", pvs == null ? Collections.emptyList() : pvs);
         if (pvs != null) {
@@ -172,13 +202,13 @@ public class ProductCommerceInternalController extends ABaseController {
                 }
             }
         }
-        Map<String, Integer> stockByProduct = stockFeignSupport.totalByProducts(List.of(productId));
-        if (stockByProduct.containsKey(productId)) {
-            Integer totalStock = stockByProduct.get(productId);
+        Map<String, Integer> stockByProduct = stockFeignSupport.totalByProducts(List.of(p.getProductId()));
+        if (stockByProduct.containsKey(p.getProductId())) {
+            Integer totalStock = stockByProduct.get(p.getProductId());
             m.put("totalStock", totalStock);
             m.put("inStock", totalStock != null && totalStock > 0);
         }
-        return getSuccessResponseVO(m);
+        return m;
     }
 
     /**

@@ -9,10 +9,24 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from smartlect.indexing import JOB_STATES
+from smartlect.knowledge_import import import_products
 
 
-def build_router(*, actor_for, indexing, knowledge, provider, config, settings):
+def build_router(*, actor_for, indexing, knowledge, provider, config, settings, commerce):
     router = APIRouter()
+
+    @router.post("/admin-api/assistant/knowledgeImport/products")
+    async def import_product_knowledge(payload: dict, request: Request, response: Response):
+        actor = await actor_for(request, response, realm="merchant", write=True)
+        actor.require("admin:legacy")
+        body = payload if isinstance(payload, dict) else {}
+        product_ids = body.get("productIds")
+        if product_ids is not None and (not isinstance(product_ids, list) or not product_ids
+                                        or len(product_ids) > 200
+                                        or any(not isinstance(item, str) or not item for item in product_ids)):
+            raise HTTPException(422, "invalid_product_ids")
+        return await import_products(actor, commerce, knowledge,
+                                     product_ids=None if product_ids is None else product_ids)
 
     @router.get("/admin-api/assistant/knowledgeIndex/jobs")
     async def index_jobs(request: Request, response: Response, limit: int = 20):

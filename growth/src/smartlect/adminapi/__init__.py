@@ -16,4 +16,4 @@ def register(app, *, actor_for, store, commerce, knowledge, attribution, provide
         shopping_retrieve=shopping_retrieve))
     app.include_router(knowledge_ops.build_router(
         actor_for=actor_for, indexing=indexing, knowledge=knowledge,
-        provider=provider, config=config, settings=settings))
+        provider=provider, config=config, settings=settings, commerce=commerce))

@@ -381,8 +381,11 @@ class KnowledgeStore(SessionStore):
     def create_draft(self, actor, payload):
         _merchant(actor)
         if not isinstance(payload, dict) or set(payload) - {"doc_id", "title", "source_uri", "body", "language", "acl",
-                "acl_actor_id", "product_ids", "category_ids", "facts", "valid_from", "valid_until"}:
+                "acl_actor_id", "product_ids", "category_ids", "facts", "valid_from", "valid_until", "source_type"}:
             raise StateError("invalid_document", 422)
+        source_type = payload.get("source_type", "MANUAL")
+        if source_type not in {"MANUAL", "PRODUCT_AUTO"}:
+            raise StateError("invalid_source_type", 422)
         scope = _actor(actor)[2]
         doc_id = _text(payload.get("doc_id", uuid.uuid4().hex), "doc_id", 128)
         title = _text(payload.get("title"), "title", 256)
@@ -416,9 +419,9 @@ class KnowledgeStore(SessionStore):
             chunks = [{**chunk, "chunk_id": prefix + "-" + chunk["chunk_id"]} for chunk in chunks]
             cursor.execute("""INSERT INTO knowledge_document (execution_scope_id,doc_id,version,title,source_uri,checksum,
                 body,language,acl,acl_actor_id,product_ids_json,category_ids_json,facts_json,valid_from,valid_until,status,
-                created_by,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'DRAFT',%s,UTC_TIMESTAMP(6))""",
+                created_by,source_type,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'DRAFT',%s,%s,UTC_TIMESTAMP(6))""",
                 (scope, doc_id, version, title, source_uri, sha256(body.encode()).hexdigest(), body, language, acl, acl_actor,
-                 products, categories, facts, start, end, actor.actor_id))
+                 products, categories, facts, start, end, actor.actor_id, source_type))
             cursor.executemany("""INSERT INTO knowledge_chunk (execution_scope_id,doc_id,version,chunk_id,heading,content,
                 start_offset,end_offset,start_line,end_line) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 [(scope, doc_id, version, *[chunk[key] for key in ("chunk_id", "heading", "content", "start_offset", "end_offset", "start_line", "end_line")]) for chunk in chunks])
@@ -461,11 +464,39 @@ class KnowledgeStore(SessionStore):
                 cursor.execute("UPDATE knowledge_catalog SET revision=revision+1 WHERE execution_scope_id=%s", (scope,))
             return _public(self._document(cursor, scope, doc_id, version))
 
+    def discard_auto_drafts(self, actor, doc_ids, *, source_type="PRODUCT_AUTO"):
+        """Overlay semantics for auto imports: re-importing replaces the previous auto DRAFT
+        (chunks included) and never touches MANUAL documents or anything already published."""
+        _merchant(actor)
+        ids = [_text(item, "doc_id", 128) for item in doc_ids]
+        if not ids:
+            return {"discarded": 0}
+        with self._transaction() as cursor:
+            placeholders = ",".join(["%s"] * len(ids))
+            cursor.execute(f"""SELECT doc_id,version FROM knowledge_document
+                WHERE execution_scope_id=%s AND source_type=%s AND status='DRAFT' AND doc_id IN ({placeholders})""",
+                (_actor(actor)[2], source_type, *ids))
+            rows = cursor.fetchall()
+            for row in rows:
+                cursor.execute("DELETE FROM knowledge_chunk WHERE execution_scope_id=%s AND doc_id=%s AND version=%s",
+                               (_actor(actor)[2], row["doc_id"], row["version"]))
+                cursor.execute("DELETE FROM knowledge_document WHERE execution_scope_id=%s AND doc_id=%s AND version=%s",
+                               (_actor(actor)[2], row["doc_id"], row["version"]))
+        return {"discarded": len(rows)}
+
     def list_documents(self, actor):
         _merchant(actor)
         with self._transaction() as cursor:
-            cursor.execute("SELECT doc_id,version,title,status,acl,valid_from,valid_until,checksum,published_at "
+            cursor.execute("SELECT doc_id,version,title,status,acl,valid_from,valid_until,checksum,published_at,source_type "
                            "FROM knowledge_document WHERE execution_scope_id=%s ORDER BY doc_id,version DESC LIMIT 1000", (_actor(actor)[2],))
+            return [_public(row) for row in cursor.fetchall()]
+
+    def document_versions(self, actor, doc_id):
+        _merchant(actor)
+        with self._transaction() as cursor:
+            cursor.execute("SELECT doc_id,version,status,source_type,created_at FROM knowledge_document "
+                "WHERE execution_scope_id=%s AND doc_id=%s ORDER BY version DESC LIMIT 50",
+                (_actor(actor)[2], _text(doc_id, "doc_id", 128)))
             return [_public(row) for row in cursor.fetchall()]
 
     def get_document(self, actor, doc_id, version):
