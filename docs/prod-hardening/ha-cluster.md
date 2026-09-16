@@ -14,7 +14,7 @@
 ## 集群拓扑
 
 ```
-smartlect-node1 (8c32g, 172.21.131.151)   现有机：全部应用进程 + MySQL(主) + Redis(主*)
+smartlect-node1 (8c16g, 172.21.131.151)   现有机：全部应用进程 + MySQL(主) + Redis(主*)
                                             + rabbit-c1 + nacos-c1 + sentinel ×1
 smartlect-node2 (2c8g, 172.19.34.202)     新购：rabbit-c2 + nacos-c2 + Redis 副本 + sentinel
 smartlect-node3 (2c8g, 172.19.34.203)     新购：rabbit-c3 + nacos-c3 + Redis 副本 + sentinel
@@ -183,6 +183,10 @@ TOTAL_SENT=2430 / TOTAL_RECEIVED=2430 / ZERO_LOSS=PASS
 2. **RabbitMQ 4.2 无 `rabbitmqctl quorum_status`**：命令在 `rabbitmq-queues` CLI 且必须带 `--vhost smartlect`（verify-cluster.sh 的旧调用会 `not found` 退出）。
 3. **重启竞态的 nacos 变体**：apps 的 runtime.py 预检在 nacos-c1 重组 Raft 期间拿到 503 而失败——等 readiness 200 后 `systemctl restart smartlect-apps` 即愈（seata 变体此前已用 `Restart=on-failure` 根治，nacos 变体目前手动恢复）。
 4. **打极限前先给旁路系统设上界**：压测打爆的第一台"服务"是旁路的 Jaeger（memory 存储 19.4GB → node OOM、宿主假死 12 分钟、压测结束数分钟后才引爆）。任何全链路压测前，追踪/日志/指标栈的内存上限是前置条件；症状识别口诀——ICMP 通 + TCP 握手通 + banner 超时 = 用户态饿死（内存），而非网络或 conntrack 问题。
+
+### 规格回调附记（2026-09-16）：8c32g → 8c16g
+
+科创包仅覆盖 ≤8c16g 档，node1 回到 8c16g（8c32g 时期数据全部保留为历史基线）。同步回调：全局堆 512m→256m（gateway/product 保持 512m/6 处理器，其余 256m/4）、Jaeger 上限 4g→2g（max-traces 20 万→10 万）、MySQL 容器维持 512M 池/2g 上限。**复测（池 12 + 限流 400 不变）：400 VU = 495 req/s、p95 23ms、1% 网关 429、内存 10/14Gi 余 3.8Gi——限流 400 在半内存下依然安全**。另录两个重启坑：变配重启后 PID 复用会撞 runtime.py 进程台账（`run/processes.json` 清空即愈，备份 .stale-bak）；nacos 503 竞态照旧等 readiness 后 restart。
 
 ## MySQL 主从与全栈 HA 演进（2026-09-15 傍晚补齐）
 
