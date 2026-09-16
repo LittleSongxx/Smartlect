@@ -66,10 +66,10 @@ class ReviewAnalysisStore(SessionStore):
             cursor.execute("""INSERT INTO review_analysis_snapshot
                 (execution_scope_id,product_id,stats_json,insights_json,comment_count,analysis_version,
                  model_label,updated_by,created_at,updated_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))
-                ON DUPLICATE KEY UPDATE stats_json=VALUES(stats_json),insights_json=VALUES(insights_json),
-                comment_count=VALUES(comment_count),model_label=VALUES(model_label),
-                updated_by=VALUES(updated_by),updated_at=UTC_TIMESTAMP(6)""",
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6)) AS incoming
+                ON DUPLICATE KEY UPDATE stats_json=incoming.stats_json,insights_json=incoming.insights_json,
+                comment_count=incoming.comment_count,model_label=incoming.model_label,
+                updated_by=incoming.updated_by,updated_at=UTC_TIMESTAMP(6)""",
                 (actor.execution_scope_id, product_id, canonical(stats),
                  canonical(insights) if insights else None, comment_count, ANALYSIS_VERSION,
                  model_label, actor.actor_id))
@@ -86,7 +86,9 @@ class ReviewAnalysisStore(SessionStore):
     def list_(self, actor):
         _actor(actor)
         with self._transaction() as cursor:
-            cursor.execute("""SELECT execution_scope_id,product_id,stats_json,comment_count,
+            # insights_json is part of the row: the history list shows whether a snapshot
+            # carries model narration, so leaving it out shows "no insights" for every row.
+            cursor.execute("""SELECT execution_scope_id,product_id,stats_json,insights_json,comment_count,
                 analysis_version,model_label,updated_by,updated_at FROM review_analysis_snapshot
                 WHERE execution_scope_id=%s ORDER BY updated_at DESC LIMIT 100""", (actor.execution_scope_id,))
             return [_public(row) for row in cursor.fetchall()]

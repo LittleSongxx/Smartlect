@@ -27,9 +27,9 @@ class GrowthReportStore(SessionStore):
         with self._transaction() as cursor:
             cursor.execute("""INSERT INTO growth_report_snapshot
                 (execution_scope_id,data_json,suggestions,model_label,updated_by,created_at,updated_at)
-                VALUES (%s,%s,%s,%s,%s,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))
-                ON DUPLICATE KEY UPDATE data_json=VALUES(data_json),suggestions=VALUES(suggestions),
-                model_label=VALUES(model_label),updated_by=VALUES(updated_by),updated_at=UTC_TIMESTAMP(6)""",
+                VALUES (%s,%s,%s,%s,%s,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6)) AS incoming
+                ON DUPLICATE KEY UPDATE data_json=incoming.data_json,suggestions=incoming.suggestions,
+                model_label=incoming.model_label,updated_by=incoming.updated_by,updated_at=UTC_TIMESTAMP(6)""",
                 (actor.execution_scope_id, canonical(data), suggestions, model_label, actor.actor_id))
         return self.get(actor)
 
@@ -50,14 +50,19 @@ class GrowthReportStore(SessionStore):
             return [_public(row) for row in cursor.fetchall()]
 
 
-def build_snapshot(attribution_summary, ai_activity):
-    """Assemble the deterministic data view; every number here comes from a store, not the model."""
+def build_snapshot(payment_totals, ai_activity):
+    """Assemble the deterministic data view; every number here comes from a store, not the model.
+
+    ``payment_totals`` is ``AttributionStore.totals()`` (one flat line per money figure), not
+    ``summary()``: that one groups by category x calculation_status, so its paidCents /
+    netCents live inside the group rows and are only additive within that single grouping.
+    """
     return {
         "payments": {
-            "paid_cents": attribution_summary.get("paidCents"),
-            "refunded_cents": attribution_summary.get("refundedCents"),
-            "net_cents": attribution_summary.get("netCents"),
-            "conversions": attribution_summary.get("paymentConversions"),
+            "paid_cents": payment_totals.get("paid_cents"),
+            "refunded_cents": payment_totals.get("refunded_cents"),
+            "net_cents": payment_totals.get("net_cents"),
+            "conversions": payment_totals.get("payment_conversions"),
         },
         "ai_activity": ai_activity,
         "report_version": REPORT_VERSION,
@@ -77,9 +82,9 @@ def _validated_suggestions(text):
 
 
 async def generate(actor, attribution, store, provider, *, settings, ads=None):
-    attribution_summary = await asyncio.to_thread(attribution.summary, actor)
+    payment_totals = await asyncio.to_thread(attribution.totals, actor)
     ai_activity = await asyncio.to_thread(ai_activity_counts, store.connect, actor.execution_scope_id)
-    snapshot = build_snapshot(attribution_summary, ai_activity)
+    snapshot = build_snapshot(payment_totals, ai_activity)
     if ads is not None:
         try:
             snapshot["ads"] = await asyncio.to_thread(ads.snapshot, actor).get("account")

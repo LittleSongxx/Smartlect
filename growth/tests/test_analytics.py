@@ -44,9 +44,12 @@ class StatisticsTests(unittest.TestCase):
             _validated_suggestions('{"suggestions": ["a"]}')  # fewer than 3
 
     def test_snapshot_numbers_come_from_stores_not_models(self):
-        snapshot = build_snapshot({"paidCents": 1000, "refundedCents": 200, "netCents": 800,
-                                   "paymentConversions": 3}, {"conversations": 9})
-        self.assertEqual(snapshot["payments"]["net_cents"], 800)
+        # The shape must be AttributionStore.totals(), the call the endpoint actually makes;
+        # a hand-made flat dict would keep passing while the page rendered nothing.
+        totals = {"paid_cents": 1000, "refunded_cents": 200, "net_cents": 800, "payment_conversions": 3}
+        snapshot = build_snapshot(totals, {"conversations": 9})
+        self.assertEqual(snapshot["payments"], {"paid_cents": 1000, "refunded_cents": 200,
+                                                "net_cents": 800, "conversions": 3})
         self.assertEqual(snapshot["ai_activity"]["conversations"], 9)
 
     def test_analyze_stores_stats_even_without_live_model(self):

@@ -351,15 +351,41 @@ class AdminApiMySQLTests(unittest.TestCase):
 
             listed = (await client.get("/admin-api/assistant/reviewAnalysis")).json()
             self.assertEqual(len(listed["items"]), 1)
+            # The history list must carry the narration field, or every row reads "no insights".
+            self.assertIn("insights", listed["items"][0])
+            self.assertIsNone(listed["items"][0]["insights"])
+
+            # Real money for the merchant's scope: the report has to surface exactly these
+            # numbers. Only asserting "payments is present" let a null-only snapshot pass.
+            self.seed_scope_payment(suffix)
 
             report = await client.post("/admin-api/assistant/growthReport/generate", headers=headers, json={})
             self.assertEqual(report.status_code, 200, report.text)
             body = report.json()
-            self.assertIn("payments", body["data"])
+            self.assertEqual(body["data"]["payments"], {"paid_cents": 1000, "refunded_cents": 200,
+                                                        "net_cents": 800, "conversions": 1})
             self.assertEqual(body["model_error"], "model_not_live")
 
             view = (await client.get("/admin-api/assistant/growthReport")).json()
             self.assertIsNotNone(view["latest"])
+            self.assertEqual(view["latest"]["data"]["payments"]["net_cents"], 800)
+            # Suggestions are stored as a JSON array; a list consumer must find a list here.
+            self.assertIsNone(view["latest"]["suggestions"])
+
+    def seed_scope_payment(self, suffix):
+        """One attributed payment plus an unrelated refund in the default `store` scope."""
+        with self.connect() as connection, connection.cursor() as cursor:
+            for event_id, kind, amount, pay_order_id in (
+                    ("evt-pay-" + suffix, "PAYMENT", 1000, "pay-" + suffix),
+                    ("evt-refund-" + suffix, "REFUND", 200, "refund-" + suffix)):
+                cursor.execute("""INSERT INTO commerce_event (event_id,idempotency_key,event_type,user_id,source,
+                    pay_order_id,amount_cents,occurred_at,received_at,schema_version,raw_json,fingerprint,status)
+                    VALUES (%s,%s,%s,'u1','test',%s,%s,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6),2,'{}',%s,'APPLIED')""",
+                    (event_id, event_id, kind, pay_order_id, amount, "f" * 64))
+                cursor.execute("""INSERT INTO commerce_attribution (event_id,execution_scope_id,category,
+                    calculation_status,reason,rule_version,as_of) VALUES (%s,'store','NATURAL_VERIFIED',
+                    'APPLIED','test_fixture','test-v1',UTC_TIMESTAMP(6))""", (event_id,))
+            connection.commit()  # pymysql's connection context manager closes without committing
 
 if __name__ == "__main__":
     unittest.main()

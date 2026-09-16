@@ -484,6 +484,26 @@ class AttributionStore(SessionStore):
                 'categories': groups, 'events': [_public(r) for r in rows[:1000]], 'events_truncated': len(rows)>1000,
                 'dimensions_are_not_additive': True}
 
+    def totals(self, actor):
+        """Flat scope totals under the same filter as summary(), without the dimensions.
+
+        summary() groups by category x calculation_status, so its numbers are only additive
+        across the groups of that one grouping; consumers that need a single line per money
+        figure (the growth report) read this instead of re-deriving it from the groups.
+        """
+        actor.require('admin:legacy')
+        with self._transaction() as cursor:
+            cursor.execute("""SELECT
+                COALESCE(SUM(CASE WHEN e.event_type='PAYMENT' THEN e.amount_cents ELSE 0 END),0) AS paid,
+                COALESCE(SUM(CASE WHEN e.event_type='REFUND' THEN e.amount_cents ELSE 0 END),0) AS refunded,
+                COUNT(DISTINCT CASE WHEN e.event_type='PAYMENT' THEN e.pay_order_id END) AS conversions
+                FROM commerce_event e JOIN commerce_attribution p USING(event_id)
+                WHERE e.status='APPLIED' AND p.execution_scope_id=%s""", (actor.execution_scope_id,))
+            row = cursor.fetchone()
+        paid, refunded = int(row['paid']), int(row['refunded'])
+        return {'paid_cents': paid, 'refunded_cents': refunded, 'net_cents': paid - refunded,
+                'payment_conversions': int(row['conversions'])}
+
 
 def event_metadata(event):
     """Bad optional source metadata must not erase otherwise valid payment money."""
