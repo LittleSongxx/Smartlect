@@ -361,12 +361,12 @@ onUnmounted(() => { alive = false; stopPolling(); });
       border: 1px solid var(--border);
       border-radius: var(--radius);
 
-      span {
+      > span {
         color: var(--text-2);
         font-size: 13px;
       }
 
-      strong {
+      > strong {
         font-size: 22px;
         color: var(--money);
       }

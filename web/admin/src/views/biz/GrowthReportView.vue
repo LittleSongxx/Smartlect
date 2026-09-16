@@ -52,7 +52,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="model_label" label="模型" min-width="140" />
-        <el-table-column label="时间" width="160">
+        <el-table-column label="时间" width="200">
           <template #default="{ row }">{{ timestamp(row.updated_at) }}</template>
         </el-table-column>
       </el-table>
