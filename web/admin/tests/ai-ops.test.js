@@ -166,3 +166,36 @@ it('knowledge view imports product drafts and filters by source', async () => {
   expect(wrapper.text()).toContain('导入 1 个')
   wrapper.unmount()
 })
+
+it('model config page shows env badges, saves within endpoint family and probes connection', async () => {
+  const { default: ModelConfigView } = await import('../src/views/ai/ModelConfigView.vue')
+  handler = (path) => {
+    if (path.endsWith('/assistant/models') && !path.includes('/chat') && !path.includes('/testConnection')) {
+      return response({ chat: { model_id: 'qwen3.7-plus', runtime_selected: null, env_model_id: 'qwen3.7-plus',
+        options: ['qwen3.7-plus', 'qwen3.7-plus-2026-05-26'], updated_by: null, updated_at: null, note: null },
+        env: { chat_key_configured: true, chat_base_url: true, embedding_key_configured: false,
+          embedding_model: 'text-embedding-v4', model_mode: 'live' } })
+    }
+    if (path.endsWith('/models/chat')) return response({ model_id: 'qwen3.7-plus-2026-05-26' })
+    if (path.endsWith('/models/testConnection')) return response({ ok: true, model_id: 'qwen3.7-plus', latency_ms: 640, reply: 'OK' })
+    return null
+  }
+  const wrapper = await mountView(ModelConfigView)
+  expect(wrapper.text()).toContain('真实模型 live')
+  expect(wrapper.text()).toContain('已配置')
+  expect(wrapper.text()).toContain('未配置')
+
+  const select = wrapper.findComponent({ name: 'ElSelect' })
+  select.vm.$emit('update:modelValue', 'qwen3.7-plus-2026-05-26')
+  await flushPromises()
+  await wrapper.findAll('button').find((item) => item.text() === '保存并激活').trigger('click')
+  await flushPromises()
+  const saved = calls.find((item) => item.path.endsWith('/models/chat'))
+  expect(JSON.parse(saved.options.body).model_id).toBe('qwen3.7-plus-2026-05-26')
+  expect(wrapper.text()).toContain('已激活')
+
+  await wrapper.findAll('button').find((item) => item.text() === '测试连接').trigger('click')
+  await flushPromises()
+  expect(wrapper.text()).toContain('640ms')
+  wrapper.unmount()
+})

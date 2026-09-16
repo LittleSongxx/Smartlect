@@ -177,15 +177,23 @@ def _message(value):
     return message
 
 
+CHAT_MODEL_WHITELIST = ("qwen3.7-plus", "qwen3.7-plus-2026-05-26", "glm-5.3")
+
+
 class Provider:
     """Reuse one instance per API process: chat and embeddings share two request slots."""
 
     ZHIPU_HOSTS = {"open.bigmodel.cn": "cn-zhipu", "api.z.ai": "intl-zhipu"}
 
-    def __init__(self, config, *, transport=None):
+    def __init__(self, config, *, transport=None, runtime_loader=None):
         self.model_id = config.get("SMARTLECT_MODEL_ID", "qwen3.7-plus")
-        if self.model_id not in {"qwen3.7-plus", "qwen3.7-plus-2026-05-26", "glm-5.3"}:
+        if self.model_id not in CHAT_MODEL_WHITELIST:
             raise ValueError("model_id_not_authorized")
+        # Runtime model switching (admin console): an async loader reads the DB-backed
+        # selection every few seconds; env stays the fallback and the only key source.
+        self._runtime_loader = runtime_loader
+        self._runtime_model = None
+        self._runtime_loaded_at = 0.0
         self._config = {k: v for k, v in config.items() if k.startswith((
             "SMARTLECT_MODEL_", "SMARTLECT_EMBEDDING_"))}
         self._transport = transport
@@ -218,6 +226,33 @@ class Provider:
                    "dashscope-us.aliyuncs.com": "us-east-1"}.get(host, "unknown"))
         return base, key, region
 
+    async def _apply_runtime_config(self):
+        if self._runtime_loader is None:
+            return
+        if time.monotonic() - self._runtime_loaded_at < 5:
+            return
+        try:
+            override = await self._runtime_loader()
+        except Exception:
+            return  # a DB hiccup falls back to the env snapshot; the next call retries
+        self._runtime_loaded_at = time.monotonic()
+        model_id = (override or {}).get("chat_model_id")
+        self._runtime_model = model_id if model_id in CHAT_MODEL_WHITELIST else None
+
+    def effective_chat_model(self):
+        return self._runtime_model or self.model_id
+
+    def invalidate_runtime_cache(self):
+        self._runtime_loaded_at = 0.0
+
+    def runtime_chat_options(self):
+        """Models the configured endpoint family can actually serve; switching across
+        vendors would need a different BASE_URL, which stays environment-managed."""
+        host = urlsplit(self._config.get("SMARTLECT_MODEL_BASE_URL", "")).hostname or ""
+        if host in self.ZHIPU_HOSTS:
+            return ["glm-5.3"]
+        return ["qwen3.7-plus", "qwen3.7-plus-2026-05-26"]
+
     async def chat(self, messages, *, tools=None, tool_choice=None, response_format=None, stream=False, on_delta=None,
                    on_trace=None, before_attempt=None, max_attempts=2, prompt_version="unknown",
                    skill_versions=None, schema_version="unknown", max_tokens=1024):
@@ -225,6 +260,7 @@ class Provider:
             raise ValueError("invalid_model_output_limit")
         if not isinstance(messages, list) or not messages:
             raise ValueError("messages_required")
+        await self._apply_runtime_config()
         # Permit only the chat protocol; reasoning and vendor extensions cannot be replayed.
         clean_messages = []
         for message in messages:
@@ -235,7 +271,7 @@ class Provider:
             clean_messages.append(message)
         base = self._config.get("SMARTLECT_MODEL_BASE_URL", "")
         dashscope = "aliyuncs.com" in base
-        body = {"model": self.model_id, "messages": clean_messages, "stream": stream,
+        body = {"model": self.effective_chat_model(), "messages": clean_messages, "stream": stream,
                 "temperature": 0,
                 ("max_completion_tokens" if dashscope else "max_tokens"): max_tokens}
         if dashscope:

@@ -198,7 +198,8 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     commerce = commerce or AsyncCommerceClient(config)
     knowledge = knowledge or (KnowledgeStore(store.connect) if store else None)
     memory = memory or (MemoryStore(store.connect) if store else None)
-    provider = provider or Provider(config)
+    from smartlect.model_config import ModelConfigStore
+    provider = provider or Provider(config, runtime_loader=ModelConfigStore(store.connect).loader() if store else None)
     attribution = attribution or (AttributionStore(store.connect, secret=config.get('SMARTLECT_ATTRIBUTION_SECRET')) if store else None)
     recommendations = recommendations or (RecommendationService(commerce, StrategyStore(store.connect)) if store else None)
     ads = ads or (AdsService(commerce, AdsStore(store.connect)) if store else None)
