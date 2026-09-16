@@ -30,7 +30,7 @@ PACKAGED = load_skill("support_policy")
 class ValidationTests(unittest.TestCase):
     def test_skill_body_must_match_packaged_structure_and_id(self):
         connect, cursor = mock_connect()
-        cursor.fetchone.return_value = {"next": 2}
+        cursor.fetchall.return_value = [{"version": 1}]  # series locked FOR UPDATE -> next is 2
         store = PromptStore(connect)
         good = json.dumps(PACKAGED, ensure_ascii=False)
         row = store.create_version(ACTOR, "shopping", "skill", "support_policy", good)
@@ -50,6 +50,22 @@ class ValidationTests(unittest.TestCase):
         connect, _ = mock_connect()
         with self.assertRaises(StateError):
             PromptStore(connect).create_version(ACTOR, "shopping", "system_prompt", "system", "  ")
+
+    def test_skill_edit_cannot_widen_the_tool_surface(self):
+        connect, cursor = mock_connect()
+        cursor.fetchall.return_value = [{"version": 1}]
+        store = PromptStore(connect)
+        # Narrowing is allowed (the page may retire a tool), adding a name the packaged
+        # skill never had is not: the agent's callable set is built from this very list.
+        narrowed = {**PACKAGED, "tools": PACKAGED["tools"][:1]}
+        self.assertEqual(store.create_version(ACTOR, "shopping", "skill", "support_policy",
+                                              json.dumps(narrowed, ensure_ascii=False))["version"], 2)
+        for tools in (PACKAGED["tools"] + ["propose_order"], ["propose_order"], "get_my_orders", [1]):
+            widened = {**PACKAGED, "tools": tools}
+            with self.assertRaises(StateError) as caught:
+                store.create_version(ACTOR, "shopping", "skill", "support_policy",
+                                     json.dumps(widened, ensure_ascii=False))
+            self.assertEqual(caught.exception.code, "skill_tools_not_authorized")
 
 
 class ResolutionTests(unittest.TestCase):
@@ -91,18 +107,34 @@ class SeedTests(unittest.TestCase):
     def test_seed_inserts_code_defaults_only_when_absent(self):
         from smartlect import prompts
         prompts.register_default("shopping", "system_prompt", "system", "种子策略文本", version=24)
-        connect, cursor = mock_connect()  # fetchone None -> template absent -> insert
+        connect, cursor = mock_connect()  # COALESCE(MAX(version),0) -> 0 -> template absent
+        cursor.fetchone.return_value = {"latest": 0}
         PromptStore(connect).seed_defaults()
         inserts = [call for call in cursor.execute.call_args_list
                    if "INSERT INTO prompt_template" in call.args[0]]
         self.assertGreater(len(inserts), 0)
+        seeded = [call for call in inserts if "种子策略文本" in call.args[1]]
+        self.assertTrue(seeded)  # absent templates seed as active
+        self.assertEqual(seeded[0].args[1][6], "active")
 
         cursor.execute.call_args_list.clear()
-        cursor.fetchone.return_value = {"1": 1}  # template already present -> no insert
+        cursor.fetchone.return_value = {"latest": 24}  # same version stored -> no insert
+        PromptStore(connect).seed_defaults()
+        self.assertEqual([call for call in cursor.execute.call_args_list
+                          if "INSERT INTO prompt_template" in call.args[0]], [])
+
+    def test_seed_surfaces_newer_code_text_as_draft_without_switching(self):
+        from smartlect import prompts
+        prompts.register_default("shopping", "system_prompt", "system", "新一代策略文本", version=25)
+        connect, cursor = mock_connect()
+        cursor.fetchone.return_value = {"latest": 24}  # code moved on, console holds v24
         PromptStore(connect).seed_defaults()
         inserts = [call for call in cursor.execute.call_args_list
-                   if "INSERT INTO prompt_template" in call.args[0]]
-        self.assertEqual(len(inserts), 0)
+                   if "INSERT INTO prompt_template" in call.args[0] and "新一代策略文本" in call.args[1]]
+        self.assertEqual(len(inserts), 1)
+        # A draft keeps the running text untouched until an operator activates it.
+        self.assertEqual(inserts[0].args[1][6], "draft")
+        self.assertIn("v25", inserts[0].args[1][5])
 
 
 if __name__ == "__main__":

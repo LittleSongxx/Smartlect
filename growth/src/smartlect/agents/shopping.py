@@ -12,6 +12,7 @@ from pydantic import Field, ValidationError
 
 from smartlect.answer_guards import unsupported_state_claims
 from smartlect.business_skills import USER_SKILLS, load_skill
+from smartlect.commerce import CommerceError
 from smartlect.events import canonical
 from smartlect.provider import ProviderError
 from smartlect.privacy import redact_text
@@ -24,7 +25,7 @@ from smartlect.shopping_mission import (MAX_REQUIRED, _unique, explicit_from_req
                                         looks_like_product_request,
                                         ground_tool_params, merge_mission, mission_retrieve_params,
                                         normalize_mission, requirement_slots, retrieve_matches_mission,
-                                        shopping_request, shopping_turn_changed)
+                                        selects_products, shopping_request, shopping_turn_changed)
 from smartlect.shopping_retrieve import ShoppingRetrieve
 from smartlect.tools import Arguments, REGISTRY, ToolReceipt, invoke, schemas, tool_schema
 from smartlect import prompts
@@ -1037,19 +1038,35 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                     raise GuardViolation(gate_reason)
             extracted = extract_mission(question)
             slots = requirement_slots(question)
-            if shopping_turn_changed(extracted, slots):
+            if shopping_turn_changed(extracted, slots) and selects_products(extracted, slots):
+                # The mission records whatever this turn contributed, but only a turn that
+                # names what to select (price/budget/category/comparison/quantity or a
+                # closed buy frame) may materialise a selection. Policy text routinely
+                # carries 要/不要 shapes ("退款需要确认吗", "不要转人工"), and running the
+                # catalog on those mints a junk constraint for the whole conversation.
                 previous = await asyncio.to_thread(memory.mission, actor, conversation_id)
                 explicit = {'required_terms': slots} if slots else {}
                 mission = await asyncio.to_thread(
                     memory.put_mission, actor, conversation_id,
                     merge_mission(previous, extracted, explicit), lease=lease)
                 last = context.get('shopping_request') or {}
-                if extracted.get('comparison_required') and (
-                        mission.get('comparison_targets') or last.get('comparison_targets') or last.get('sku_keys')):
-                    if context.get('comparison_complete') is None:
-                        await call_tool('compare_skus', mission_retrieve_params(mission))
-                elif not retrieve_matches_mission(last, mission):
-                    await call_tool('recommend_skus', mission_retrieve_params(mission))
+                try:
+                    if extracted.get('comparison_required') and (
+                            mission.get('comparison_targets') or last.get('comparison_targets') or last.get('sku_keys')):
+                        if context.get('comparison_complete') is None:
+                            await call_tool('compare_skus', mission_retrieve_params(mission))
+                    elif last and not retrieve_matches_mission(last, mission):
+                        # Re-sync an existing selection with the merged mission. With no
+                        # earlier retrieval there is nothing to keep consistent: the model
+                        # selects on its own, and the closeout gate still catches a product
+                        # request that tries to close without one.
+                        await call_tool('recommend_skus', mission_retrieve_params(mission))
+                except (StateError, ValueError, CommerceError, TimeoutError) as error:
+                    # This refresh is optional: the turn already holds its own observations,
+                    # and the selection closeout gate below still decides whether a product
+                    # request may close without one. An unavailable selection plane must not
+                    # discard a complete answer (same doctrine as guard_repair_fits).
+                    context['selection_refresh_error'] = getattr(error, 'code', None) or str(error)[:120]
             request = context.get('shopping_request') or {}
             selected = [key for key in final.selected_sku_keys
                         if key in products and sku_obeys_request(products[key], request)]

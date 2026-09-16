@@ -80,6 +80,40 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual([call.args[1] for call in receipts], [(next_name, checksum)])
         connection.commit.assert_called_once()
 
+    def test_replay_skips_already_applied_ddl_and_still_fails_on_anything_else(self):
+        source = ("ALTER TABLE probe ADD COLUMN c INT;\n-- statement-break\n"
+                  "CREATE INDEX idx_probe ON probe (c);\n-- statement-break\n"
+                  "ALTER TABLE probe ADD COLUMN broken INT;")
+        migration = ("0002_replay.sql", sha256(source.encode()).hexdigest(), source)
+
+        def replay_of_partial_failure(statement, *args):
+            if "ADD COLUMN c INT" in statement:
+                raise _mysql_error(1060)  # column left by the half-applied run
+            if "CREATE INDEX idx_probe" in statement:
+                raise _mysql_error(1061)  # index left by the half-applied run
+            if "ADD COLUMN broken" in statement:
+                raise _mysql_error(1054)  # a genuinely wrong statement must still fail
+
+        connection, cursor = self.connection()
+        cursor.execute.side_effect = replay_of_partial_failure
+        with patch("smartlect.migrate.migration_files", return_value=[migration]):
+            with self.assertRaises(Exception) as caught:
+                migrate(lambda: connection)
+        self.assertEqual(caught.exception.args[0], 1054)
+        # The already-applied statements were skipped, but the migration gets no receipt.
+        self.assertFalse(any("INSERT INTO schema_migration" in call.args[0] for call in cursor.execute.call_args_list))
+
+        cursor.reset_mock()
+        cursor.execute.side_effect = None
+        with patch("smartlect.migrate.migration_files", return_value=[migration]):
+            migrate(lambda: connection)
+        self.assertEqual(sum("INSERT INTO schema_migration" in call.args[0] for call in cursor.execute.call_args_list), 1)
+        connection.commit.assert_called_once()
+
+
+def _mysql_error(code):
+    return Exception(code, "synthetic")
+
 
 if __name__ == "__main__":
     unittest.main()

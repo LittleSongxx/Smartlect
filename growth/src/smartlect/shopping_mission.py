@@ -219,7 +219,7 @@ def requirement_slots(utterance):
     Not a free-noun harvest."""
     text = str(utterance or '').strip()
     raw = []
-    for match in re.finditer(r'(?<![不别])(?:只要|要)([^，。！？、\s]{1,16})', text):
+    for match in re.finditer(r'(?<![不别需求主])(?:只要|要)([^，。！？、\s]{1,16})', text):
         if text[max(0, match.start() - 2):match.start()] == '可以':
             continue
         term = match.group(1)
@@ -455,7 +455,8 @@ def looks_like_product_request(utterance):
     text = str(utterance or '')
     return bool(
         re.search(r'[0-9０-９一二两三四五六七八九十百千]+\s*(?:元|块)', text)
-        or re.search(r'(?:的\s*)?(?:不要|别要|不买|排除|不含|除了)', text)
+        # "不要转人工/不要退款" negates a service action, not a product attribute.
+        or re.search(r'(?:的\s*)?(?:不要|别要|不买|排除|不含|除了)(?!转人工|人工|客服|退款|退货|售后)', text)
         or re.search(r'(?:卖我|想买|要买|购买|下单|建单|来一[个只条台把张件套支]|推荐几|看看有什么)', text)
         or re.search(r'[0-9０-９一二两三四五六七八九十]+\s*[个只条台把张件套支根]', text)
     )
@@ -470,6 +471,27 @@ def shopping_turn_changed(extracted, slots=()):
         or extracted.get('category_id')
         or extracted.get('excluded_terms')
         or extracted.get('reversed_terms')
+        or extracted.get('comparison_required')
+        or extracted.get('comparison_targets')
+        or extracted.get('quantity')
+        or slots
+    )
+
+
+def selects_products(extracted, slots=()):
+    """This turn names something to select, so the catalog is worth querying.
+
+    Stricter than ``shopping_turn_changed``: a bare exclusion or a reversed term
+    ("不要塑料") says what to drop, not what to look for, and on its own never
+    justifies a selection query. Policy text contains 要/不要 shapes that the lexical
+    frames cannot tell apart from shopping ("退款需要确认吗"), so the plane that runs
+    a retrieval keys on the positive slots only.
+    """
+    extracted = extracted if isinstance(extracted, dict) else {}
+    return bool(
+        extracted.get('budget_max_cents') is not None
+        or (extracted.get('min_price_cents') or 0) > 0
+        or extracted.get('category_id')
         or extracted.get('comparison_required')
         or extracted.get('comparison_targets')
         or extracted.get('quantity')

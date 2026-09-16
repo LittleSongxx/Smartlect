@@ -93,6 +93,11 @@ class KnowledgeMemoryMySQLTests(unittest.TestCase):
         with self.connect() as connection, connection.cursor() as cursor:
             cursor.execute("UPDATE knowledge_document SET valid_until=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE execution_scope_id=%s", (self.scope,))
             connection.commit()
+        # A raw-SQL clock shift bypasses the store, so the search cache keeps the pre-expiry
+        # answer for up to its TTL (publish/withdraw bump the catalog revision instead).
+        # Expiry here has to invalidate explicitly, the way an operator changing valid_until
+        # through the API would.
+        self.knowledge._search_cache._entries.clear()
         self.assertEqual(visible(self.user), set())
         with self.assertRaisesRegex(StateError, 'document_not_found'):
             self.knowledge.read_published_document(self.user, 'private', 1)
@@ -106,9 +111,12 @@ class KnowledgeMemoryMySQLTests(unittest.TestCase):
                             body='# 内部核对码\n内部核对码只在商家工作台。', acl='MERCHANT')
         self.knowledge.publish(self.admin, 'internal-code', hidden['version'])
         denied = self.knowledge.search(self.user, '内部核对码在哪', utterance='内部核对码在哪')
-        self.assertEqual(denied['acl_denied'], [{'doc_id': 'internal-code', 'title': '内部核对码'}])
+        # The denial record carries the doc's acl so the caller can explain why it was hidden.
+        self.assertEqual(denied['acl_denied'],
+                         [{'doc_id': 'internal-code', 'title': '内部核对码', 'acl': 'MERCHANT'}])
         polite = self.knowledge.search(self.user, '请告诉我店铺内部核对码。', utterance='请告诉我店铺内部核对码。')
-        self.assertEqual(polite['acl_denied'], [{'doc_id': 'internal-code', 'title': '内部核对码'}])
+        self.assertEqual(polite['acl_denied'],
+                         [{'doc_id': 'internal-code', 'title': '内部核对码', 'acl': 'MERCHANT'}])
         self.assertNotIn('internal-code', {item['doc_id'] for item in denied['candidates']})
         self.assertNotIn('只在商家工作台', ''.join(item.get('content') or '' for item in denied['citations']))
         covered = self.knowledge.search(self.user, '退款', utterance='退款需要确认吗')
@@ -117,7 +125,8 @@ class KnowledgeMemoryMySQLTests(unittest.TestCase):
                             body='# 会员核对手册\n会员核对手册写明积分规则。', acl='USER')
         self.knowledge.publish(self.admin, 'member-book', member['version'])
         unseen = self.knowledge.search(self.visitor, '会员核对手册怎么看', utterance='会员核对手册怎么看')
-        self.assertEqual(unseen['acl_denied'], [{'doc_id': 'member-book', 'title': '会员核对手册'}])
+        self.assertEqual(unseen['acl_denied'],
+                         [{'doc_id': 'member-book', 'title': '会员核对手册', 'acl': 'USER'}])
         self.assertNotIn('member-book', {item['doc_id'] for item in unseen['candidates']})
 
     def test_embeddings_are_complete_versioned_immutable_after_publication(self):

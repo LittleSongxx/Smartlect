@@ -310,7 +310,11 @@ class AdsStore(AttributionStore):
                 return {'product_id': product_id, 'sku_key': sku_key,
                         'generation': row['observed_generation'],
                         'query_started_at': iso(row['query_started_at'])}
-            cursor.execute('INSERT INTO ads_inventory (execution_scope_id,product_id,sku_key,generation,query_started_latest_at) VALUES (%s,%s,%s,1,%s) ON DUPLICATE KEY UPDATE generation=generation+1,query_started_latest_at=VALUES(query_started_latest_at)', (actor.execution_scope_id,product_id,sku_key,started))
+            cursor.execute('INSERT INTO ads_inventory (execution_scope_id,product_id,sku_key,generation,'
+                           'query_started_latest_at) VALUES (%s,%s,%s,1,%s) AS incoming '
+                           'ON DUPLICATE KEY UPDATE generation=ads_inventory.generation+1,'
+                           'query_started_latest_at=incoming.query_started_latest_at',
+                           (actor.execution_scope_id, product_id, sku_key, started))
             cursor.execute('SELECT generation FROM ads_inventory WHERE execution_scope_id=%s AND product_id=%s AND sku_key=%s',(actor.execution_scope_id,product_id,sku_key))
             return {'product_id':product_id,'sku_key':sku_key,'generation':cursor.fetchone()['generation'],'query_started_at':iso(started)}
 

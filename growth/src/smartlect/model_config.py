@@ -26,9 +26,9 @@ class ModelConfigStore(SessionStore):
         with self._transaction() as cursor:
             cursor.execute("SELECT role FROM model_runtime_config WHERE role='chat' FOR UPDATE", ())
             cursor.execute("""INSERT INTO model_runtime_config (role,model_id,params_json,note,updated_by,updated_at)
-                VALUES ('chat',%s,NULL,%s,%s,UTC_TIMESTAMP(6))
-                ON DUPLICATE KEY UPDATE model_id=VALUES(model_id),note=VALUES(note),
-                updated_by=VALUES(updated_by),updated_at=UTC_TIMESTAMP(6)""", (model_id, note, actor.actor_id))
+                VALUES ('chat',%s,NULL,%s,%s,UTC_TIMESTAMP(6)) AS incoming
+                ON DUPLICATE KEY UPDATE model_id=incoming.model_id,note=incoming.note,
+                updated_by=incoming.updated_by,updated_at=UTC_TIMESTAMP(6)""", (model_id, note, actor.actor_id))
         return self.chat_config()
 
     def loader(self):

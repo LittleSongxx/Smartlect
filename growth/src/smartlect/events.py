@@ -217,7 +217,9 @@ class Ledger:
     def _exception(cursor, body, reason):
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         cursor.execute("""INSERT INTO commerce_exception (message_hash,raw_body,reason,received_at,last_seen_at)
-            VALUES (%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE occurrences=occurrences+1,last_seen_at=VALUES(last_seen_at)""",
+            VALUES (%s,%s,%s,%s,%s) AS incoming
+            ON DUPLICATE KEY UPDATE occurrences=commerce_exception.occurrences+1,
+            last_seen_at=incoming.last_seen_at""",
                        (hashlib.sha256(body).hexdigest(), body, reason[:500], now, now))
 
     def _reconcile(self, cursor):

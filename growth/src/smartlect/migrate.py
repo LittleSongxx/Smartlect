@@ -41,12 +41,20 @@ def migrate(connect):
             for name, checksum, source in migrations:
                 if name in applied:
                     continue
-                # MySQL DDL commits implicitly. These CREATE/seed migrations can safely replay
-                # after a partial failure; future ALTER migrations need their own recovery plan.
+                # MySQL DDL commits implicitly, so a migration that dies halfway can leave the
+                # schema ahead of the ledger. Replaying it is therefore the recovery path, and
+                # the "object already exists/exists no more" errors below are how a replay
+                # reports that a statement already reached its target state. The file checksum
+                # stays the contract for what the statement was, so this cannot paper over a
+                # changed migration.
                 # A delimiter in owned SQL avoids writing a general SQL/string parser.
                 for statement in source.split("\n-- statement-break\n"):
                     if statement.strip():
-                        cursor.execute(statement)
+                        try:
+                            cursor.execute(statement)
+                        except Exception as error:
+                            if not _already_applied(error):
+                                raise
                 cursor.execute("INSERT INTO schema_migration (name,checksum,applied_at) VALUES (%s,%s,UTC_TIMESTAMP(6))",
                                (name, checksum))
                 connection.commit()
@@ -55,3 +63,18 @@ def migrate(connect):
             raise
         finally:
             cursor.execute("SELECT RELEASE_LOCK('smartlect_growth_schema')")
+
+
+# MySQL has no IF NOT EXISTS for columns and indexes: these codes are the DDL-level
+# equivalent, i.e. "this statement's target state is already in place".
+REPLAYABLE_DDL_ERRORS = {
+    1050: "table already exists",
+    1060: "duplicate column name",
+    1061: "duplicate key name",
+    1091: "can't drop; object does not exist",
+}
+
+
+def _already_applied(error):
+    code = error.args[0] if error.args and isinstance(error.args[0], int) else None
+    return code in REPLAYABLE_DDL_ERRORS

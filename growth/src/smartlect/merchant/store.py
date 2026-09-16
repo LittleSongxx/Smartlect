@@ -141,7 +141,8 @@ class MerchantStore(AdsStore):
                 )
             else:
                 cursor.execute(
-                    "INSERT INTO merchant_scope_selection VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE execution_scope_id=VALUES(execution_scope_id)",
+                    "INSERT INTO merchant_scope_selection VALUES (%s,%s,%s) AS incoming "
+                    "ON DUPLICATE KEY UPDATE execution_scope_id=incoming.execution_scope_id",
                     (key, actor.actor_id, scope),
                 )
         return actor.model_copy(update={"execution_scope_id": scope})
