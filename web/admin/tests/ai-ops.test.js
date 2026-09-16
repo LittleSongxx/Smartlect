@@ -245,3 +245,46 @@ it('prompt skill view edits a draft and activates a rollback with confirmation',
 })
 
 const editValue = (wrapper) => wrapper.find('textarea').element.value
+
+it('review analysis page generates deterministic stats and lists history', async () => {
+  const { default: ReviewAnalysisView } = await import('../src/views/biz/ReviewAnalysisView.vue')
+  handler = (path, options) => {
+    if (path.endsWith('/reviewAnalysis') && options?.method !== 'POST') {
+      return response({ items: [{ product_id: 'p1', comment_count: 2, insights: null,
+        stats: { total: 2, good: 2, mid: 0, bad: 0, average: 4.5, positive_rate: 1, sentiment: 'POSITIVE' },
+        updated_at: '2026-09-16T10:00:00Z' }] })
+    }
+    if (path.endsWith('/reviewAnalysis/product/p1')) {
+      return response({ product_id: 'p1', comment_count: 2, insights: { strengths: ['保温好'], problems: [], keywords: ['保温'], suggestions: ['继续'] },
+        stats: { total: 2, good: 2, mid: 0, bad: 0, average: 4.5, positive_rate: 1, sentiment: 'POSITIVE' },
+        insight_error: null, updated_at: '2026-09-16T10:00:00Z' })
+    }
+    return null
+  }
+  const wrapper = await mountView(ReviewAnalysisView)
+  expect(wrapper.text()).toContain('整体好评')
+  await wrapper.find('input').setValue('p1')
+  await wrapper.findAll('button').find((item) => item.text() === '生成分析').trigger('click')
+  await flushPromises()
+  expect(wrapper.text()).toContain('保温好')
+  wrapper.unmount()
+})
+
+it('growth report page renders snapshot numbers and parses stored suggestions', async () => {
+  const { default: GrowthReportView } = await import('../src/views/biz/GrowthReportView.vue')
+  handler = (path) => {
+    if (path.endsWith('/growthReport')) {
+      return response({ latest: { data: { payments: { net_cents: 800, conversions: 3, paid_cents: 1000, refunded_cents: 200 },
+        ai_activity: { conversations: 9, support_tickets: 1, published_documents: 5, run_states: { COMPLETED: 4 } } },
+        suggestions: '{"suggestions": ["增加导购入口", "跟进差评商品", "扩充知识库"]}',
+        model_label: 'qwen3.7-plus@live', model_error: null, updated_at: '2026-09-16T10:00:00Z' },
+        history: [] })
+    }
+    return null
+  }
+  const wrapper = await mountView(GrowthReportView)
+  expect(wrapper.text()).toContain('800')
+  expect(wrapper.text()).toContain('增加导购入口')
+  expect(wrapper.text()).toContain('5')  // published documents
+  wrapper.unmount()
+})
