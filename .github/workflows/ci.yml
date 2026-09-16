@@ -117,7 +117,7 @@ jobs:
         with:
           name: web-dist-admin
           path: web/admin/dist
-      - name: 下发前端 dist（网关 verb: upload-dist）
+      - name: 下发前端 dist（网关新增 upload-dist 动词）
         if: ${{ !inputs.rollback }}
         run: |
           tar czf web-dist.tar.gz web/user/dist web/admin/dist
