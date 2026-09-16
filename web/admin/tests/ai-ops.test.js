@@ -199,3 +199,49 @@ it('model config page shows env badges, saves within endpoint family and probes 
   expect(wrapper.text()).toContain('640ms')
   wrapper.unmount()
 })
+
+it('prompt skill view edits a draft and activates a rollback with confirmation', async () => {
+  const { default: PromptSkillView } = await import('../src/views/ai/PromptSkillView.vue')
+  handler = (path, options) => {
+    if (path.endsWith('/prompts') || /\/prompts\?/.test(path)) {
+      return response({ domains: { shopping: [
+        { kind: 'system_prompt', key: 'system', versions: 2, latest: 25, active_count: 1 },
+        { kind: 'skill', key: 'support_policy', versions: 1, latest: 1, active_count: 1 },
+      ], merchant: [] } })
+    }
+    if (path.endsWith('/prompts/shopping/system_prompt/system/versions')) {
+      return response({ items: [
+        { id: 3, version: 26, status: 'draft', updated_by: 'boss', updated_at: '2026-09-16T12:00:00Z', size: 101 },
+        { id: 2, version: 25, status: 'active', updated_by: 'boss', updated_at: '2026-09-16T10:00:00Z', size: 100 },
+        { id: 1, version: 24, status: 'retired', updated_by: 'code-seed', updated_at: '2026-09-15T10:00:00Z', size: 99 },
+      ] })
+    }
+    if (/\/prompts\/shopping\/system_prompt\/system\/\d+$/.test(path)) return response({ body: '基础策略文本' })
+    if (path.endsWith('/prompts/shopping/system_prompt/system') && options?.method === 'POST') {
+      return response({ domain: 'shopping', kind: 'system_prompt', key: 'system', version: 26, status: 'draft' })
+    }
+    if (path.endsWith('/system/24/activate')) return response({ version: 24, status: 'active' })
+    return null
+  }
+  const wrapper = await mountView(PromptSkillView)
+  expect(wrapper.text()).toContain('导购 Agent')
+  await wrapper.find('.template-entry').trigger('click')
+  await flushPromises()
+  expect(wrapper.text()).toContain('生效中')
+  expect(editValue(wrapper)).toContain('基础策略文本')
+
+  const before = editValue(wrapper) + '\n新增一条规则。'
+  await wrapper.find('textarea').setValue(before)
+  await wrapper.findAll('button').find((item) => item.text() === '保存为草稿').trigger('click')
+  await flushPromises()
+  const draft = calls.find((item) => item.path.endsWith('/prompts/shopping/system_prompt/system') && item.options.method === 'POST')
+  expect(JSON.parse(draft.options.body).body).toContain('新增一条规则')
+
+  // rollback confirmation cancels without hitting the endpoint
+  await wrapper.findAll('button').find((item) => item.text() === '回滚到此版').trigger('click')
+  await flushPromises()
+  expect(calls.some((item) => item.path.endsWith('/24/activate'))).toBe(false)
+  wrapper.unmount()
+})
+
+const editValue = (wrapper) => wrapper.find('textarea').element.value
