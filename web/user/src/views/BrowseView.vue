@@ -43,6 +43,11 @@ import { errorText, javaGet, javaPost, ownerKey, session } from '@/api/client';
 import { recordLanding } from '@/api/traffic';
 import { uniqueCategories } from '@/utils/productDisplay';
 import { excludeProductIds, loadProductScope } from '@/utils/productScope';
+import {
+  ProductQueryError,
+  normalizePrice,
+  normalizeSort
+} from '@/utils/productQuery';
 
 interface Category { categoryId: string; categoryName: string }
 
@@ -79,14 +84,6 @@ const summary = computed(() => {
   return `共 ${totalCount.value} 件在售商品${keyword.value ? `匹配“${keyword.value}”` : ''}。`;
 });
 
-function money(value: string) {
-  const trimmed = String(value).trim();
-  if (!trimmed) return undefined;
-  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) throw new Error('价格需为非负金额，最多两位小数。');
-  if (Number(trimmed) > 1000000) throw new Error('价格超出有效范围。');
-  return trimmed;
-}
-
 async function loadCategories() {
   try {
     const rows = await javaGet<Category[]>('/product/loadCategory');
@@ -103,15 +100,17 @@ async function load() {
     const values: Record<string, string | number> = { pageNo: pageNo.value };
     if (keyword.value) values.keyword = keyword.value;
     if (categoryId.value) values.categoryId = categoryId.value;
-    const from = money(priceFrom.value);
-    const to = money(priceTo.value);
+    const from = normalizePrice(priceFrom.value);
+    const to = normalizePrice(priceTo.value);
     if (from !== undefined) values.priceFrom = from;
     if (to !== undefined) values.priceTo = to;
-    if (from !== undefined && to !== undefined && Number(from) > Number(to)) throw new Error('最低价不能高于最高价。');
-    if (sort.value) {
-      const [key, direction] = sort.value.split(':');
-      if (!['PRICE', 'SALE'].includes(key) || !['ASC', 'DESC'].includes(direction || '')) throw new Error('排序方式无效。');
-      values.sortKey = key; values.sortDirection = direction;
+    if (from !== undefined && to !== undefined && Number(from) > Number(to)) {
+      throw new ProductQueryError('最低价不能高于最高价。');
+    }
+    const sortQuery = normalizeSort(sort.value);
+    if (sortQuery.sortKey) {
+      values.sortKey = sortQuery.sortKey;
+      values.sortDirection = sortQuery.sortDirection;
     }
     const excluded = excludeProductIds(await loadProductScope(requestedOwner));
     if (excluded) values.excludeProductIds = excluded;
@@ -162,7 +161,7 @@ watch(() => [owner.value, keyword.value, categoryId.value, priceFrom.value, pric
 .browse-search button { min-height: 44px; }
 .category-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .category-nav button { padding: 8px 16px; border: 1px solid #e4d9c8; border-radius: 999px; background: #fffdf9; font-size: 13px; cursor: pointer; }
-.category-nav button.selected { background: #FF5000; border-color: #FF5000; color: #fffdf8; }
+.category-nav button.selected { background: $color-primary; border-color: $color-primary; color: #fff; }
 .browse :deep(.agent-products) { max-height: none; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 .browse-pager { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 24px; }
 @media(max-width: 1050px) { .browse :deep(.agent-products) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

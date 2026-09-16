@@ -9,15 +9,9 @@
     </section>
 
     <section class="menu-card">
-      <RouterLink to="/account/profile" class="menu-item">
+      <RouterLink to="/account/settings" class="menu-item">
         <el-icon class="menu-icon"><User /></el-icon>
         <span>个人资料</span>
-        <el-icon class="arrow"><ArrowRight /></el-icon>
-      </RouterLink>
-      <div class="item-divider" />
-      <RouterLink to="/account/settings" class="menu-item">
-        <el-icon class="menu-icon"><Edit /></el-icon>
-        <span>修改个人信息</span>
         <el-icon class="arrow"><ArrowRight /></el-icon>
       </RouterLink>
       <div class="item-divider" />
@@ -41,7 +35,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ArrowRight, DataAnalysis, Edit, Lock, User } from '@element-plus/icons-vue';
+import { ArrowRight, DataAnalysis, Lock, User } from '@element-plus/icons-vue';
 import UserAvatar from '@/components/common/UserAvatar.vue';
 import { accountApi } from '@/api/modules';
 import { useAuthStore } from '@/stores/auth';

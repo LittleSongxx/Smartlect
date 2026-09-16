@@ -97,7 +97,7 @@ const displayPrice = computed(() => {
     &:hover {
       transform: translateY(-4px);
       box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-      border-color: rgba($color-gold, 0.3);
+      border-color: rgba($color-primary, 0.28);
 
       .hover-mask {
         opacity: 1;
@@ -106,7 +106,7 @@ const displayPrice = computed(() => {
       .cart-float {
         opacity: 1;
         transform: scale(1);
-        box-shadow: 0 4px 12px rgba($color-gold, 0.35);
+        box-shadow: 0 4px 12px rgba($color-primary, 0.32);
       }
     }
   }
@@ -118,7 +118,7 @@ const displayPrice = computed(() => {
   }
 
   &:focus-visible {
-    outline: 2px solid $color-gold;
+    outline: 2px solid $color-primary;
     outline-offset: 3px;
   }
 
@@ -421,11 +421,11 @@ const displayPrice = computed(() => {
   }
 
   &:hover {
-    border-color: rgba($color-gold, 0.3);
+    border-color: rgba($color-primary, 0.28);
     box-shadow:
       0 12px 32px rgba(0, 0, 0, 0.12),
       0 4px 12px rgba(0, 0, 0, 0.06),
-      0 0 0 1px rgba($color-gold, 0.1);
+      0 0 0 1px rgba($color-primary, 0.12);
     transform: translateY(-6px) scale(1.02);
 
     .cover-wrap :deep(img) {
@@ -441,13 +441,13 @@ const displayPrice = computed(() => {
     }
 
     .price-row .price {
-      color: $color-gold;
+      color: $color-price;
     }
 
     .cart-float {
       opacity: 1;
       transform: translateY(0) scale(1);
-      box-shadow: 0 6px 20px rgba(201, 169, 98, 0.25);
+      box-shadow: 0 6px 20px rgba($color-primary, 0.25);
     }
   }
 
@@ -458,7 +458,7 @@ const displayPrice = computed(() => {
   }
 
   &:focus-visible {
-    outline: 2px solid $color-gold;
+    outline: 2px solid $color-primary;
     outline-offset: 3px;
   }
 }

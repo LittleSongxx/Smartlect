@@ -146,16 +146,7 @@ const hotProductsList = ref<any[]>([]);
 const homeScrollRef = ref<HTMLElement | null>(null);
 const { ads, owner, load: loadAds } = usePromotions(2);
 
-const menuIconStyle = computed(() => {
-  const level = authStore.memberLevelCode;
-  if (level >= 3) {
-    return { color: '#B8860B' };
-  }
-  if (level >= 2) {
-    return { color: '#757575' };
-  }
-  return { color: '#FF5000' };
-});
+const menuIconStyle = computed(() => ({ color: 'var(--primary)' }));
 
 const feedSentinel = ref<HTMLElement | null>(null);
 const feedPageNo = ref(0);
@@ -429,8 +420,8 @@ usePageRefresh(async () => {
   padding: 0;
 
   &.active .smartlect-sort-avatar {
-    border-color: $color-gold;
-    color: $color-gold;
+    border-color: $color-primary;
+    color: $color-primary;
   }
 
   &.active .smartlect-sort-name {
@@ -546,7 +537,7 @@ usePageRefresh(async () => {
   border-radius: $radius-tag;
   background: rgba(29, 29, 31, 0.75);
   backdrop-filter: blur(8px);
-  color: $color-gold;
+  color: #fff;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0;

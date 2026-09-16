@@ -33,7 +33,7 @@ export const PC_USER_NAV_GROUPS = [
     items: [
       { label: '收货地址', path: '/address' },
       { label: '签到中心', path: '/sign' },
-      { label: '个人资料', path: '/account/profile' },
+      { label: '个人资料', path: '/account/settings' },
       { label: '账号设置', path: '/account/manage' },
       { label: 'AI 数据与隐私', path: '/account/privacy' }
     ]
@@ -56,7 +56,6 @@ export const PC_USER_CENTER_PATHS = [
   '/notifications',
   '/pay-records',
   '/account/manage',
-  '/account/profile',
   '/account/settings',
   '/account/password',
   '/account/privacy'

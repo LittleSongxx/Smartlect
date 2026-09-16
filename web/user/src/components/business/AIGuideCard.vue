@@ -90,8 +90,8 @@ const quickAsk = (prompt: string) => {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  background: linear-gradient(135deg, #ffffff 0%, #fefaf3 100%);
-  border: 1px solid rgba(212, 162, 78, 0.18);
+  background: $color-primary-soft;
+  border: 1px solid $color-primary-muted;
   border-radius: $radius-card;
   cursor: pointer;
   position: relative;
@@ -99,7 +99,7 @@ const quickAsk = (prompt: string) => {
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 
   &:hover {
-    border-color: rgba(212, 162, 78, 0.35);
+    border-color: $color-primary;
     box-shadow: $shadow-card;
   }
 
@@ -122,17 +122,17 @@ const quickAsk = (prompt: string) => {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: $color-gold-soft;
-  color: $color-gold;
+  background: $color-card;
+  color: $color-primary;
   display: grid;
   place-items: center;
-  box-shadow: 0 0 0 3px rgba(212, 162, 78, 0.1);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
   animation: aiPulse 3s ease-in-out infinite;
 }
 
 @keyframes aiPulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(212, 162, 78, 0.1); }
-  50% { box-shadow: 0 0 0 6px rgba(212, 162, 78, 0.06); }
+  0%, 100% { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+  50% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.06); }
 }
 
 .ai-text {
@@ -162,31 +162,31 @@ const quickAsk = (prompt: string) => {
 
 .ai-prompt-chip {
   padding: 4px 10px;
-  border: 1px solid rgba(212, 162, 78, 0.25);
+  border: 1px solid $color-primary-muted;
   border-radius: $radius-pill;
-  background: rgba(212, 162, 78, 0.06);
-  color: #8b7355;
+  background: $color-card;
+  color: $color-text-body;
   font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.2s, border-color 0.2s, color 0.2s;
 
   &:hover {
-    background: rgba(212, 162, 78, 0.14);
-    border-color: rgba(212, 162, 78, 0.4);
-    color: $color-gold;
+    background: $color-card;
+    border-color: $color-primary;
+    color: $color-primary;
   }
 
   &:active {
-    background: $color-gold-soft;
-    border-color: $color-gold;
-    color: $color-gold;
+    background: $color-card;
+    border-color: $color-primary;
+    color: $color-primary;
   }
 }
 
 .ai-arrow {
   z-index: 1;
-  color: $color-gold;
+  color: $color-primary;
   flex-shrink: 0;
   display: flex;
   align-items: center;

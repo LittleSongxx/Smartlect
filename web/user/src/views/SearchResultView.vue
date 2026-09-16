@@ -78,6 +78,7 @@ import {
 } from '@/utils/productSort';
 import { toast } from '@/utils/toast';
 import { usePageRefresh } from '@/composables/pullRefresh';
+import { ProductQueryError, normalizePriceRange } from '@/utils/productQuery';
 
 const router = useRouter();
 const route = useRoute();
@@ -178,12 +179,14 @@ const loadMore = async () => {
   loadError.value = '';
   try {
     const next = pageNo.value + 1;
+    // 搜索框的价格同样不能原样转给 Java
+    const range = normalizePriceRange(query.priceFrom, query.priceTo);
     const r = await productApi.searchProducts({
       keyWords,
       pageNo: next,
       categoryId: searchStore.payload.categoryId || undefined,
-      priceFrom: query.priceFrom || undefined,
-      priceTo: query.priceTo || undefined,
+      priceFrom: range.priceFrom,
+      priceTo: range.priceTo,
       sortKey: query.sortKey || undefined,
       sortDirection: query.sortDirection || undefined
     });
@@ -195,7 +198,10 @@ const loadMore = async () => {
     total.value = r?.totalCount ?? list.value.length;
     finished.value = pageNo.value >= pageTotal.value;
   } catch (e: any) {
-    loadError.value = e?.info || e?.message || '搜索失败，请稍后重试';
+    loadError.value = e instanceof ProductQueryError
+      ? e.message
+      : e?.info || e?.message || '搜索失败，请稍后重试';
+    if (e instanceof ProductQueryError) finished.value = true;
   } finally {
     loadingMore.value = false;
     loading.value = false;

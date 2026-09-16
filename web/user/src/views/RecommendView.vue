@@ -114,8 +114,8 @@ onUnmounted(() => observer?.disconnect());
 .page-header {
   margin: 0;
   padding: 16px;
-  background: linear-gradient(135deg, $color-gold-soft 0%, rgba($color-gold, 0.06) 100%);
-  border: 1px solid rgba($color-gold, 0.15);
+  background: $color-primary-soft;
+  border: 1px solid $color-primary-muted;
 
   .page-title {
     margin: 0 0 4px;

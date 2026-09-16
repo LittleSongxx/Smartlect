@@ -286,7 +286,7 @@ html[data-platform='desktop'] {
       flex-shrink: 0;
       font-size: 20px;
       font-weight: 700;
-      color: $color-gold;
+      color: $color-price;
     }
   }
 
@@ -387,7 +387,7 @@ html[data-platform='desktop'] {
     transition: border-color $transition-fast, box-shadow $transition-fast;
 
     &:hover {
-      border-color: $color-gold-muted;
+      border-color: $color-primary-muted;
       box-shadow: $shadow-card;
     }
 
@@ -462,9 +462,9 @@ html[data-platform='desktop'] {
 
     a {
       font-size: 12px;
-      color: $color-gold !important;
+      color: $color-primary !important;
       border-radius: $radius-pill;
-      background: $color-gold-soft;
+      background: $color-primary-soft;
       padding: 4px 12px;
       text-decoration: none;
 
@@ -479,7 +479,7 @@ html[data-platform='desktop'] {
       margin-right: 3px;
 
       &.gold {
-        color: $color-gold;
+        color: $level-gold;
       }
     }
   }
@@ -493,7 +493,7 @@ html[data-platform='desktop'] {
     border: none;
     border-top: 1px solid $color-border-light;
     border-bottom: 1px solid $color-border-light;
-    background: $color-gold-soft;
+    background: $color-primary-soft;
     color: $color-primary;
     font-size: 13px;
     cursor: pointer;
@@ -508,7 +508,7 @@ html[data-platform='desktop'] {
     }
 
     &:hover {
-      background: $color-gold-muted;
+      background: $color-primary-muted;
     }
   }
 
@@ -566,7 +566,7 @@ html[data-platform='desktop'] {
       font-weight: 700;
       color: $color-text-primary;
       padding-left: 8px;
-      border-left: 3px solid $color-gold;
+      border-left: 3px solid $color-primary;
     }
 
     .sl-feed-grid {
@@ -584,7 +584,7 @@ html[data-platform='desktop'] {
       transition: border-color $transition-fast, box-shadow $transition-fast;
 
       &:hover {
-        border-color: $color-gold-muted;
+        border-color: $color-primary-muted;
         box-shadow: $shadow-card;
       }
     }
@@ -725,7 +725,7 @@ html[data-platform='desktop'] {
 
         &:hover,
         &.select {
-          color: $color-gold;
+          color: $color-primary;
         }
       }
     }

@@ -241,7 +241,7 @@ const submit = async () => {
     right: 28px;
     bottom: 0;
     height: 2px;
-    background: linear-gradient(90deg, $color-gold, transparent 70%);
+    background: linear-gradient(90deg, $color-primary, transparent 70%);
   }
 
   .brand-mark {
@@ -265,7 +265,7 @@ const submit = async () => {
     font-size: 13px;
     font-weight: 600;
     letter-spacing: 0;
-    color: $color-gold;
+    color: $color-primary;
   }
 
   .brand-tip {

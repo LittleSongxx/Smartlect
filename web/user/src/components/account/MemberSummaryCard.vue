@@ -40,9 +40,9 @@ const growthHint = computed(() =>
 );
 const growthBarColor = computed(() => {
   const code = Number(props.profile?.levelCode ?? 1);
-  if (code >= 3) return '#c9a962';
-  if (code >= 2) return '#a8a8ad';
-  return '#c9a962';
+  if (code >= 3) return 'var(--level-gold)';
+  if (code >= 2) return 'var(--level-silver)';
+  return 'var(--level-gold)';
 });
 
 const cardLevelClass = computed(() => {
@@ -56,16 +56,16 @@ const badgeStyle = computed(() => {
   const code = Number(props.profile?.levelCode ?? 1);
   if (code >= 3) {
     return {
-      background: 'linear-gradient(135deg, #e8c96a 0%, #c9a962 100%)',
+      background: 'var(--level-gold)',
       color: '#fff',
-      border: '1px solid rgba(201, 169, 98, 0.45)'
+      border: '1px solid var(--level-gold)'
     };
   }
   if (code >= 2) {
     return {
-      background: 'linear-gradient(135deg, #d4d4d8 0%, #a8a8ad 100%)',
+      background: 'var(--level-silver)',
       color: '#fff',
-      border: '1px solid rgba(168, 168, 173, 0.4)'
+      border: '1px solid var(--level-silver)'
     };
   }
   return {

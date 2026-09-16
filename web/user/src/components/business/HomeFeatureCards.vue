@@ -34,16 +34,8 @@ const featureItems = ref([
   { icon: Discount, label: '优惠券', path: '/coupons', badge: '', isAnchor: false },
 ]);
 
-const iconColor = computed(() => {
-  const level = authStore.memberLevelCode;
-  if (level >= 3) {
-    return '#B8860B';
-  }
-  if (level >= 2) {
-    return '#757575';
-  }
-  return '#FF5000';
-});
+// 等级差异由会员中心承担，入口图标统一用主色（原先按等级切橙/金/灰三套硬编码色）
+const iconColor = computed(() => 'var(--primary)');
 
 const handleClick = (item: { path: string; isAnchor: boolean }) => {
   if (item.isAnchor) {
@@ -107,7 +99,7 @@ const handleClick = (item: { path: string; isAnchor: boolean }) => {
   right: 6px;
   padding: 1px 5px;
   border-radius: $radius-pill;
-  background: $color-gold-soft;
+  background: $color-price-soft;
   font-size: 10px;
   font-weight: 700;
   color: $color-price;

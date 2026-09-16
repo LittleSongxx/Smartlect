@@ -10,7 +10,7 @@
   --ios-fill-elevated: #ffffff;
   --ios-separator: rgba(60, 60, 67, 0.1);
   --ios-hero-bg: #{$color-primary};
-  --ios-page-bg: #{$color-page};
+  --ios-page-bg: #{$color-bg};
 }
 
 @mixin ios-surface-card {

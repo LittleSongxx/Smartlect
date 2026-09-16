@@ -37,9 +37,10 @@ const props = withDefaults(
   { variant: 'default' }
 );
 
-const tileColor = computed(() => (props.variant === 'light' ? '#ffffff' : '#FF5000'));
-const checkColor = computed(() => (props.variant === 'light' ? '#FF5000' : '#ffffff'));
-const sparkColor = computed(() => (props.variant === 'light' ? '#FFD200' : '#FFF3B0'));
+// 品牌色与管理端同一个 token（动作蓝），不再单独用橙色
+const tileColor = computed(() => (props.variant === 'light' ? '#ffffff' : 'var(--primary)'));
+const checkColor = computed(() => (props.variant === 'light' ? 'var(--primary)' : '#ffffff'));
+const sparkColor = computed(() => (props.variant === 'light' ? 'var(--primary-soft)' : '#ffffff'));
 </script>
 
 <style scoped lang="scss">

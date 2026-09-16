@@ -580,7 +580,7 @@ onMounted(() => {
     }
 
     &:focus-visible {
-      outline: 2px solid $color-gold;
+      outline: 2px solid $color-primary;
       outline-offset: 2px;
     }
   }

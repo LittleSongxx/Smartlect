@@ -337,15 +337,15 @@ onUnmounted(() => observer?.disconnect());
     }
 
     &.level-silver {
-      background: linear-gradient(135deg, #d0d0d0, #b0b0b5);
-      color: #fff;
-      border: 1px solid #a8a8ad;
+      background: $level-silver-soft;
+      color: $level-silver;
+      border: 1px solid $level-silver;
     }
 
     &.level-gold {
-      background: $color-accent-gradient-gold;
-      color: #fff;
-      border: 1px solid $color-gold;
+      background: $level-gold-soft;
+      color: $level-gold;
+      border: 1px solid $level-gold;
     }
   }
 

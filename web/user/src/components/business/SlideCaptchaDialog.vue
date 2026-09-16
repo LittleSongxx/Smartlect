@@ -400,8 +400,8 @@ defineExpose({ open });
   display: grid;
   place-items: center;
   border-radius: 8px;
-  color: $color-gold;
-  background: linear-gradient(145deg, $color-gold-soft, #fff);
+  color: $color-primary;
+  background: $color-primary-soft;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
   svg {
@@ -529,7 +529,7 @@ defineExpose({ open });
     height: 48px;
     border-radius: 50%;
     border: 3px solid rgba(255, 255, 255, 0.12);
-    border-top-color: $color-gold;
+    border-top-color: $color-primary;
     animation: spin 0.8s linear infinite;
   }
 }
@@ -615,7 +615,7 @@ defineExpose({ open });
   top: 0;
   bottom: 0;
   border-radius: 23px 0 0 23px;
-  background: linear-gradient(90deg, rgba($color-gold, 0.25), rgba($color-gold, 0.08));
+  background: linear-gradient(90deg, rgba($color-primary, 0.22), rgba($color-primary, 0.07));
   pointer-events: none;
   transition: width 0.05s linear;
 }

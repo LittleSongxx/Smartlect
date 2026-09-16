@@ -33,6 +33,14 @@
       <div class="section-divider" />
 
       <section class="form-section">
+        <p class="section-title">账号</p>
+        <p class="readonly-value">{{ accountEmail || '未绑定账号' }}</p>
+        <p class="hint">登录账号不可修改</p>
+      </section>
+
+      <div class="section-divider" />
+
+      <section class="form-section">
         <p class="section-title">性别</p>
         <el-radio-group v-model="form.sex" class="sex-group">
           <el-radio :value="0">女</el-radio>
@@ -64,9 +72,12 @@ const uploading = ref(false);
 const fileInputRef = ref<HTMLInputElement>();
 const cropperDialogRef = ref<InstanceType<typeof AvatarCropperDialog>>();
 const form = reactive<any>({ nickName: '', sex: 2, avatar: '' });
+const accountEmail = ref('');
 
 const load = async () => {
-  Object.assign(form, await accountApi.getUserInfo());
+  const info = await accountApi.getUserInfo();
+  Object.assign(form, info);
+  accountEmail.value = info?.email || '';
 };
 
 const pickAvatar = () => {
@@ -165,6 +176,13 @@ onMounted(load);
     font-size: 12px;
     color: $color-text-muted;
   }
+}
+
+.readonly-value {
+  margin: 0;
+  font-size: 14px;
+  color: $color-text-title;
+  word-break: break-all;
 }
 
 .file-input {

@@ -163,12 +163,8 @@ const router = createRouter({
       { title: '设置', requiresAuth: true },
       () => import('@/views/pc/PcAccountManageView.vue')
     ),
-    subPage(
-      '/account/profile',
-      () => import('@/views/AccountProfileView.vue'),
-      { title: '个人资料', requiresAuth: true },
-      () => import('@/views/pc/PcAccountProfileView.vue')
-    ),
+    // 个人资料页已并入"修改个人信息"（同字段的只读视图，重复），旧链接重定向
+    { path: '/account/profile', redirect: { path: '/account/settings' } },
     subPage('/account/settings', () => import('@/views/AccountSettingsView.vue'), {
       title: '修改个人信息',
       requiresAuth: true

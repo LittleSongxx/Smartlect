@@ -174,7 +174,7 @@ body,
 }
 
 .el-tag--warning {
-  --el-tag-bg-color: #{$color-gold-soft};
-  --el-tag-border-color: #{$color-gold-muted};
-  --el-tag-text-color: #{$color-gold};
+  --el-tag-bg-color: #{$color-warning-soft};
+  --el-tag-border-color: #{$color-warning-border};
+  --el-tag-text-color: #{$color-warning};
 }

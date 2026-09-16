@@ -70,6 +70,8 @@ import {
 } from '@/utils/productSort';
 import { findCategoryInTree, findParentCategory, storefrontCategoryTree } from '@/utils/category';
 import { usePageRefresh } from '@/composables/pullRefresh';
+import { toast } from '@/utils/toast';
+import { ProductQueryError, normalizePriceRange } from '@/utils/productQuery';
 
 const route = useRoute();
 const router = useRouter();
@@ -212,11 +214,13 @@ const loadMore = async () => {
   loadingMore.value = true;
   try {
     const next = pageNo.value + 1;
+    // 手改链接/输入框里的价格先判掉，非法值不转给 Java
+    const range = normalizePriceRange(filter.priceFrom, filter.priceTo);
     const r = await productApi.loadProduct({
       pageNo: next,
       categoryId: queryCategoryId.value,
-      priceFrom: filter.priceFrom.trim() || undefined,
-      priceTo: filter.priceTo.trim() || undefined,
+      priceFrom: range.priceFrom,
+      priceTo: range.priceTo,
       sortKey: filter.sortKey || undefined,
       sortDirection: filter.sortDirection || undefined
     });
@@ -227,6 +231,11 @@ const loadMore = async () => {
     pageTotal.value = r?.pageTotal ?? pageNo.value;
     total.value = r?.totalCount ?? list.value.length;
     finished.value = pageNo.value >= pageTotal.value;
+  } catch (reason) {
+    if (reason instanceof ProductQueryError) {
+      toast.warning(reason.message);
+      finished.value = true;
+    }
   } finally {
     loadingMore.value = false;
   }

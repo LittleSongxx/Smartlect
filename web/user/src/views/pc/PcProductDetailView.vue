@@ -566,7 +566,7 @@ const openReport = (payload: { orderId: string; commentContent?: string }) => {
   &.active {
     border-color: $color-primary;
     color: $color-primary;
-    background: $color-gold-soft;
+    background: $color-primary-soft;
   }
 
   &:hover:not(.active) {
@@ -671,9 +671,9 @@ const openReport = (payload: { orderId: string; commentContent?: string }) => {
     font-size: 16px;
     font-weight: 600;
     border-radius: $radius-xs;
-    --el-button-bg-color: #FF5000;
+    --el-button-bg-color: #{$color-primary};
     --el-button-text-color: #fff;
-    --el-button-border-color: #FF5000;
+    --el-button-border-color: #{$color-primary};
     --el-button-hover-bg-color: #FF4400;
     --el-button-hover-text-color: #fff;
     --el-button-hover-border-color: #FF4400;
@@ -769,18 +769,18 @@ const openReport = (payload: { orderId: string; commentContent?: string }) => {
     border-radius: 2px;
 
     &.level-gold {
-      color: #B8860B;
-      background: rgba(184, 134, 11, 0.1);
+      color: $level-gold;
+      background: $level-gold-soft;
     }
 
     &.level-silver {
-      color: #757575;
-      background: rgba(117, 117, 117, 0.1);
+      color: $level-silver;
+      background: $level-silver-soft;
     }
 
     &.level-normal {
-      color: #9E9E9E;
-      background: rgba(158, 158, 158, 0.1);
+      color: $level-base;
+      background: $level-base-soft;
     }
   }
 

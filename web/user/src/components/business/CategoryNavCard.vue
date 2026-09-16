@@ -66,6 +66,9 @@ onMounted(async () => {
   scrollbar-width: none;
   -ms-overflow-style: none;
   padding: 2px 0 0;
+  // 隐藏滚动条后没有可滚动提示，右缘渐隐一屏宽以示"还能往右滑"
+  mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent 100%);
 
   &::-webkit-scrollbar {
     display: none;

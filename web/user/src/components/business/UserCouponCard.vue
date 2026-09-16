@@ -98,9 +98,9 @@ defineProps<{ coupon: Record<string, any> }>();
     font-size: 11px;
     padding: 2px 8px;
     border-radius: $radius-pill;
-    background: $color-gold-soft;
-    border: 1px solid $color-gold-muted;
-    color: $color-gold;
+    background: $color-price-soft;
+    border: 1px solid $color-price-soft;
+    color: $color-price;
   }
 
   .time-line,

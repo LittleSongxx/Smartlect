@@ -512,7 +512,7 @@ const switchToReviews = () => {
 
 const loadMoreComments = () => loadComments(false);
 
-const goProfile = () => router.push('/account/profile');
+const goProfile = () => router.push('/account/settings');
 const goProduct = (p: any) => {
   if (p?.productId) router.push(`/product/${p.productId}`);
 };
@@ -634,15 +634,15 @@ usePageRefresh(refreshPage);
     }
 
     &.level-silver {
-      background: linear-gradient(135deg, #d4d4d8, #a8a8ad);
+      background: $level-silver;
       color: #fff;
-      border: 1px solid rgba(168, 168, 173, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.35);
     }
 
     &.level-gold {
-      background: linear-gradient(135deg, #e8c96a, #c9a962);
+      background: $level-gold;
       color: #fff;
-      border: 1px solid rgba(201, 169, 98, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.35);
     }
   }
 
@@ -674,7 +674,7 @@ usePageRefresh(refreshPage);
 
   .exp-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, #ffd700, #c9a962);
+    background: linear-gradient(90deg, $level-gold-soft, $level-gold);
     border-radius: 3px;
     transition: width 0.6s ease;
   }

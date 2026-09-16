@@ -9,9 +9,6 @@ $color-primary-active: ds.$color-primary-hover;
 $color-primary-soft: ds.$color-primary-soft;
 $color-primary-muted: ds.$color-primary-muted;
 
-$color-gold: ds.$color-price;
-$color-gold-soft: ds.$color-price-soft;
-$color-gold-muted: ds.$color-price-soft;
 $color-search-btn: ds.$color-primary;
 $color-search-btn-text: #ffffff;
 $color-silver: ds.$color-text-2;
@@ -22,6 +19,13 @@ $color-accent-gradient-gold: ds.$grad-commerce;
 $color-emphasis: ds.$color-text;
 $color-price: ds.$color-price;
 $color-price-soft: ds.$color-price-soft;
+
+$level-gold: ds.$level-gold;
+$level-gold-soft: ds.$level-gold-soft;
+$level-silver: ds.$level-silver;
+$level-silver-soft: ds.$level-silver-soft;
+$level-base: ds.$level-base;
+$level-base-soft: ds.$level-base-soft;
 
 $color-success: ds.$color-success;
 $color-success-soft: #F0FDF4;
@@ -122,7 +126,9 @@ $pc-detail-info-min-width: 400px;
 $pc-home-main-max-width: 1190px;
 $footer-height: 80px;
 $mobile-tab-height: 62px;
-$mobile-tab-reserved: 8px;
+// 悬浮 tab 栏会盖住内容：预留量取实测栏高（MobileTabBar 写入 --mobile-tab-stack-height），
+// 早先写死 8px 会让"我的"等 tab 页最后一两行被栏体挡住点不到
+$mobile-tab-reserved: calc(var(--mobile-tab-stack-height, #{$mobile-tab-height + 12px}) + 8px);
 $z-index-float-agent: 10000;
 $z-index-agent-composer: 1200;
 

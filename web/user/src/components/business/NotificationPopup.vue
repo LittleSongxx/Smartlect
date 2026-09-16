@@ -369,7 +369,7 @@ defineExpose({ show });
   }
 
   &--member {
-    background: linear-gradient(160deg, #ffd426 0%, #c9a962 100%);
+    background: linear-gradient(160deg, $level-gold-soft 0%, $level-gold 100%);
   }
 
   &--sign {
