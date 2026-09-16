@@ -1,77 +1,81 @@
+// 颜色/圆角/阴影统一来自 web/shared/design-tokens.scss；本文件只做「历史变量名 → 共享 token」
+// 的取值映射，外加本端特有的尺寸与断点。:root 变量由 global.scss 统一 emit 一次。
+@use '@tokens' as ds;
 
-$color-primary: #FF5000;
-$color-primary-hover: #FF4400;
-$color-primary-active: #E13C00;
-$color-primary-soft: #FFF1E8;
-$color-primary-muted: rgba(255, 80, 0, 0.10);
 
-$color-gold: #E67E00;
-$color-gold-soft: #FFF8D6;
-$color-gold-muted: rgba(255, 210, 0, 0.28);
-$color-search-btn: #FFD200;
-$color-search-btn-text: #333333;
-$color-silver: #64748B;
-$color-silver-soft: #F1F5F9;
-$color-accent-gradient: linear-gradient(90deg, #FF5000 0%, #FF8800 55%, #FFD200 100%);
-$color-accent-gradient-gold: linear-gradient(90deg, #FF8800 0%, #FFD200 100%);
+$color-primary: ds.$color-primary;
+$color-primary-hover: ds.$color-primary-hover;
+$color-primary-active: ds.$color-primary-hover;
+$color-primary-soft: ds.$color-primary-soft;
+$color-primary-muted: ds.$color-primary-muted;
 
-$color-emphasis: #17202A;
-$color-price: #FF5000;
-$color-price-soft: #FFF1E8;
+$color-gold: ds.$color-price;
+$color-gold-soft: ds.$color-price-soft;
+$color-gold-muted: ds.$color-price-soft;
+$color-search-btn: ds.$color-primary;
+$color-search-btn-text: #ffffff;
+$color-silver: ds.$color-text-2;
+$color-silver-soft: ds.$color-primary-soft;
+$color-accent-gradient: ds.$grad-cta;
+$color-accent-gradient-gold: ds.$grad-commerce;
 
-$color-success: #16A34A;
+$color-emphasis: ds.$color-text;
+$color-price: ds.$color-price;
+$color-price-soft: ds.$color-price-soft;
+
+$color-success: ds.$color-success;
 $color-success-soft: #F0FDF4;
 $color-success-border: rgba(22, 163, 74, 0.24);
 
-$color-error: #DC2626;
+$color-error: ds.$color-danger;
 $color-error-soft: #FEF2F2;
 $color-error-border: rgba(220, 38, 38, 0.22);
 
-$color-warning: #D97706;
+$color-warning: #d97706;
 $color-warning-soft: #FFFBEB;
 $color-warning-border: rgba(217, 119, 6, 0.24);
 
-$color-info: #2563EB;
-$color-info-soft: #EFF6FF;
-$color-info-border: rgba(37, 99, 235, 0.20);
+$color-info: ds.$color-primary;
+$color-info-soft: ds.$color-primary-soft;
+$color-info-border: ds.$color-primary-muted;
 
-$color-bg: #F5F5F5;
-$color-bg-pink: #FFF3F0;
-$color-bg-subtle: #F5F5F5;
-$color-cat-hover-bg: #FFF7E8;
-$color-border-gray: #E5E5E5;
-$color-text-primary: #17202A;
-$color-primary-hover-bright: #FF8800;
+$color-bg: ds.$color-page;
+$color-bg-pink: ds.$color-price-soft;
+$color-bg-subtle: ds.$color-page;
+$color-cat-hover-bg: ds.$color-primary-soft;
+$color-border-gray: ds.$color-border;
+$color-text-primary: ds.$color-text;
+$color-primary-hover-bright: ds.$color-primary-hover;
 $color-topbar-start: #FFFFFF;
 $color-topbar-end: #F5F5F5;
 $color-card: #FFFFFF;
 $color-elevated: #FFFFFF;
-$color-surface-inset: #EEF3F5;
+$color-surface-inset: ds.$color-surface-soft;
 
-$color-text-title: #17202A;
-$color-text-body: #4B5B63;
-$color-text-muted: #73848C;
+$color-text-title: ds.$color-text;
+$color-text-body: ds.$color-text-2;
+$color-text-muted: ds.$color-text-2;
 $color-text-secondary: $color-text-muted;
-$color-text-disabled: #A8B4BA;
-$color-border: #E8E8E8;
-$color-border-light: #F0F0F0;
-$color-footer-bg: #F5F5F5;
-$color-tab-inactive: #73848C;
+$color-text-disabled: ds.$color-text-3;
+$color-border: ds.$color-border;
+$color-border-light: ds.$color-border-soft;
+$color-footer-bg: ds.$color-page;
+$color-tab-inactive: ds.$color-text-2;
 
 $radius-xs: 4px;
 $radius-sm: 6px;
-$radius-card: 8px;
-$radius-btn: 6px;
-$radius-tag: 6px;
-$radius-search: 8px;
+$radius-card: ds.$radius;
+$radius-btn: ds.$radius-sm;
+$radius-tag: ds.$radius-sm;
+$radius-search: ds.$radius;
 $radius-pill: 999px;
 $radius-app-shell: 0;
 
 $shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.04);
-$shadow-card: 0 2px 16px rgba(0, 0, 0, 0.05);
+$shadow-card: ds.$shadow-card;
 $shadow-card-hover: 0 8px 30px rgba(0, 0, 0, 0.08);
 $shadow-nav: 0 1px 0 rgba(0, 0, 0, 0.05);
-$shadow-float: 0 6px 28px rgba(0, 0, 0, 0.09);
+$shadow-float: ds.$shadow-hero;
 $shadow-app-bar: none;
 $shadow-tab-bar: 0 -1px 0 rgba(0, 0, 0, 0.05);
 

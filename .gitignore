@@ -32,3 +32,6 @@ web/admin/BROWSER_CHECK.md
 *.log
 *.pyc
 **/.evaluate.lock
+
+# ZCode 会话产物（计划/临时）
+.zcode/

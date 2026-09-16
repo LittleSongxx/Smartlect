@@ -1,4 +1,5 @@
-@use 'tokens';
+// 设计 token 的 :root 变量在管理端只此处 emit 一次（模块由 vite additionalData 以 ds 命名空间注入）
+@include ds.tokens-root;
 
 ::-webkit-scrollbar {
     width: 8px;

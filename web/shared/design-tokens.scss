@@ -1,0 +1,160 @@
+// Smartlect 前端**唯一**设计 token 源：web/admin 与 web/user 共用这一份。
+//
+// 取值来自参考项目 Smartore 的设计语言（平面卡片 + 细边框 + 8px 圆角 + 无阴影），
+// 两端只靠变量取值区分，不各自新建平行体系。规则：
+//   1) 新增颜色/圆角/阴影/字号一律先加到这里，页面里不再出现裸 hex；
+//   2) 运行期用 CSS 变量（var(--x)），编译期用 SCSS 变量（$x），两者在本文件成对出现；
+//   3) 各端只在一个入口 include `tokens-root`，var(--x) 全局可用。
+
+// ── 颜色：动作与品牌 ────────────────────────────────────────────────────────
+$color-primary: #2563eb; // 主操作（按钮/链接/导航激活）
+$color-primary-hover: #1d4ed8;
+$color-primary-soft: #eff6ff; // 导航激活底、信息块底
+$color-primary-muted: rgba(37, 99, 235, 0.14);
+$color-money: #0f766e; // 金额、正向指标
+$color-money-soft: #ecfdf5;
+$color-price: #f5533d; // 价格、促销、折扣
+$color-price-soft: #fff3f0;
+$color-success: #16a34a;
+$color-danger: #dc2626;
+$color-danger-hover: #b91c1c;
+$color-warning: #faad14;
+
+// ── 颜色：文本与表面 ────────────────────────────────────────────────────────
+$color-text: #172033;
+$color-text-2: #64748b;
+$color-text-3: #94a3b8;
+$color-page: #f5f7fa;
+$color-surface: #ffffff;
+$color-surface-soft: #f8fafc;
+$color-border: #e5e7eb;
+$color-border-soft: #eceff5;
+$color-header-border: #e8ecf1;
+
+// ── 圆角 / 阴影 / 字体 ──────────────────────────────────────────────────────
+$radius-lg: 12px;
+$radius: 8px;
+$radius-sm: 6px;
+$radius-pill: 999px;
+$shadow-header: 0 1px 3px rgba(0, 0, 0, 0.05);
+$shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
+$shadow-hero: 0 28px 80px rgba(25, 43, 72, 0.16);
+$font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue',
+    'Microsoft YaHei', '微软雅黑', sans-serif;
+$font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+// ── 字号 / 尺寸 ─────────────────────────────────────────────────────────────
+$fs-page-title: 22px;
+$fs-section-title: 18px;
+$fs-body: 14px;
+$fs-sm: 13px;
+$fs-xs: 12px;
+$header-h: 60px;
+$sidebar-w: 220px;
+$menu-row-h: 50px;
+$page-gutter: 16px;
+
+// ── 渐变（登录/引导页等暗色展示面）────────────────────────────────────────────
+$grad-cta: linear-gradient(100deg, #149aad, #2479c9);
+$grad-hero: linear-gradient(145deg, #081421 0%, #0c2230 58%, #0c2d3d 100%);
+$grad-commerce: linear-gradient(120deg, #ff6a5e, #ff9068);
+
+// ── 页面范式：页头卡片 + 卡片规格（两端一致）─────────────────────────────────
+$page-heading-padding: 20px 22px;
+$page-heading-gap: 12px;
+
+@mixin tokens-root {
+    :root {
+        --primary: #{$color-primary};
+        --primary-hover: #{$color-primary-hover};
+        --primary-soft: #{$color-primary-soft};
+        --primary-muted: #{$color-primary-muted};
+        --money: #{$color-money};
+        --money-soft: #{$color-money-soft};
+        --price: #{$color-price};
+        --price-soft: #{$color-price-soft};
+        --success: #{$color-success};
+        --danger: #{$color-danger};
+        --warning: #{$color-warning};
+
+        --text: #{$color-text};
+        --text-2: #{$color-text-2};
+        --text-3: #{$color-text-3};
+        --page-bg: #{$color-page};
+        --surface: #{$color-surface};
+        --surface-soft: #{$color-surface-soft};
+        --border: #{$color-border};
+        --border-soft: #{$color-border-soft};
+        --header-border: #{$color-header-border};
+
+        --card-radius: #{$radius};
+        --radius-sm: #{$radius-sm};
+        --radius-pill: #{$radius-pill};
+        --shadow-header: #{$shadow-header};
+        --shadow-card: #{$shadow-card};
+
+        --el-font-family: #{$font-family};
+        --mono-font: #{$font-mono};
+        --detail-bg: #{$color-surface-soft};
+        --detail-fs: #{$fs-xs};
+
+        // 兼容既有页面的历史别名（值收敛到上面的调色板）
+        --link: #{$color-primary};
+        --link2: #{$color-primary-hover};
+        --green: #{$color-success};
+        --red: #{$color-danger};
+        --pink: #{$color-price-soft};
+        --gold: #{$color-primary};
+        --gold-soft: #{$color-primary-soft};
+        --gold-muted: #{$color-primary-muted};
+        // 强调色（Layout 导航条/圆点、登录页）：与主操作同色，不再单独一套
+        --accent: #{$color-primary};
+        --accent-hover: #{$color-primary-hover};
+        --accent-soft: #{$color-primary-soft};
+        --accent-muted: #{$color-primary-muted};
+        --shadow-sm: 0 1px 2px rgba(23, 32, 42, 0.04);
+        --shadow-float: #{$shadow-hero};
+        --page-bg-end: #{$color-page};
+        --surface-elevated: #{$color-surface};
+        // 侧边栏（浅色，2026-09 对齐 Smartore）：激活项是浅蓝底 + 蓝字
+        --sidebar-bg: #{$color-surface};
+        --sidebar-bg-end: #{$color-surface};
+        --sidebar-text: #{$color-text-2};
+        --sidebar-text-muted: #{$color-text-3};
+        --sidebar-text-active: #{$color-primary};
+        --sidebar-hover: #{$color-page};
+        --sidebar-active-bg: #{$color-primary-soft};
+    }
+}
+
+/// 统一卡片：白底 + 细边框 + 8px 圆角 + 无阴影（Smartore 的平面卡片）
+@mixin card-surface($padding: 16px) {
+    background: $color-surface;
+    border: 1px solid $color-border;
+    border-radius: $radius;
+    padding: $padding;
+}
+
+/// 统一页头：标题 22px + 一句职责说明，右侧操作
+@mixin page-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: $page-heading-gap;
+    padding: $page-heading-padding;
+    border-radius: $radius;
+    background: $color-surface;
+    border: 1px solid $color-border;
+
+    h2 {
+        margin: 0;
+        font-size: $fs-page-title;
+        color: $color-text;
+    }
+
+    p {
+        margin: 8px 0 0;
+        color: $color-text-2;
+    }
+}

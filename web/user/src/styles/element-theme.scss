@@ -10,12 +10,12 @@
   --eshop-shadow: #{$shadow-card};
 
   --el-color-primary: #{$color-primary};
-  --el-color-primary-light-3: #FF8A4C;
-  --el-color-primary-light-5: #FFB088;
-  --el-color-primary-light-7: #FFD0B3;
-  --el-color-primary-light-8: #FFE4D4;
-  --el-color-primary-light-9: #FFF4ED;
-  --el-color-primary-dark-2: #{$color-primary-active};
+  --el-color-primary-light-3: #{mix(#fff, ds.$color-primary, 30%)};
+  --el-color-primary-light-5: #{mix(#fff, ds.$color-primary, 50%)};
+  --el-color-primary-light-7: #{mix(#fff, ds.$color-primary, 70%)};
+  --el-color-primary-light-8: #{mix(#fff, ds.$color-primary, 80%)};
+  --el-color-primary-light-9: #{mix(#fff, ds.$color-primary, 90%)};
+  --el-color-primary-dark-2: #{ds.$color-primary-hover};
 
   --el-color-success: #{$color-success};
   --el-color-warning: #{$color-warning};

@@ -12,7 +12,7 @@
   --ios-fill-muted: #eef3f5;
   --ios-fill-elevated: #ffffff;
   --ios-separator: rgba(60, 60, 67, 0.1);
-  --ios-hero-bg: #FF5000;
+  --ios-hero-bg: #{$color-primary};
   --ios-page-bg: #f4f7f8;
 }
 

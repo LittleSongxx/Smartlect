@@ -19,19 +19,24 @@
 @use './address-form';
 @use './assistant-pages';
 
+// 设计 token 的 :root 变量在本端只 emit 一次（入口由 main.ts 直接 import，ds 由 additionalData 注入）
+@include ds.tokens-root;
+
 :root {
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-bg-light: rgba(255, 255, 255, 0.52);
-  --glass-bg-strong: rgba(255, 255, 255, 0.85);
-  --glass-bg-header: #fff;
-  --glass-border: rgba(255, 255, 255, 0.75);
-  --glass-border-soft: rgba(0, 0, 0, 0.06);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.03);
-  --glass-shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.05);
-  --glass-shadow-hover: 0 12px 40px rgba(0, 0, 0, 0.09), 0 4px 12px rgba(0, 0, 0, 0.04);
-  --glass-blur: saturate(180%) blur(24px);
-  --glass-blur-sm: saturate(160%) blur(14px);
-  --glass-page-bg: var(--ios-page-bg);
+  // 2026-09 去玻璃化：外壳与卡片改为平面（白底 + 1px 细边 + 8px 圆角，无模糊无投影），
+  // 与 web/admin 统一。保留变量名以免动到 20+ 处消费点。
+  --glass-bg: var(--surface);
+  --glass-bg-light: var(--surface);
+  --glass-bg-strong: var(--surface);
+  --glass-bg-header: var(--surface);
+  --glass-border: var(--border);
+  --glass-border-soft: var(--border-soft);
+  --glass-shadow: none;
+  --glass-shadow-sm: none;
+  --glass-shadow-hover: none;
+  --glass-blur: none;
+  --glass-blur-sm: none;
+  --glass-page-bg: var(--page-bg);
 
   --m-radius: 8px;
   --m-radius-sm: 6px;
@@ -734,7 +739,7 @@ select {
     padding: 16px;
   }
   .auth-page.ignore .auth-brand {
-    background: var(--ios-hero-bg, #FF5000);
+    background: var(--ios-hero-bg, var(--primary));
     padding: 24px 20px;
   }
 

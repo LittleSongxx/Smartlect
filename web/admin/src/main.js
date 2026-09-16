@@ -1,9 +1,11 @@
 import '@/utils/randomUUIDPolyfill';
+// 样式导入顺序有语义：Element Plus 的 dist 必须先于应用样式加载，否则本应用对
+// `.el-button--primary` / `.el-table` 等组件的覆盖会在同特异性下被 EP 默认值反超，
+// 具体表现是移动端后台回落到 Element 默认蓝、表格与按钮失去品牌色。
+import 'element-plus/dist/index.css'
 import "@/assets/icon/iconfont.css"
 import '@/assets/base.scss';
-import '@/assets/smartlect-admin.scss';
-import '@/assets/smartlect-admin-layout.scss';
-import '@/assets/desktop-admin.scss';
+import '@/assets/theme.scss';
 import '@/assets/growth-console.scss';
 import '@/assets/mobile-glass.scss';
 import '@/assets/mobile-page.scss';
@@ -17,7 +19,6 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
 
 import Request from "@/utils/Request"
 import Message from "@/utils/Message"

@@ -44,7 +44,6 @@
     <div class="right">
       <header class="top">
         <div class="top-main">
-          <h1 class="page-title">{{ pageTitle }}</h1>
           <el-breadcrumb separator="/" class="breadcrumb">
             <el-breadcrumb-item v-for="item in route.meta.itemList" :key="item">
               {{ item }}
@@ -180,13 +179,6 @@ onMounted(async () => {
   }
 })
 
-const pageTitle = computed(() => {
-  const list = route.meta.itemList
-  if (Array.isArray(list) && list.length) {
-    return list[list.length - 1]
-  }
-  return '工作台'
-})
 
 const isMenuActive = (item) => {
   if (item.path && route.path === item.path) return true
@@ -334,13 +326,12 @@ const switchToMobile = () => {
   .left-side {
     position: relative;
     flex-shrink: 0;
-    width: 248px;
+    width: 220px;
     height: 100%;
     min-height: 0;
     overflow: hidden;
-    background: linear-gradient(185deg, var(--sidebar-bg) 0%, var(--sidebar-bg-end) 100%);
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
 
     .sidebar-glow {
       display: none;
@@ -355,9 +346,9 @@ const switchToMobile = () => {
       overscroll-behavior: contain;
 
       .logo {
-        padding: 22px 18px 18px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        margin-bottom: 10px;
+        padding: 18px 16px 16px;
+        border-bottom: 1px solid var(--border-soft);
+        margin-bottom: 8px;
 
         .logo-row {
           display: flex;
@@ -366,8 +357,8 @@ const switchToMobile = () => {
         }
 
         .logo-mark {
-          width: 36px;
-          height: 40px;
+          width: 30px;
+          height: 34px;
           flex-shrink: 0;
         }
 
@@ -378,10 +369,10 @@ const switchToMobile = () => {
         }
 
         .logo-text {
-          font-size: 17px;
+          font-size: 18px;
           font-weight: 600;
           letter-spacing: 0;
-          color: var(--sidebar-text-active);
+          color: var(--text);
         }
 
         .logo-sub {
@@ -395,10 +386,9 @@ const switchToMobile = () => {
       .menu-item {
         display: flex;
         align-items: center;
-        height: 44px;
-        margin: 3px 12px;
-        padding: 0 12px;
-        border-radius: 8px;
+        height: 50px;
+        margin: 0;
+        padding: 0 16px;
         font-size: 14px;
         color: var(--sidebar-text);
         cursor: pointer;
@@ -413,7 +403,6 @@ const switchToMobile = () => {
           background: var(--sidebar-active-bg);
           color: var(--sidebar-text-active);
           font-weight: 600;
-          box-shadow: inset 3px 0 0 var(--accent);
         }
 
         .menu-icon {
@@ -442,10 +431,9 @@ const switchToMobile = () => {
         display: flex;
         align-items: center;
         gap: 8px;
-        height: 38px;
-        margin: 2px 14px 2px 22px;
-        padding: 0 12px;
-        border-radius: 8px;
+        height: 44px;
+        margin: 0;
+        padding: 0 16px 0 50px;
         font-size: 13px;
         color: var(--sidebar-text-muted);
         cursor: pointer;
@@ -455,7 +443,7 @@ const switchToMobile = () => {
           width: 5px;
           height: 5px;
           border-radius: 50%;
-          background: rgba(255, 255, 255, 0.25);
+          background: var(--border);
           flex-shrink: 0;
         }
 
@@ -507,24 +495,14 @@ const switchToMobile = () => {
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      min-height: 64px;
-      padding: 12px 24px;
-      background: var(--header-bg);
-      -webkit-backdrop-filter: blur(16px) saturate(160%);
-      backdrop-filter: blur(16px) saturate(160%);
+      min-height: 60px;
+      padding: 10px 24px;
+      background: var(--surface);
       border-bottom: 1px solid var(--header-border);
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--shadow-header);
 
       .top-main {
         min-width: 0;
-
-        .page-title {
-          margin: 0 0 2px;
-          font-size: 18px;
-          font-weight: 600;
-          color: var(--text);
-          letter-spacing: 0;
-        }
 
         .breadcrumb {
           :deep(.el-breadcrumb) {
