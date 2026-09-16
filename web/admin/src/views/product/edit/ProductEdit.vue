@@ -69,7 +69,7 @@ const getProductInfo = async () => {
   }
   productInfo.value = {
     ...result.data.productInfo,
-    cover: result.data.productInfo.cover.split(','),
+    cover: (result.data.productInfo.cover || '').split(',').filter(Boolean),
   }
   productEditStore.productPropertyList = result.data.productPropertyList
   productEditStore.skuData = new Map(

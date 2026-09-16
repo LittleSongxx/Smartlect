@@ -37,7 +37,7 @@
       <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData">
         <template #slotProduct="{ index, row }">
           <div class="product-info-panel">
-            <Cover :source="row.cover.split(',')[0]" :width="70" class="cover"></Cover>
+            <Cover :source="(row.cover || '').split(',')[0]" :width="70" class="cover"></Cover>
             <div class="product-info">
               <div class="product-name">{{ row.productName }}</div>
               <div class="product-id">ID:{{ row.productId }}</div>

@@ -73,7 +73,7 @@ const getProduct = async (productId) => {
   }
   productInfo.value = result.data.productInfo
   
-  selectImage(productInfo.value.cover.split(',')[0])
+  selectImage((productInfo.value.cover || '').split(',')[0])
 
   productPropertyList.value = result.data.productPropertyList
   skuList.value = result.data.skuList
