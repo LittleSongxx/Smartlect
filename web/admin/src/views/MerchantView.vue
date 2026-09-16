@@ -1,12 +1,10 @@
 <template>
   <section class="growth-console" aria-label="商家经营助手">
-    <div class="section-heading">
-      <div>
-        <h2>从新事实规划下一轮</h2>
-        <p class="muted">先核对点击、费用、净成交与库存，再决定执行或等待。每次运行只产生一份计划。</p>
-      </div>
-      <button @click="refresh" :disabled="busy">刷新经营事实</button>
-    </div>
+    <PageHeader title="从新事实规划下一轮" description="先核对点击、费用、净成交与库存，再决定执行或等待。每次运行只产生一份计划。">
+      <template #actions>
+        <button @click="refresh" :disabled="busy">刷新经营事实</button>
+      </template>
+    </PageHeader>
     <p v-if="error" class="notice error" role="alert">
       {{ error }}
       <button v-if="draftRequired" type="button" @click="$emit('review-grant')">去活动页创建草稿</button>

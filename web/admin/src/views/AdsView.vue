@@ -1,12 +1,10 @@
 <template>
   <section class="growth-console" aria-label="活动与授权管理">
-    <div class="section-heading">
-      <div>
-        <h2>投放概览</h2>
-        <p class="muted">曝光免费，合法点击按 CPC 计费。余额与花费以服务器累计账户为准。</p>
-      </div>
-      <button @click="refresh" :disabled="busy">刷新事实</button>
-    </div>
+    <PageHeader title="投放概览" description="曝光免费，合法点击按 CPC 计费。余额与花费以服务器累计账户为准。">
+      <template #actions>
+        <button @click="refresh" :disabled="busy">刷新事实</button>
+      </template>
+    </PageHeader>
     <p v-if="error" role="alert" class="notice error">{{ error }}</p>
     <p v-if="notice" role="status" class="notice">{{ notice }}</p>
     <div class="stats">

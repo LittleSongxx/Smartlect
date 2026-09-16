@@ -5,6 +5,10 @@ import SupportView from '../src/views/SupportView.vue';
 import KnowledgeView from '../src/views/KnowledgeView.vue';
 import { aiWrite, clearSession, integer, loadSession, session } from '../src/api/client';
 import { field, button } from './helpers';
+import PageHeader from '../src/components/PageHeader.vue';
+import StatusTag from '../src/components/StatusTag.vue';
+import DetailText from '../src/components/DetailText.vue';
+import JsonCollapse from '../src/components/JsonCollapse.vue';
 
 const actor = { subject_type: 'merchant', actor_id: 'm1', session_id: 's1', execution_scope_id: 'store', permissions: ['admin:legacy'] };
 const current = () => ({ actor: { ...actor }, csrf_token: 'current-csrf' });
@@ -12,7 +16,7 @@ const campaign = { campaign_id: 'c1', owner_id: 'm1', name: '真实商品广告'
 const grant = { grant_id: 'g1', initial_plan_id: 'stable-plan', initial_plan_version: 2, version: 1, envelope_hash: 'original-hash', approval_time: '2026-09-09T00:00:00Z', valid_until: '2030-01-01T00:00:00Z', envelope: {} };
 let data; let calls; let handler; const wrappers = [];
 const reply = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
-const render = async component => { const wrapper = mount(component); wrappers.push(wrapper); await flushPromises(); return wrapper; };
+const render = async component => { const wrapper = mount(component, { global: { components: { PageHeader, StatusTag, DetailText, JsonCollapse } } }); wrappers.push(wrapper); await flushPromises(); return wrapper; };
 const form = (wrapper, heading) => wrapper.findAll('form').find(item => item.text().includes(heading));
 beforeEach(() => {
   clearSession(); session.value = current(); calls = []; handler = null;

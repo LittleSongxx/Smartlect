@@ -1,12 +1,10 @@
 <template>
   <section class="growth-console">
-    <div class="section-heading">
-      <div>
-        <h2>人工客服工单</h2>
-        <p class="muted">接管后自动回复和新交易确认会被服务端阻止；回复由人工明确提交。</p>
-      </div>
-      <button @click="refresh" :disabled="busy">刷新工单</button>
-    </div>
+    <PageHeader title="人工客服工单" description="接管后自动回复和新交易确认会被服务端阻止；回复由人工明确提交。">
+      <template #actions>
+        <button @click="refresh" :disabled="busy">刷新工单</button>
+      </template>
+    </PageHeader>
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <section class="panel">

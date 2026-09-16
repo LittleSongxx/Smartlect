@@ -1,20 +1,18 @@
 <template>
   <section class="growth-console">
-    <div class="section-heading">
-      <div>
-        <h2>知识文档与版本</h2>
-        <p class="muted">草稿保存后单独发布，撤回后不再用于新的客服引用。</p>
-      </div>
-      <div class="button-row">
-        <select v-model="sourceFilter" aria-label="来源筛选" class="source-filter">
-          <option value="">全部来源</option>
-          <option value="MANUAL">手动编写</option>
-          <option value="PRODUCT_AUTO">商品自动导入</option>
-        </select>
-        <button @click="importing = true" :disabled="busy || !canWrite">从商品导入</button>
-        <button @click="refresh" :disabled="busy">刷新文档</button>
-      </div>
-    </div>
+    <PageHeader title="知识文档与版本" description="草稿保存后单独发布，撤回后不再用于新的客服引用。">
+      <template #actions>
+        <div class="button-row">
+          <select v-model="sourceFilter" aria-label="来源筛选" class="source-filter">
+            <option value="">全部来源</option>
+            <option value="MANUAL">手动编写</option>
+            <option value="PRODUCT_AUTO">商品自动导入</option>
+          </select>
+          <button @click="importing = true" :disabled="busy || !canWrite">从商品导入</button>
+          <button @click="refresh" :disabled="busy">刷新文档</button>
+        </div>
+      </template>
+    </PageHeader>
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <form class="panel" @submit.prevent="save">
