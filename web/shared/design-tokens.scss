@@ -15,6 +15,14 @@ $color-money: #0f766e; // 金额、正向指标
 $color-money-soft: #ecfdf5;
 $color-price: #f5533d; // 价格、促销、折扣
 $color-price-soft: #fff3f0;
+// 会员等级（金/银/普通）：等级区分是产品语义，集中在这里定义，页面不得再写裸 hex
+$level-gold: #b08d3f;
+$level-gold-soft: #fdf6e8;
+$level-silver: #8a8f98;
+$level-silver-soft: #f3f4f6;
+$level-base: #94a3b8;
+$level-base-soft: #f5f7fa;
+
 $color-success: #16a34a;
 $color-danger: #dc2626;
 $color-danger-hover: #b91c1c;
@@ -76,6 +84,12 @@ $page-heading-gap: 12px;
         --success: #{$color-success};
         --danger: #{$color-danger};
         --warning: #{$color-warning};
+        --level-gold: #{$level-gold};
+        --level-gold-soft: #{$level-gold-soft};
+        --level-silver: #{$level-silver};
+        --level-silver-soft: #{$level-silver-soft};
+        --level-base: #{$level-base};
+        --level-base-soft: #{$level-base-soft};
 
         --text: #{$color-text};
         --text-2: #{$color-text-2};
