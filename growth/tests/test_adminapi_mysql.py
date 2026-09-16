@@ -34,6 +34,9 @@ class AdminApiMySQLTests(unittest.TestCase):
     def test_prompt_templates_seed_edit_activate_and_resolve(self):
         asyncio.run(self.exercise_prompts())
 
+    def test_review_analysis_and_growth_report_snapshots(self):
+        asyncio.run(self.exercise_analytics())
+
     async def exercise_import(self):
         suffix = uuid.uuid4().hex
         origin = "http://smartlect.test"
@@ -303,6 +306,60 @@ class AdminApiMySQLTests(unittest.TestCase):
             bad = await client.post("/admin-api/assistant/prompts/shopping/skill/brand_new",
                                     headers=headers, json={"body": "{}"})
             self.assertEqual(bad.status_code, 422)
+
+
+    async def exercise_analytics(self):
+        suffix = uuid.uuid4().hex
+        origin = "http://smartlect.test"
+        config = {"SMARTLECT_USER_PORT": "18105", "SMARTLECT_ORDER_PORT": "18104",
+                  "SMARTLECT_INTERNAL_TOKEN": "synthetic", "SMARTLECT_VISITOR_SECRET": "s" * 48,
+                  "SMARTLECT_ALLOWED_ORIGINS": origin}
+
+        def java(request):
+            path = request.url.path
+            if path == "/internal/identity/introspect":
+                data = {"subjectType": "merchant", "actorId": "boss-" + suffix, "sessionId": "s",
+                        "permissions": ["admin:legacy", "shopping:read"]}
+            elif path == "/internal/order/commerce/productComments":
+                self.assertEqual(json.loads(request.content), {"productId": "p-rev", "limit": 200})
+                data = [{"orderId": "o1", "productId": "p-rev", "star": 5, "nickName": "买家",
+                         "commentContent": "非常好用", "commentTime": "2026-09-01"},
+                        {"orderId": "o2", "productId": "p-rev", "star": 4,
+                         "commentContent": "还行", "commentTime": "2026-09-02"}]
+            else:
+                raise AssertionError(path)
+            return httpx.Response(200, json={"status": "success", "data": data})
+
+        transport = httpx.MockTransport(java)
+
+        def app():
+            return create_app(Settings(model_mode="mock"), config=config, store=SessionStore(self.connect),
+                              identity=IdentityBridge(config, transport=transport),
+                              commerce=AsyncCommerceClient(config, transport=transport))
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
+            client.cookies.set("adminToken", "boss-" + suffix)
+            session = await client.get("/admin-api/assistant/session")
+            headers = {"Origin": origin, "X-CSRF-Token": session.json()["csrf_token"]}
+
+            analyzed = await client.post("/admin-api/assistant/reviewAnalysis/product/p-rev", headers=headers, json={})
+            self.assertEqual(analyzed.status_code, 200, analyzed.text)
+            row = analyzed.json()
+            self.assertEqual(row["stats"]["total"], 2)
+            self.assertEqual(row["sentiment"] if False else row["stats"]["sentiment"], "POSITIVE")
+            self.assertEqual(row["insight_error"], "model_not_live")
+
+            listed = (await client.get("/admin-api/assistant/reviewAnalysis")).json()
+            self.assertEqual(len(listed["items"]), 1)
+
+            report = await client.post("/admin-api/assistant/growthReport/generate", headers=headers, json={})
+            self.assertEqual(report.status_code, 200, report.text)
+            body = report.json()
+            self.assertIn("payments", body["data"])
+            self.assertEqual(body["model_error"], "model_not_live")
+
+            view = (await client.get("/admin-api/assistant/growthReport")).json()
+            self.assertIsNotNone(view["latest"])
 
 if __name__ == "__main__":
     unittest.main()

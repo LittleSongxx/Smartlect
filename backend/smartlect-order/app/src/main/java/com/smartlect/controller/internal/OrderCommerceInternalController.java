@@ -216,6 +216,48 @@ public class OrderCommerceInternalController extends ABaseController {
         return getSuccessResponseVO(map);
     }
 
+    /**
+     * Product-level comment facts for the growth review analysis. Comments in this system
+     * are written once and shown as-is; there is no moderation gate to filter by.
+     */
+    @PostMapping("/productComments")
+    public ResponseVO<List<Map<String, Object>>> productComments(@RequestBody Map<String, Object> body) {
+        String productId = str(body, "productId");
+        if (StringTools.isEmpty(productId)) {
+            return getSuccessResponseVO(List.of());
+        }
+        int limit = 200;
+        Object rawLimit = body.get("limit");
+        if (rawLimit instanceof Number number && number.intValue() > 0) {
+            limit = Math.min(number.intValue(), 200);
+        }
+        OrderCommentQuery q = new OrderCommentQuery();
+        q.setProductId(productId);
+        q.setOrderBy(com.smartlect.entity.query.SafeSort.of("commentTime desc"));
+        q.setSimplePage(new com.smartlect.entity.query.SimplePage(1, limit));
+        List<OrderComment> list = orderCommentService.findListByParam(q);
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        if (list == null) {
+            return getSuccessResponseVO(result);
+        }
+        for (OrderComment c : list) {
+            if (c == null || c.getStar() == null || StringTools.isEmpty(c.getCommentContent())) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("orderId", c.getOrderId());
+            m.put("productId", c.getProductId());
+            m.put("productName", c.getProductName());
+            m.put("nickName", c.getNickName());
+            m.put("star", c.getStar());
+            m.put("commentContent", c.getCommentContent());
+            m.put("commentTime", formatDate(c.getCommentTime()));
+            m.put("recommentContent", c.getRecommentContent());
+            result.add(m);
+        }
+        return getSuccessResponseVO(result);
+    }
+
     @PostMapping("/refundStatus")
     public ResponseVO<List<Map<String, Object>>> refundStatus(@RequestBody Map<String, Object> body) {
         String userId = DelegatedUserIdentity.requireAndMatch(body.get("userId"));

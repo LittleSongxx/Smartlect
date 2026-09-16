@@ -901,7 +901,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         indexing = IndexingService(store.connect, knowledge, provider, settings=settings, config=config)
         adminapi.register(app, actor_for=actor_for, store=store, commerce=commerce, knowledge=knowledge,
                           attribution=attribution, provider=provider, config=config, settings=settings,
-                          shopping_retrieve=ShoppingRetrieve(commerce), indexing=indexing)
+                          shopping_retrieve=ShoppingRetrieve(commerce), indexing=indexing, ads=ads)
 
     return app
 
