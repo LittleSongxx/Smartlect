@@ -114,7 +114,11 @@ it('approves the reviewed text only after renewed consent when the original expe
 
 it('uses an actual catalog SKU without requiring manual identifiers',async()=>{
   handler=path=>path.endsWith('/ads/campaigns')?response(campaign):null;
-  const wrapper=await render(AdsView);await field(wrapper,'活动名称').setValue('SKU选择');await field(wrapper,'选择真实在售 SKU').setValue(JSON.stringify(['p1','hash1']));await wrapper.find('form').trigger('submit');await flushPromises();
+  const wrapper=await render(AdsView);
+  await field(wrapper,'活动名称').setValue('SKU选择');
+  // SKU 选择器已改为 el-select，用组件 API 设值
+  await wrapper.findComponent('.select-sku').setValue(JSON.stringify(['p1','hash1']));
+  await wrapper.find('form').trigger('submit');await flushPromises();
   const body=JSON.parse(calls.find(item=>item.path.endsWith('/ads/campaigns')).options.body);expect(body.product_id).toBe('p1');expect(body.sku_key).toBe('hash1');expect(body).not.toHaveProperty('price_cents');
 });
 
@@ -123,7 +127,7 @@ it('offers explicit resume for an exhausted campaign and sends its current versi
   ads.grants=[{grant_id:'g1',initial_plan_id:'plan1',initial_plan_version:3}];
   handler=path=>path.endsWith('/ads/actions')?response({business_status:'APPLIED'}):null;
   const wrapper=await render(AdsView);
-  await field(wrapper,'执行所用授权').setValue('g1');await button(wrapper,'恢复活动').trigger('click');
+  await wrapper.findComponent('.select-grant').setValue('g1');await flushPromises();await button(wrapper,'恢复活动').trigger('click');
   expect(calls.some(item=>item.path.endsWith('/ads/actions'))).toBe(false);
   await wrapper.find('form.operation').trigger('submit');await flushPromises();
   const body=JSON.parse(calls.find(item=>item.path.endsWith('/ads/actions')).options.body);

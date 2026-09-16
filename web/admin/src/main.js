@@ -7,7 +7,6 @@ import "@/assets/icon/iconfont.css"
 import '@/assets/base.scss';
 import '@/assets/theme.scss';
 import '@/assets/ai-page.scss';
-import '@/assets/growth-console.scss';
 import '@/assets/admin-ios26-message.scss';
 import '@/assets/liquid-glass-surface.scss';
 

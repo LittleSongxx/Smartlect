@@ -71,7 +71,7 @@ describe('Smartlect 管理端业务边界', () => {
   it('binds actions to the displayed grant and resource version; double click and refresh never replay writes', async () => {
     let finish;
     handler = path => path.endsWith('/ads/actions') ? new Promise(resolve => { finish = () => resolve(reply({ status: 'APPLIED' })); }) : null;
-    const wrapper = await render(AdsView); await field(wrapper, '执行所用授权').setValue('g1'); await button(wrapper, '启用活动').trigger('click');
+    const wrapper = await render(AdsView); await wrapper.findComponent('.select-grant').setValue('g1'); await flushPromises(); await button(wrapper, '启用活动').trigger('click');
     const action = form(wrapper, '核对本次动作'); await action.trigger('submit'); await action.trigger('submit'); await flushPromises();
     const writes = calls.filter(item => item.path.endsWith('/ads/actions')); expect(writes).toHaveLength(1);
     const body = JSON.parse(writes[0].options.body); expect(body).toMatchObject({ grant_id: 'g1', plan_id: 'stable-plan', plan_version: 2, actions: [{ action_type: 'activate_campaign', campaign_id: 'c1', expected_version: 3 }] });
@@ -80,7 +80,7 @@ describe('Smartlect 管理端业务边界', () => {
   });
   it('reloads protective pause after rejection and retries only the original stable action payload', async () => {
     handler = path => { if (path.endsWith('/ads/actions')) { data.campaigns[0].status = 'PAUSED'; data.campaigns[0].pause_reason = 'stockout'; data.campaigns[0].version = 4; return reply({ detail: 'fresh_positive_stock_required' }, 409); } };
-    const wrapper = await render(AdsView); await field(wrapper, '执行所用授权').setValue('g1'); await button(wrapper, '启用活动').trigger('click');
+    const wrapper = await render(AdsView); await wrapper.findComponent('.select-grant').setValue('g1'); await flushPromises(); await button(wrapper, '启用活动').trigger('click');
     await form(wrapper, '核对本次动作').trigger('submit'); await flushPromises(); expect(wrapper.text()).toContain('暂停原因：stockout'); expect(wrapper.text()).toContain('fresh_positive_stock_required');
     await form(wrapper, '核对本次动作').trigger('submit'); await flushPromises();
     const writes = calls.filter(item => item.path.endsWith('/ads/actions')); expect(writes).toHaveLength(2); expect(writes[1].options.body).toBe(writes[0].options.body);

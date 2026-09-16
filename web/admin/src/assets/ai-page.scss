@@ -75,3 +75,59 @@
     color: var(--text-2);
     word-break: break-all;
 }
+
+// 决策快照块（GrowthDecisionCard）与通用工具类：原在 growth-console.scss 里，
+// 后者已随 4 个页面迁移完成退役，这里接收仍在使用的部分。
+.decision-card {
+    margin: 8px 0;
+    padding: 10px 12px;
+    background: var(--surface-soft);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+
+    summary {
+        cursor: pointer;
+        color: var(--text-2);
+        font-size: 13px;
+    }
+
+    dl {
+        margin: 8px 0 0;
+    }
+
+    dt {
+        color: var(--text);
+        font-size: 13px;
+    }
+
+    dd {
+        margin: 2px 0 8px;
+        color: var(--text-3);
+        font-size: 12px;
+    }
+}
+
+.muted {
+    margin: 4px 0;
+    font-size: 13px;
+    color: var(--text-2);
+}
+
+.button-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.note,
+.notice {
+    margin: 6px 0;
+    font-size: 13px;
+    color: var(--text-2);
+}
+
+.notice.error {
+    color: var(--danger);
+}
