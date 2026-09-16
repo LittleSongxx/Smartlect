@@ -1,6 +1,6 @@
 <template>
   <PageHeader title="用户列表" description="商城用户检索与状态管理。" />
-  <div class="top-panel">
+  <div class="search-panel">
     <el-form :model="searchForm" @submit.prevent>
       <el-row :gutter="10">
         <el-col :span="5">

@@ -1,55 +1,20 @@
 <template>
-  <div class="form-style" :class="{ 'is-mobile-admin': isMobileAdmin }">
-
-    <template v-if="isMobileAdmin">
-      <div class="m-product-edit">
-        <div class="m-edit-steps glass-card glass-strong">
-          <button
-            type="button"
-            :class="['step', activeName === 'base' ? 'active' : '']"
-            @click="activeName = 'base'"
-          >
-            基础信息
-          </button>
-          <button type="button" :class="['step', activeName === 'sku' ? 'active' : '']" @click="switchToSku">
-            SKU 规格
-          </button>
-        </div>
-
-        <div v-show="activeName === 'base'">
-          <ProductBase :productInfo="productInfo"></ProductBase>
-        </div>
-        <div v-show="activeName === 'sku'" class="m-sku-layout content-panel">
+  <div class="form-style">
+    <el-tabs v-model="activeName" @tab-click="tabClick">
+      <el-tab-pane label="基础信息" name="base">
+        <ProductBase :productInfo="productInfo"></ProductBase>
+      </el-tab-pane>
+      <el-tab-pane label="SKU信息" name="sku">
+        <div class="content-panel">
           <ProductSkuProperty></ProductSkuProperty>
           <ProductSkuList></ProductSkuList>
         </div>
-      </div>
-
-      <div class="m-edit-footer">
-        <button type="button" class="footer-cancel" @click="cancelPost">取消</button>
-        <button type="button" class="footer-submit" @click="submitProduct()">
-          {{ route.params.productId ? '保存商品' : '发布商品' }}
-        </button>
-      </div>
-    </template>
-
-    <template v-else>
-      <el-tabs v-model="activeName" @tab-click="tabClick">
-        <el-tab-pane label="基础信息" name="base">
-          <ProductBase :productInfo="productInfo"></ProductBase>
-        </el-tab-pane>
-        <el-tab-pane label="SKU信息" name="sku">
-          <div class="content-panel">
-            <ProductSkuProperty></ProductSkuProperty>
-            <ProductSkuList></ProductSkuList>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-      <div class="post-panel">
-        <el-button @click="cancelPost" link>取消</el-button>
-        <el-button @click="submitProduct()" type="primary">发布商品</el-button>
-      </div>
-    </template>
+      </el-tab-pane>
+    </el-tabs>
+    <div class="post-panel">
+      <el-button @click="cancelPost" link>取消</el-button>
+      <el-button @click="submitProduct()" type="primary">发布商品</el-button>
+    </div>
   </div>
 </template>
 
@@ -67,8 +32,7 @@ import { useProductEditStore } from '@/stores/productEditStore'
 const productEditStore = useProductEditStore()
 
 const activeName = ref('base')
-const isMobileAdmin = computed(() => route.path.startsWith('/m/'))
-const productListPath = () => (isMobileAdmin.value ? '/m/product' : '/product')
+const productListPath = () => '/product'
 
 const tabClick = async (e) => {
   if (e.paneName == 'sku' && !productInfo.value.categoryId) {
@@ -251,13 +215,5 @@ onMounted(() => {
     height: calc(100vh - 130px);
   }
 
-  &.is-mobile-admin {
-    .content-panel {
-      flex-direction: column;
-      height: auto;
-      min-height: 0;
-      gap: 12px;
-    }
-  }
 }
 </style>

@@ -69,13 +69,6 @@
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-          <button type="button" class="action-pill" @click="tool">
-            <span class="iconfont icon-setting action-pill__icon"></span>
-            小工具
-          </button>
-          <button type="button" class="action-pill action-pill--ghost" @click="switchToMobile">
-            手机版
-          </button>
           <div class="user-chip">
             <span class="user-avatar">管</span>
             <span class="user-name">管理员</span>
@@ -90,15 +83,12 @@
       </main>
     </div>
   </div>
-  <Tool ref="toolRef"></Tool>
 </template>
 
 <script setup>
-import Tool from './Tool.vue'
 import BrandMark from '@/components/BrandMark.vue'
 import { ref, getCurrentInstance, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { switchToMobileView } from '@/utils/device'
 import { session, ownerKey, loadSession, aiGet, selectScope, errorText } from '@/api/client'
 
 const { proxy } = getCurrentInstance()
@@ -188,6 +178,9 @@ const isMenuActive = (item) => {
   return false
 }
 
+// 菜单只列"演示故事需要"的页面。分类/属性、收货地址、发货信息、敏感词、签到/会员礼券、
+// 统计明细、MQ 补偿、运营工具、图片违规复核都仍在 router 里（可直接访问、随时恢复），
+// 只是不再占菜单位：它们或与看板/Grafana 同源，或由种子脚本与用户端承载，属于遗留电商脚手架。
 const menuList = ref([
   {
     name: '首页',
@@ -199,8 +192,6 @@ const menuList = ref([
     icon: 'product',
     opened: true,
     children: [
-      { name: '分类管理', path: '/product/category' },
-      { name: '商品属性', path: '/product/ProductProperty' },
       { name: '商品管理', path: '/product' },
     ],
   },
@@ -213,7 +204,6 @@ const menuList = ref([
       { name: '订单评论', path: '/order/comment' },
       { name: '举报管理', path: '/order/report' },
       { name: '退款复核', path: '/order/refundReview' },
-      { name: '图片违规复核', path: '/setting/imageModeration' },
     ],
   },
   {
@@ -222,26 +212,6 @@ const menuList = ref([
     opened: true,
     children: [
       { name: '用户列表', path: '/user/userList' },
-      { name: '收货地址', path: '/user/address' },
-    ],
-  },
-  {
-    name: '数据中心',
-    icon: 'home',
-    opened: false,
-    children: [
-      { name: '统计明细', path: '/data/statistics' },
-      { name: 'MQ补偿审查', path: '/data/mqCompensationLog' },
-      { name: '运营工具', path: '/data/tools' },
-    ],
-  },
-  {
-    name: '系统设置',
-    icon: 'setting',
-    opened: true,
-    children: [
-      { name: '发货信息管理', path: '/setting/logistics' },
-      { name: '敏感词管理', path: '/setting/sensitiveWord' },
     ],
   },
   {
@@ -250,8 +220,6 @@ const menuList = ref([
     opened: true,
     children: [
       { name: '优惠券管理', path: '/discountCoupon' },
-      { name: '签到发券配置', path: '/marketing/signReward' },
-      { name: '会员升级礼券', path: '/marketing/memberLevelReward' },
     ],
   },
   {
@@ -302,15 +270,6 @@ const logout = () => {
       router.push('/login')
     },
   })
-}
-
-const toolRef = ref()
-const tool = () => {
-  toolRef.value.show()
-}
-
-const switchToMobile = () => {
-  switchToMobileView('/m/home')
 }
 </script>
 

@@ -1,95 +1,14 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { useDeviceStore } from '@/stores/device'
-import { resolveDesktopPath } from '@/utils/device'
 
-const DESKTOP_TO_MOBILE = {
-  '/home': '/m/home',
-  '/product': '/m/product',
-  '/product/addProduct': '/m/product/edit',
-  '/order/orderList': '/m/order',
-  '/order/comment': '/m/order/comment',
-  '/order/report': '/m/order/report',
-  '/order/refundReview': '/m/order/refundReview',
-  '/setting/imageModeration': '/m/more/imageModeration',
-  '/user/userList': '/m/user',
-  '/user/address': '/m/more/address',
-  '/discountCoupon': '/m/more/coupon',
-  '/data/statistics': '/m/more/statistics',
-  '/data/mqCompensationLog': '/m/more/mqLog',
-  '/data/tools': '/m/more/tools',
-  '/setting/sensitiveWord': '/m/more/sensitiveWord',
-  '/product/category': '/m/more/category',
-  '/product/ProductProperty': '/m/more/productProperty',
-  '/setting/logistics': '/m/more/logistics',
-  '/marketing/signReward': '/m/more/signReward',
-  '/marketing/memberLevelReward': '/m/more/memberLevelReward',
-  '/merchant': '/m/more/merchant',
-  '/ads': '/m/more/ads',
-  '/knowledge': '/m/more/knowledge',
-  '/support': '/m/more/support',
-  '/ai/models': '/m/more/aiModels',
-  '/ai/prompts': '/m/more/aiPrompts',
-  '/ai/knowledge-index': '/m/more/aiKnowledgeIndex',
-  '/ai/runs': '/m/more/aiRuns',
-  '/ai/tools': '/m/more/aiTools',
-  '/reviewAnalysis': '/m/more/reviewAnalysis',
-  '/growthReport': '/m/more/growthReport'
-}
-
-function resolveMobilePath(desktopPath) {
-  if (desktopPath.startsWith('/product/updateProduct/')) {
-    const id = desktopPath.split('/').pop()
-    return id ? `/m/product/edit/${id}` : '/m/product'
-  }
-  return DESKTOP_TO_MOBILE[desktopPath] || '/m/home'
-}
+// 管理端只保留桌面形态：手机端管理台（/m/**）已下线——它是桌面页的 1:1 复刻、零测试，
+// 演示故事也不需要。旧书签命中的 /m/** 一律回首页，不做 404。
+const LEGACY_MOBILE_PREFIX = '/m'
 
 export const routes = [
   {
     path: '/login',
     name: 'login',
     component: () => import('@/views/account/Account.vue')
-  },
-  {
-    path: '/m',
-    name: 'MobileLayout',
-    redirect: '/m/home',
-    component: () => import('@/views/mobile/MobileShell.vue'),
-    children: [
-      { path: 'home', component: () => import('@/views/mobile/MobileHome.vue'), meta: { title: '工作台', tab: '/m/home' } },
-      { path: 'product', component: () => import('@/views/mobile/MobileProductList.vue'), meta: { title: '商品管理', tab: '/m/product' } },
-      { path: 'product/edit', component: () => import('@/views/product/edit/ProductEdit.vue'), meta: { title: '发布商品', tab: '/m/product', showBack: true } },
-      { path: 'product/edit/:productId', component: () => import('@/views/product/edit/ProductEdit.vue'), meta: { title: '编辑商品', tab: '/m/product', showBack: true } },
-      { path: 'order', component: () => import('@/views/mobile/MobileOrderList.vue'), meta: { title: '订单管理', tab: '/m/order' } },
-      { path: 'order/comment', component: () => import('@/views/mobile/MobileOrderComment.vue'), meta: { title: '评价管理', tab: '/m/order', showBack: true } },
-      { path: 'order/report', component: () => import('@/views/mobile/MobileCommentReport.vue'), meta: { title: '举报管理', tab: '/m/order', showBack: true } },
-      { path: 'order/refundReview', component: () => import('@/views/mobile/MobileRefundReview.vue'), meta: { title: '退款复核', tab: '/m/order', showBack: true } },
-      { path: 'more/imageModeration', component: () => import('@/views/mobile/MobileImageModeration.vue'), meta: { title: '图片审核', tab: '/m/more', showBack: true } },
-      { path: 'user', component: () => import('@/views/mobile/MobileUserList.vue'), meta: { title: '用户管理', tab: '/m/user' } },
-      { path: 'more', component: () => import('@/views/mobile/MobileMore.vue'), meta: { title: '更多', tab: '/m/more' } },
-      { path: 'more/coupon', component: () => import('@/views/mobile/MobileCoupon.vue'), meta: { title: '优惠券', tab: '/m/more', showBack: true } },
-      { path: 'more/statistics', component: () => import('@/views/mobile/MobileStatistics.vue'), meta: { title: '统计明细', tab: '/m/more', showBack: true } },
-      { path: 'more/mqLog', component: () => import('@/views/mobile/MobileMqCompensationLog.vue'), meta: { title: 'MQ补偿日志', tab: '/m/more', showBack: true } },
-      { path: 'more/address', component: () => import('@/views/mobile/MobileUserAddress.vue'), meta: { title: '收货地址', tab: '/m/more', showBack: true } },
-      { path: 'more/tools', component: () => import('@/views/mobile/MobileTools.vue'), meta: { title: '运营工具', tab: '/m/more', showBack: true } },
-      { path: 'more/sensitiveWord', component: () => import('@/views/mobile/MobileSensitiveWord.vue'), meta: { title: '敏感词管理', tab: '/m/more', showBack: true } },
-      { path: 'more/category', component: () => import('@/views/mobile/MobileCategory.vue'), meta: { title: '分类管理', tab: '/m/more', showBack: true } },
-      { path: 'more/productProperty', component: () => import('@/views/mobile/MobileProductProperty.vue'), meta: { title: '商品属性', tab: '/m/more', showBack: true } },
-      { path: 'more/logistics', component: () => import('@/views/mobile/MobileLogistics.vue'), meta: { title: '发货信息', tab: '/m/more', showBack: true } },
-      { path: 'more/signReward', component: () => import('@/views/mobile/MobileSignReward.vue'), meta: { title: '签到发券', tab: '/m/more', showBack: true } },
-      { path: 'more/memberLevelReward', component: () => import('@/views/mobile/MobileMemberLevelReward.vue'), meta: { title: '升级礼券', tab: '/m/more', showBack: true } },
-      { path: 'more/merchant', component: () => import('@/views/MerchantView.vue'), meta: { title: '经营助手', tab: '/m/more', showBack: true } },
-      { path: 'more/ads', component: () => import('@/views/AdsView.vue'), meta: { title: '活动与授权', tab: '/m/more', showBack: true } },
-      { path: 'more/knowledge', component: () => import('@/views/KnowledgeView.vue'), meta: { title: '知识库', tab: '/m/more', showBack: true } },
-      { path: 'more/support', component: () => import('@/views/SupportView.vue'), meta: { title: '人工客服', tab: '/m/more', showBack: true } },
-      { path: 'more/aiModels', component: () => import('@/views/ai/ModelConfigView.vue'), meta: { title: '模型配置', tab: '/m/more', showBack: true } },
-      { path: 'more/aiPrompts', component: () => import('@/views/ai/PromptSkillView.vue'), meta: { title: '提示词与技能', tab: '/m/more', showBack: true } },
-      { path: 'more/aiKnowledgeIndex', component: () => import('@/views/ai/KnowledgeIndexView.vue'), meta: { title: '知识索引', tab: '/m/more', showBack: true } },
-      { path: 'more/aiRuns', component: () => import('@/views/ai/AgentRunsView.vue'), meta: { title: '运行浏览器', tab: '/m/more', showBack: true } },
-      { path: 'more/aiTools', component: () => import('@/views/ai/ToolDebugView.vue'), meta: { title: '工具调试台', tab: '/m/more', showBack: true } },
-      { path: 'more/reviewAnalysis', component: () => import('@/views/biz/ReviewAnalysisView.vue'), meta: { title: '评价分析', tab: '/m/more', showBack: true } },
-      { path: 'more/growthReport', component: () => import('@/views/biz/GrowthReportView.vue'), meta: { title: '增长报告', tab: '/m/more', showBack: true } }
-    ]
   },
   {
     path: '/',
@@ -140,15 +59,9 @@ export function createAdminRouter(history) {
   })
   if (!history) {
     router.beforeEach((to) => {
-      const device = useDeviceStore()
-      device.sync()
       if (to.path === '/login') return true
-      const isMobileRoute = to.path === '/m' || to.path.startsWith('/m/')
-      if (device.isMobile && !isMobileRoute) {
-        return { path: resolveMobilePath(to.path) || '/m/home', query: to.query }
-      }
-      if (device.isDesktop && isMobileRoute) {
-        return { path: resolveDesktopPath(to.path), query: to.query }
+      if (to.path === LEGACY_MOBILE_PREFIX || to.path.startsWith(LEGACY_MOBILE_PREFIX + '/')) {
+        return { path: '/home', query: to.query }
       }
       return true
     })

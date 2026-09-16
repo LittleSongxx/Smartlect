@@ -1,6 +1,6 @@
 <template>
   <PageHeader title="退款复核" description="退款申请的人工审核与处理。" />
-  <div class="top-panel">
+  <div class="search-panel">
     <el-form @submit.prevent>
       <el-row :gutter="10">
         <el-col :span="6">

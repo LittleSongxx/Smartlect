@@ -1,59 +1,6 @@
 <template>
 
-  <div v-if="isMobileAdmin" class="m-product-base">
-    <section class="glass-card m-edit-section">
-      <div class="section-head">
-        <div>
-          <h3 class="section-title">商品主图</h3>
-          <p class="section-hint">最多 {{ proxy.productMainImageCount }} 张，建议首张作为封面</p>
-        </div>
-        <span class="section-badge">必填</span>
-      </div>
-      <div class="m-cover-grid">
-        <ImageSelect
-          v-for="(_, index) in proxy.productMainImageCount"
-          :key="index"
-          v-model="productInfo.cover[index]"
-          :cutWidth="250"
-          :width="100"
-        />
-      </div>
-    </section>
-
-    <section class="glass-card m-edit-section">
-      <h3 class="section-title">基本信息</h3>
-      <div class="m-field-block">
-        <label class="m-field-label">商品名称</label>
-        <el-input v-model="productInfo.productName" placeholder="请输入商品名称" clearable />
-      </div>
-      <div class="m-field-block">
-        <label class="m-field-label">商品分类</label>
-        <el-cascader
-          v-model="productInfo.categoryId"
-          :options="categoryList"
-          :props="{ label: 'categoryName', value: 'categoryId' }"
-          style="width: 100%"
-          placeholder="请选择分类"
-          @change="getProductPropertyList"
-          :disabled="route.params.productId != null"
-        />
-      </div>
-    </section>
-
-    <section class="glass-card m-edit-section">
-      <div class="section-head">
-        <div>
-          <h3 class="section-title">商品描述</h3>
-          <p class="section-hint">支持 Markdown，用于详情页展示</p>
-        </div>
-      </div>
-      <div class="product-desc is-mobile">
-        <EditorMarkdown v-model="productInfo.productDesc"></EditorMarkdown>
-      </div>
-    </section>
-  </div>
-
-  <el-form v-else class="form-style" label-width="auto" @submit.prevent>
+  <el-form class="form-style" label-width="auto" @submit.prevent>
     <el-form-item label="主图">
       <div class="cover-list">
         <ImageSelect

@@ -45,4 +45,3 @@ const deliveryHandler = (data) => {
 }
 </script>
 
-<style lang="scss" scoped></style>

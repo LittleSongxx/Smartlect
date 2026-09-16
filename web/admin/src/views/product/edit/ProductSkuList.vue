@@ -1,56 +1,5 @@
 <template>
-  <div v-if="isMobileAdmin" class="m-sku-list-wrap">
-    <div class="glass-card m-sku-block">
-      <h3 class="block-title">SKU 列表</h3>
-      <p class="block-desc">为每个规格组合设置价格与库存</p>
-
-      <div v-if="productEditStore.skuList.length" class="sku-mobile-list">
-        <div
-          v-for="(row, index) in productEditStore.skuList"
-          :key="index"
-          class="glass-card m-sku-list-card"
-        >
-          <div class="sku-card-head">
-            <span class="sku-index">SKU #{{ index + 1 }}</span>
-            <button
-              v-if="productEditStore.skuList.length > 1"
-              type="button"
-              class="op-btn sm danger"
-              @click="removeSku(index)"
-            >
-              删除
-            </button>
-          </div>
-          <div class="sku-specs">
-            <span
-              v-for="property in productEditStore.productPropertyList"
-              :key="property.propertyId"
-              class="sku-spec-pill"
-            >
-              {{ property.propertyName }}:
-              <strong>{{ row[property.propertyId]?.propertyValue || '—' }}</strong>
-            </span>
-          </div>
-          <div class="sku-field">
-            <label>售价（元）</label>
-            <el-input-number v-model="row.price" :min="0" :precision="2" :step="1" style="width: 100%" />
-          </div>
-          <div class="sku-field">
-            <label>库存</label>
-            <el-input-number
-              v-model="row.stock"
-              :min="0"
-              style="width: 100%"
-              :disabled="route.params.productId != null"
-            />
-          </div>
-        </div>
-      </div>
-      <p v-else class="m-empty-tip">请先在上方设置 SKU 属性</p>
-    </div>
-  </div>
-
-  <el-table v-else :data="productEditStore.skuList" border stripe height="100%">
+  <el-table :data="productEditStore.skuList" border stripe height="100%">
     <el-table-column type="index" width="50" />
     <el-table-column
       v-for="property in productEditStore.productPropertyList"

@@ -7,9 +7,6 @@ import "@/assets/icon/iconfont.css"
 import '@/assets/base.scss';
 import '@/assets/theme.scss';
 import '@/assets/growth-console.scss';
-import '@/assets/mobile-glass.scss';
-import '@/assets/mobile-page.scss';
-import '@/assets/mobile-product-edit.scss';
 import '@/assets/admin-ios26-message.scss';
 import '@/assets/liquid-glass-surface.scss';
 

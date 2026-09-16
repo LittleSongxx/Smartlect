@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createMemoryHistory, createRouter, createWebHashHistory } from 'vue-router';
-import { createAdminRouter, routes } from '../src/router.js';
-import { resolveDesktopPath } from '../src/utils/device.js';
+import adminRouter, { createAdminRouter, routes } from '../src/router.js';
 
+// 管理端只保留桌面形态：手机端管理台下线后，路由表不再有 /m/** 与设备映射，
+// 但老书签必须被重定向而不是 404（能力没删，只是不再展示）。
 describe('管理端 hash 路由', () => {
   it('刷新等价的路由表停在 ads 与 support', async () => {
     const router = createAdminRouter(createMemoryHistory());
@@ -24,12 +25,24 @@ describe('管理端 hash 路由', () => {
     expect(router.currentRoute.value.name).toBe('support');
   });
 
-  it('every mobile route maps back to a desktop route', async () => {
-    // The desktop viewport guard and MobileShell's "切换到电脑版" both resolve through
-    // resolveDesktopPath, so a mobile page without an entry silently lands on /home.
-    const mobile = routes.find((route) => route.name === 'MobileLayout').children.map((child) => `/m/${child.path}`.replace('/m//', '/m/'));
-    const desktop = new Set(routes.find((route) => route.name === 'Layout').children.map((child) => child.path));
-    const orphans = mobile.filter((path) => path !== '/m' && path !== '/m/home' && !desktop.has(resolveDesktopPath(path)));
-    expect(orphans).toEqual([]);
+  it('路由表里不再有移动端入口，旧 /m 路径回首页而不是 404', async () => {
+    const desktop = routes.find((route) => route.name === 'Layout');
+    expect(desktop).toBeTruthy();
+    expect(routes.some((route) => route.name === 'MobileLayout')).toBe(false);
+    // 注意 /merchant、/marketing/* 也以 /m 开头，只能按段匹配
+    expect(desktop.children.some((child) => child.path === '/m' || child.path.startsWith('/m/'))).toBe(false);
+
+    // 守卫只装在默认实例上（createMemoryHistory 分支不带守卫，避免测试互相影响）
+    await adminRouter.push('/m/more/ads');
+    await adminRouter.isReady();
+    expect(adminRouter.currentRoute.value.path).toBe('/home');
+  });
+
+  it('菜单里不再暴露已隐藏的遗留页面，但它们的路由仍然可用', async () => {
+    const router = createAdminRouter(createMemoryHistory());
+    for (const path of ['/product/category', '/user/address', '/data/statistics', '/data/mqCompensationLog']) {
+      await router.push(path);
+      expect(router.currentRoute.value.path, path).toBe(path);
+    }
   });
 });
