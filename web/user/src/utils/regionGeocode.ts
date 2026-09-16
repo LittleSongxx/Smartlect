@@ -27,6 +27,48 @@ const isDirectMunicipality = (...names: (string | null | undefined)[]): boolean 
     return DIRECT_MUNICIPALITY_KEYS.includes(k);
   });
 
+// 直辖市/省直辖的中间层标签不是地名，写进收货地址只会让用户困惑（"北京市市辖区东城区"）。
+const PLACEHOLDER_LEVEL_LABELS = new Set(['市辖区', '省直辖县级行政区划', '自治区直辖县级行政区划']);
+
+const regionLabelsOf = (codes: string[]): string[] => {
+  const labels: string[] = [];
+  let level = regionData as RegionNode[];
+  for (const code of codes) {
+    const node = level.find((n) => String(n.value) === String(code));
+    if (!node) break;
+    labels.push(String(node.label || ''));
+    level = (node.children || []) as RegionNode[];
+  }
+  return labels;
+};
+
+/** 把级联选择器的层级编码拼成可读的地区前缀，跳过占位层与重复层。 */
+export const joinRegionText = (codes: string[]): string =>
+  regionLabelsOf(codes)
+    .filter(
+      (label, index, all) =>
+        label && label !== all[index - 1] && !PLACEHOLDER_LEVEL_LABELS.has(label)
+    )
+    .join('');
+
+/** 从已保存的地址文本剥掉地区前缀得到详细地址；旧数据的 "北京市市辖区东城区…" 也成立。 */
+export const stripRegionText = (address: string, codes: string[]): string => {
+  const labels = regionLabelsOf(codes).filter(Boolean);
+  let rest = (address || '').trim();
+  // 两轮足够覆盖"省市重复写了一遍"的旧数据；不设上限会把以地名开头的详细地址吃穿。
+  for (let round = 0; round < 2; round += 1) {
+    let stripped = false;
+    for (const label of labels) {
+      if (rest.startsWith(label)) {
+        rest = rest.slice(label.length);
+        stripped = true;
+      }
+    }
+    if (!stripped) break;
+  }
+  return rest.trim();
+};
+
 export const matchRegionFromFullAddress = (address: string): string[] | null => {
   const text = (address || '').trim();
   if (!text) return null;

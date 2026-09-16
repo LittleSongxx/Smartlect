@@ -100,4 +100,10 @@ F3命令已实跑：`scripts/check_f3.py`（真实Java交易＋合成广告触�
 
 三个项目并行时，构建、临时MySQL测试和全链路验收仍串行。暂不需要运行界面/API时可先 `./scripts/dev.sh apps-down`，保留中间件及卷；之后 `up` 逐个启动并等待健康，避免多个JVM同时预热。仅管理Smartlect已校验归属的进程，不能重启WSL/Docker或停其他项目。
 
+## 前端样式约定：单一 token 源
+
+`web/shared/design-tokens.scss` 是两个前端的**唯一**颜色/圆角/阴影/字号来源，取值对齐参考项目 Smartore（动作蓝 `#2563eb`、页面底 `#f5f7fa`、白卡 + 1px `#e5e7eb` + 8px 圆角、无阴影）。两端各自只做两件事：用 vite `resolve.alias` 的 `@tokens` 引入本文件，并各在一个入口 include 一次 `tokens-root`（生成 `:root` CSS 变量）；页面里不再出现裸 hex，历史变量名（`$color-gold`、`--gold`、`--accent` 等）保留为指向新调色板的别名。
+
+Element Plus 的 CSS 必须先于应用主题加载（`main.js`/`main.ts` 里 `element-plus/dist/index.css` 在最前），否则主题层的覆盖会失效。管理端只有一层主题（`theme.scss` + `ai-page.scss`）；用户端只有一层（`styles/element-theme.scss` + `styles/variables.scss`）。移动皮肤与 PC 皮肤共用同一套 token，不再各建平行色板。
+
 本轮Java检查使用限定本次命令的 `JAVA_TOOL_OPTIONS='-Xmx512m -XX:ActiveProcessorCount=2'` 与 `nice -n 10`；不改变其他项目设置，也不覆盖JaCoCo的argLine。Python合同测试的独立MySQL限制512MB/1CPU并由测试回收。前端测试可用 `npm --prefix web/admin run test -- --maxWorkers=1` 串行运行测试worker。资源不足时继续源码工作，按当前进程/健康事实判断，不能仅因一次超时就重启。

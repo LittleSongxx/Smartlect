@@ -189,9 +189,10 @@ const router = createRouter({
       { title: '智能导购', hideTabBar: true, hidePcPageHead: true },
       () => import('@/views/pc/PcAIAssistantView.vue')
     ),
-    subPage('/browse', () => import('@/views/BrowseView.vue'), { title: '全部商品' }),
     subPage('/catalog', () => import('@/views/CatalogView.vue'), { title: '导购精选' }),
-    subPage('/addresses', () => import('@/views/AddressesView.vue'), { title: '收货地址', requiresAuth: true }),
+    // 旧链接：/addresses 与 /address 是同一个页面，保留一条路径（重定向不 404）
+    { path: '/addresses', redirect: (to) => ({ path: '/address', query: to.query }) },
+    subPage('/browse', () => import('@/views/BrowseView.vue'), { title: '全部商品' }),
   ],
   scrollBehavior(_to, _from, savedPosition) {
     if (savedPosition) {

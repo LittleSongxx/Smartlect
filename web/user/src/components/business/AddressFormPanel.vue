@@ -30,8 +30,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { codeToText } from 'element-china-area-data';
-import { matchRegionFromFullAddress } from '@/utils/regionGeocode';
+import { joinRegionText, matchRegionFromFullAddress, stripRegionText } from '@/utils/regionGeocode';
 import { addressApi } from '@/api/modules';
 import { useDevice } from '@/composables/useDevice';
 import AddressFormFields from '@/components/business/AddressFormFields.vue';
@@ -95,8 +94,7 @@ const fillForm = (item?: AddressFormItem | null) => {
   const regionCodes = matchRegion(fullAddress);
   if (regionCodes) {
     form.regionCodes = regionCodes;
-    const regionText = regionCodes.map((c) => codeToText[c] || '').join('');
-    form.detailAddress = fullAddress.slice(regionText.length).trim();
+    form.detailAddress = stripRegionText(fullAddress, regionCodes);
   } else {
     form.regionCodes = [];
     form.detailAddress = fullAddress;
@@ -148,8 +146,7 @@ const save = async () => {
   if (!validateForm() || saving.value) return;
   saving.value = true;
   try {
-    const regionText = form.regionCodes.map((c) => codeToText[c] || '').join('');
-    const fullAddress = regionText + form.detailAddress.trim();
+    const fullAddress = joinRegionText(form.regionCodes) + form.detailAddress.trim();
     const payload = {
       addressee: form.addressee,
       phone: form.phone,

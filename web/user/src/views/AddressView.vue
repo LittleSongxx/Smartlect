@@ -77,12 +77,15 @@ import { useDevice } from '@/composables/useDevice';
 import { confirmAction } from '@/utils/confirm';
 import { saveCheckoutSelectedAddress, loadCheckoutSelectedAddress } from '@/utils/checkout';
 import { toast } from '@/utils/toast';
+import { safeNext } from '@/utils/navigation';
 import { usePageRefresh } from '@/composables/pullRefresh';
 
 const route = useRoute();
 const router = useRouter();
 const { isDesktop } = useDevice();
 const isSelectMode = computed(() => route.query.from === 'checkout');
+// 待返回页：订单确认卡在"暂无地址"时跳来新增，保存后回到原页面
+const nextPath = computed(() => safeNext(route.query.next, ''));
 const useSwipeActions = computed(() => !isDesktop.value && !isSelectMode.value);
 const pickedAddressId = ref(loadCheckoutSelectedAddress() || '');
 
@@ -119,7 +122,11 @@ const onFormSaved = async () => {
     const added = list.value.find((a) => !prevIds.has(a.addressId));
     if (added) {
       selectForCheckout(added);
+      return;
     }
+  }
+  if (wasAdd && nextPath.value && list.value.length) {
+    await router.replace(nextPath.value);
   }
 };
 
@@ -156,7 +163,7 @@ const onSwipeClose = (id: string) => {
 
 const bootstrap = async () => {
   await load();
-  if (isSelectMode.value && route.query.action === 'add') {
+  if (route.query.action === 'add') {
     openForm();
   }
 };

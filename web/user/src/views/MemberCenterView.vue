@@ -82,9 +82,9 @@ const growthHint = computed(() =>
 );
 const growthBarColor = computed(() => {
   const code = Number(center.value?.profile?.levelCode ?? 1);
-  if (code >= 3) return '#c9a962';
-  if (code >= 2) return '#a8a8ad';
-  return '#c9a962';
+  if (code >= 3) return 'var(--primary)';
+  if (code >= 2) return 'var(--text-2)';
+  return 'var(--primary)';
 });
 
 const cardLevelClass = computed(() => {
@@ -139,44 +139,40 @@ onMounted(load);
 }
 
 .member-center-page [data-member-card] {
-  padding: 20px !important;
-  text-align: center !important;
-  transition: all 0.3s ease !important;
-  border-radius: $radius-card !important;
-  margin-bottom: 16px !important;
-  position: relative !important;
-  z-index: 1 !important;
-  background: transparent !important;
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-}
+  padding: 20px;
+  text-align: center;
+  border-radius: $radius-card;
+  margin-bottom: 16px;
+  background: $color-card;
+  border: 1px solid $color-border;
 
-.member-center-page [data-member-card].level-default {
-  background: linear-gradient(135deg, #f5f5f7 0%, #e0e0e0 100%) !important;
-  border: 1px solid #d1d1d6 !important;
-  box-shadow: none !important;
-}
+  .level-tag,
+  .level-code {
+    color: $color-text-title;
+  }
 
-.member-center-page [data-member-card].level-silver {
-  background: linear-gradient(135deg, #e8e8ed 0%, #c8c8cc 50%, #a8a8ad 100%) !important;
-  border: 1px solid #a8a8ad !important;
-  box-shadow: 0 4px 20px rgba(168, 168, 173, 0.3) !important;
-}
+  // 等级只影响一处强调色，卡片本体保持平面白底
+  &.level-default {
+    border-color: $color-border;
+  }
 
-.member-center-page [data-member-card].level-silver .level-tag,
-.member-center-page [data-member-card].level-silver .level-code {
-  color: #4a4a4f !important;
-}
+  &.level-silver {
+    border-color: $color-silver;
 
-.member-center-page [data-member-card].level-gold {
-  background: linear-gradient(135deg, #fff8e7 0%, #f5e6c8 50%, #e8d5a3 100%) !important;
-  border: 1px solid #c9a962 !important;
-  box-shadow: 0 4px 20px rgba(201, 169, 98, 0.4) !important;
-}
+    .level-tag,
+    .level-code {
+      color: $color-text-body;
+    }
+  }
 
-.member-center-page [data-member-card].level-gold .level-tag,
-.member-center-page [data-member-card].level-gold .level-code {
-  color: #8b7355 !important;
+  &.level-gold {
+    border-color: $color-primary;
+
+    .level-tag,
+    .level-code {
+      color: $color-primary;
+    }
+  }
 }
 
 .level-tag {

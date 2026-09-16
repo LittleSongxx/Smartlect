@@ -225,3 +225,35 @@ RPO = 复制延迟（常态 0 秒）；RTO = 手动切换时长（分钟级，�
 - 应用层未跨机：9 个 Java 服务仍单机部署（Spring Cloud 注册 IP 为 127.0.0.1）。本次集群化对象是中间件数据面/控制面——对应"消息零丢失、配置发现不中断、缓存热切"三类真实故障；应用层多副本需要会话/幂等键跨机化，是下一阶段。
 - MySQL 主从已于 2026-09-15 补齐（node2 只读副本，见上节）；备份+PITR 继续作为第一恢复手段（见 backup-restore-drill.md）。
 - 压测负载含 3 个 HTTP 请求/迭代（首页+目录+商品页），"QPS"为 k6 请求口径；两形态口径一致，对比有效。
+
+## 2026-09-17 Redis 主节点回切 node1 + Redisson 只读副本 bug
+
+**背景**：node1 变配重启（8c16g）后 Redis 主漂在 node3，node1 成为只读副本，与既定拓扑（node1 = Redis 主）不符。
+
+**发现的真 bug（非拓扑本身）**：商品服务每次看商品详情要 4.6–6.5 秒，日志每次报
+`商品布隆过滤器写入失败`，异常为 `RedisReadonlyException: READONLY You can't write against
+a read only replica`（连 127.0.0.1:16379）。根因是**两个 Redis 客户端读的配置不同**：
+Spring 自身按 `SPRING_DATA_REDIS_SENTINEL_*` 跟随 sentinel 选出的主，而 `RedissionConfig`
+只读 `spring.data.redis.host/port`，于是被钉在本地副本上——布隆过滤器预热写一律被拒，
+Redisson 重试到超时才失败，然后降级继续。修复（提交 1da835e + 3fbf3cd）：
+`RedissionConfig` 支持 sentinel（`useSentinelServers`，跳过 sentinel 列表校验以适配内网/容器地址），
+并给这个"可选加速写入"加 60 秒冷却——即使 Redis 再次漂移，热路径只会退化成"少一层缓存"，
+不会每请求卡几秒。**实测：`/api/product/getProduct` 5.78s → 0.12–0.15s**（首调 1.1s 为 JVM 冷启动）。
+
+**主节点回切（定向 failover，未用 REPLICAOF 以免被反向 failover 打回）**：
+1. `CONFIG SET replica-priority 0` 设在 node2 与 node3（非目标副本失去参选资格），node1 保持 100；
+2. `SENTINEL FAILOVER mymaster` → **4 秒内**主切到 node1（sentinel 主地址变为 172.21.131.151:6379）；
+3. node2/node3 恢复 `replica-priority 100` 并 `CONFIG REWRITE` 持久化。
+
+**终态**：`role:master` @node1，2 个副本 online、lag 1ms；sentinel 主 = node1；
+布隆过滤器写入失败停止（最后一次失败时间戳 21:32，回切后 2.8 小时内零失败）；
+站点与 API 全程可用（切换期无中断报告）。
+
+**踩坑**：① node2/node3 上没有 `/opt/smartlect`，取 Redis 密码要从**容器自身**的 `REDIS_PASSWORD`
+环境变量读，不能用 node1 的 runtime.env（两边 bootstrap 各自生成，值不同）；
+② node2/node3 的 Redis 容器名是 `redis-replica`（不是 node1 的 `smartlect-redis-1`）；
+③ `CONFIG REWRITE` 必须执行，否则重启后优先级回退。
+
+**另一条运维教训（部署流水线）**：流水线是"先停全部应用再逐个起新 JAR"，坏 JAR 会直接造成整站
+不可用（本次 `RedissionConfig` 双构造器导致 `No default constructor found` 即如此，健康门禁拦下
+但站点已 502）。待办：部署前加一次 `--spring.main.web-application-type=none` 的启动冒烟。

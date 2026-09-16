@@ -4,10 +4,12 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { JSDOM } from 'jsdom';
 import AgentSendPanel from '../src/views/agent/AgentSendPanel.vue';
-import AddressesView from '../src/views/AddressesView.vue';
+import AddressFormPanel from '../src/components/business/AddressFormPanel.vue';
+import AddressFormFields from '../src/components/business/AddressFormFields.vue';
 import CatalogView from '../src/views/CatalogView.vue';
 import LoginView from '../src/views/LoginView.vue';
 import { errorText, session } from '../src/api/client';
+import { addressApi } from '../src/api/modules';
 import { useAgentSession } from '../src/composables/useAgentSession';
 import { loginTarget, safeNext } from '../src/utils/navigation';
 import { canPurchase, coverUrl, stockCap, uniqueCategories } from '../src/utils/productDisplay';
@@ -145,23 +147,25 @@ describe('封面、库存与登录回跳', () => {
 describe('地址、退款与助手入参', () => {
   it('地址表单提交 Java 字段', async () => {
     session.value = user;
-    vi.stubGlobal('fetch', vi.fn(async (path: string, options: RequestInit = {}) => {
-      calls.push({ path, body: bodyOf(options), method: options.method });
-      if (path.endsWith('/session')) return json(session.value);
-      if (path.endsWith('/userAddress/loadDataList')) return json({ code: 200, data: [] });
-      if (path.endsWith('/userAddress/addAddress')) return json({ code: 200, data: null });
-      throw new Error(`Unexpected request: ${path}`);
-    }));
+    const addAddress = vi.spyOn(addressApi, 'addAddress').mockResolvedValue(null);
     const router = createRouter({ history: createMemoryHistory(), routes: [
-      { path: '/addresses', component: AddressesView }, { path: '/login', component: { template: '<div />' } }] });
-    await router.push('/addresses'); await router.isReady();
-    wrapper = mount(AddressesView, { global: { plugins: [router] } }); await flushPromises();
-    const inputs = wrapper.findAll('form input');
-    await inputs[0]!.setValue('张三'); await inputs[1]!.setValue('13800000000');
-    await wrapper.get('form textarea').setValue('演示路1号');
-    await wrapper.get('form').trigger('submit'); await flushPromises();
-    const added = calls.find(call => call.path.endsWith('/userAddress/addAddress'));
-    expect(added?.body).toMatchObject({ addressee: '张三', phone: '13800000000', address: '演示路1号', defaultType: '1' });
+      { path: '/address', component: { template: '<div />' } }, { path: '/login', component: { template: '<div />' } }] });
+    await router.push('/address'); await router.isReady();
+    wrapper = mount(AddressFormPanel, {
+      props: { modelValue: true },
+      global: { plugins: [router], stubs: { 'el-dialog': { template: '<div><slot /></div>' }, 'el-drawer': { template: '<div><slot /></div>' }, 'el-cascader': true, 'el-button': true, 'el-icon': true, 'el-checkbox': true } }
+    });
+    await flushPromises();
+    const fields = wrapper.findComponent(AddressFormFields);
+    // 表单字段由子组件持有同一个 reactive 对象，直接按用户填写的结果赋值
+    Object.assign(fields.props('form'), {
+      addressee: '张三', phone: '13800000000',
+      regionCodes: ['11', '1101', '110101'], detailAddress: '演示路1号', defaultType: 1
+    });
+    fields.vm.$emit('submit'); await flushPromises();
+    expect(addAddress).toHaveBeenCalledWith({
+      addressee: '张三', phone: '13800000000', address: '北京市东城区演示路1号', defaultType: 1
+    });
   });
 
 

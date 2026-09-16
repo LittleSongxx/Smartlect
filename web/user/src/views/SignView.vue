@@ -20,9 +20,9 @@
 
     <section class="sign-reward-hint">
       <svg class="hint-icon" viewBox="0 0 20 20" width="16" height="16" fill="none">
-        <rect x="2" y="4" width="16" height="4" rx="1" fill="#c9a962"/>
-        <path d="M4 8v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" stroke="#c9a962" stroke-width="1.2"/>
-        <path d="M10 4V17M7 2l3 2 3-2" stroke="#c9a962" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="2" y="4" width="16" height="4" rx="1" fill="var(--primary)"/>
+        <path d="M4 8v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" stroke="var(--primary)" stroke-width="1.2"/>
+        <path d="M10 4V17M7 2l3 2 3-2" stroke="var(--primary)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <span>连续签到满 <strong>7</strong> 天、<strong>14</strong> 天、<strong>21</strong> 天……即送优惠券奖励！</span>
     </section>
@@ -262,12 +262,11 @@ usePageRefresh(loadSignCalendar);
   flex: 1;
   min-width: 0;
   max-width: 112px;
-  background: linear-gradient(135deg, $color-gold-soft, #fff);
-  border: 1px solid $color-gold-muted;
+  background: $color-card;
+  border: 1px solid $color-border;
   border-radius: $radius-card;
   padding: 10px 6px;
   text-align: center;
-  box-shadow: $shadow-card;
 
   .stat-value {
     margin: 0;
@@ -301,11 +300,11 @@ usePageRefresh(loadSignCalendar);
   margin: 0 auto;
   padding: 8px 14px;
   max-width: 360px;
-  background: linear-gradient(135deg, #fef7e6, #fef0d5);
-  border: 1px solid #f5e2b5;
-  border-radius: 8px;
+  background: $color-primary-soft;
+  border: 1px solid $color-primary-muted;
+  border-radius: $radius-card;
   font-size: 12px;
-  color: #8b6f3a;
+  color: $color-text-body;
   line-height: 1.5;
   flex-shrink: 0;
   box-sizing: border-box;
@@ -316,7 +315,7 @@ usePageRefresh(loadSignCalendar);
   }
 
   strong {
-    color: #c9a962;
+    color: $color-primary;
     font-weight: 700;
   }
 }
@@ -401,7 +400,7 @@ usePageRefresh(loadSignCalendar);
   }
 
   &.is-signed {
-    background: $color-gold-soft;
+    background: $color-primary-soft;
 
     .day-num {
       color: $color-primary;
@@ -411,7 +410,7 @@ usePageRefresh(loadSignCalendar);
     .signed-mark {
       font-size: 9px;
       line-height: 1;
-      color: $color-gold;
+      color: $color-success;
     }
   }
 
@@ -445,54 +444,52 @@ usePageRefresh(loadSignCalendar);
 </style>
 
 <style lang="scss">
+@use '@/styles/variables' as *;
+
 .sign-reward-alert {
-  border-radius: 8px !important;
-  background: rgba(255, 255, 255, 0.88) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  max-width: 320px !important;
-  padding: 4px !important;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.12),
-    0 2px 8px rgba(0, 0, 0, 0.06) !important;
+  border-radius: $radius-card;
+  background: $color-card;
+  border: 1px solid $color-border;
+  max-width: 320px;
+  padding: 4px;
 
   .el-message-box__header {
-    padding: 20px 24px 4px !important;
+    padding: 20px 24px 4px;
   }
 
   .el-message-box__title {
-    font-size: 17px !important;
-    font-weight: 600 !important;
-    color: #303133 !important;
+    font-size: 17px;
+    font-weight: 600;
+    color: $color-text-title;
   }
 
   .el-message-box__status {
-    font-size: 24px !important;
-    position: static !important;
-    display: inline-block !important;
-    margin-right: 8px !important;
-    vertical-align: middle !important;
+    font-size: 24px;
+    position: static;
+    display: inline-block;
+    margin-right: 8px;
+    vertical-align: middle;
   }
 
   .el-message-box__content {
-    padding: 8px 24px 4px !important;
+    padding: 8px 24px 4px;
   }
 
   .el-message-box__message {
-    font-size: 14px !important;
-    line-height: 1.6 !important;
-    color: #606266 !important;
+    font-size: 14px;
+    line-height: 1.6;
+    color: $color-text-body;
   }
 
   .el-message-box__btns {
-    padding: 12px 24px 20px !important;
-    display: flex !important;
-    justify-content: center !important;
+    padding: 12px 24px 20px;
+    display: flex;
+    justify-content: center;
 
     .el-button {
-      border-radius: 8px !important;
-      padding: 8px 32px !important;
-      min-width: 120px !important;
+      border-radius: $radius-card;
+      padding: 8px 32px;
+      min-width: 120px;
     }
   }
 }

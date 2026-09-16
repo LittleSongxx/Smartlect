@@ -18,7 +18,7 @@
         <label v-if="coupons.length">优惠券<select v-model="userCouponId"><option value="">不使用优惠券</option><option v-for="coupon in coupons" :key="coupon.userCouponId" :value="coupon.userCouponId">{{ couponLabel(coupon) }}</option></select></label></div>
       <p v-if="!scoped" class="notice error" role="alert">该商品不在当前店铺可售范围内，请换一件再下单。</p>
       <p v-else-if="session?.actor.subject_type !== 'user'" class="muted"><RouterLink :to="loginTo">登录</RouterLink>后可生成下单确认卡。</p>
-      <p v-else-if="!addresses.length" class="muted">当前账号暂无收货地址，请先<RouterLink :to="{ path: '/addresses', query: { next: route.fullPath } }">添加收货地址</RouterLink>后再下单。</p>
+      <p v-else-if="!addresses.length" class="muted">当前账号暂无收货地址，请先<RouterLink :to="{ path: '/address', query: { next: route.fullPath, action: 'add' } }">添加收货地址</RouterLink>后再下单。</p>
       <div class="actions-inline"><button class="primary" type="button" :disabled="busy || !canBuy" @click="buy">生成下单确认卡</button><button type="button" @click="consult">问问导购</button></div>
       <p class="muted">先核对报价，再由您确认下单。付款需要单独确认。确认卡展示的总额已含所选优惠券。</p>
       <details class="muted"><summary>商品与规格凭据</summary><p>商品编号 {{ detail.productInfo.productId }} · 所选规格编号 {{ selectedSku || '未选择' }} · 地址编号 {{ addressId || '未选择' }}<template v-if="userCouponId"> · 优惠券 {{ userCouponId }}</template></p></details>

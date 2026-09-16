@@ -249,7 +249,7 @@ const applySearch = (keyWords: string) => {
 onMounted(async () => {
   const keyWords = resolveKeywords();
   if (!keyWords) {
-    router.replace('/search-portal');
+    router.replace('/search');
     return;
   }
   Object.assign(query, searchStore.payload);
