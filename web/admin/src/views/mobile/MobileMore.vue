@@ -71,9 +71,21 @@ const groups = [
       { label: '活动与授权', icon: 'setting', path: '/m/more/ads' },
       { label: '知识库', icon: 'folder', path: '/m/more/knowledge' },
       { label: '人工客服', icon: 'robot', path: '/m/more/support' },
+      { label: '评价分析', icon: 'commend', path: '/m/more/reviewAnalysis' },
+      { label: '增长报告', icon: 'rise', path: '/m/more/growthReport' },
       { label: '分类管理', icon: 'product', path: '/m/more/category' },
       { label: '商品属性', icon: 'stock', path: '/m/more/productProperty' },
       { label: '运营工具', icon: 'setting', path: '/m/more/tools' }
+    ]
+  },
+  {
+    title: 'AI 资产',
+    items: [
+      { label: '模型配置', icon: 'setting', path: '/m/more/aiModels' },
+      { label: '提示词与技能', icon: 'folder', path: '/m/more/aiPrompts' },
+      { label: '知识索引', icon: 'search', path: '/m/more/aiKnowledgeIndex' },
+      { label: '运行浏览器', icon: 'robot', path: '/m/more/aiRuns' },
+      { label: '工具调试台', icon: 'edit', path: '/m/more/aiTools' }
     ]
   }
 ]

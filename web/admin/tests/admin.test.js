@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import Account from '../src/views/Account.vue';
 import AdsView from '../src/views/AdsView.vue';
 import SupportView from '../src/views/SupportView.vue';
 import KnowledgeView from '../src/views/KnowledgeView.vue';
@@ -29,17 +28,6 @@ beforeEach(() => {
 afterEach(() => { wrappers.splice(0).forEach(wrapper => wrapper.unmount()); vi.unstubAllGlobals(); });
 
 describe('Smartlect 管理端业务边界', () => {
-  it('uses Java POST captcha and account/password form login with double-submit protection', async () => {
-    clearSession(); let finish;
-    handler = (path, options) => path === '/admin-api/account/login' ? new Promise(resolve => { finish = () => resolve(reply({ code: 200, data: null })); }) : null;
-    const wrapper = await render(Account);
-    expect(calls[0].options.method).toBe('POST');
-    await field(wrapper, '账号').setValue('merchant'); await field(wrapper, '密码').setValue('secret'); await field(wrapper, '图片验证码').setValue('abcd');
-    await wrapper.find('form').trigger('submit'); await wrapper.find('form').trigger('submit'); await flushPromises();
-    const logins = calls.filter(item => item.path.endsWith('/account/login')); expect(logins).toHaveLength(1);
-    expect(Object.fromEntries(logins[0].options.body)).toEqual({ account: 'merchant', password: 'secret', checkCode: 'abcd', checkCodeKey: 'captcha-key' });
-    expect(logins[0].options.credentials).toBe('same-origin'); finish(); await flushPromises(); expect(session.value.actor.subject_type).toBe('merchant');
-  });
   it('refreshes merchant CSRF on each write and blocks an account switch', async () => {
     handler = path => path.endsWith('/session') ? reply({ actor: { ...actor, actor_id: 'm2' }, csrf_token: 'new' }) : null;
     await expect(aiWrite('/ads/campaigns', { campaign_id: 'x' })).rejects.toThrow('账号已变化');

@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory } from 'vue-router';
 import MerchantView from '../src/views/MerchantView.vue';
 import AdsView from '../src/views/AdsView.vue';
-import App from '../src/GrowthShell.vue';
+import Layout from '../src/views/Layout.vue';
 import { createAdminRouter } from '../src/router.js';
 import { aiGet, aiWrite, clearSession, selectScope, session } from '../src/api/client';
 import { response, button, field } from './helpers';
@@ -15,9 +15,9 @@ const sku = { product_id: 'p1', sku_key: 'hash1', product_name: '真实产品', 
 let state, ads, calls, handler, currentActor; const wrappers=[];
 const render = async (component,options={}) => {
   const global = { ...(options.global || {}) };
-  if (component === App) {
+  if (component === Layout) {
     const router = createAdminRouter(createMemoryHistory());
-    await router.push('/merchant');
+    await router.push('/ads');
     global.plugins = [...(global.plugins || []), router];
     const wrapper = mount(component, { ...options, global });
     wrappers.push(wrapper);
@@ -126,7 +126,7 @@ it('offers explicit resume for an exhausted campaign and sends its current versi
 
 it('switches only through server memberships, invalidates stale reads, and clears the old scoped form',async()=>{
   handler=path=>{if(path.endsWith('/scopes/select')){currentActor={...actor,execution_scope_id:'demo-1'};ads={...ads,campaigns:[]};return response({actor:currentActor,csrf_token:'scope-demo-1'});}};
-  const wrapper=await render(App);await button(wrapper,'活动与授权').trigger('click');await flushPromises();await field(wrapper,'活动名称').setValue('不能带到另一范围');
+  const wrapper=await render(Layout);await flushPromises();await field(wrapper,'活动名称').setValue('不能带到另一范围');
   let resolveRead;const prior=handler;handler=(path,options)=>path==='/admin-api/assistant/merchant'?new Promise(resolve=>{resolveRead=resolve;}):prior(path,options);
   const stale=aiGet('/merchant').catch(error=>error);await flushPromises();
   await selectScope('demo-1');resolveRead(response({plans:[plan]}));expect((await stale).status).toBe(409);await flushPromises();

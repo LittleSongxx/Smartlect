@@ -52,6 +52,24 @@
           </el-breadcrumb>
         </div>
         <div class="top-actions">
+          <el-dropdown v-if="scopes.length" trigger="click" @command="changeScope">
+            <button type="button" class="action-pill" :disabled="switchingScope">
+              <span class="iconfont icon-folder action-pill__icon"></span>
+              {{ currentScopeLabel }}
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-for="scope in scopes"
+                  :key="scope.execution_scope_id"
+                  :command="scope.execution_scope_id"
+                  :disabled="scope.execution_scope_id === session?.actor?.execution_scope_id"
+                >
+                  {{ scope.label }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <button type="button" class="action-pill" @click="tool">
             <span class="iconfont icon-setting action-pill__icon"></span>
             小工具
@@ -67,7 +85,9 @@
         </div>
       </header>
       <main class="right-body" :class="{ 'is-home': route.path === '/home' }">
-        <router-view></router-view>
+        <router-view v-slot="{ Component }">
+          <component :is="Component" :key="scopeKey" />
+        </router-view>
       </main>
     </div>
   </div>
@@ -77,13 +97,52 @@
 <script setup>
 import Tool from './Tool.vue'
 import BrandMark from '@/components/BrandMark.vue'
-import { ref, getCurrentInstance, computed } from 'vue'
+import { ref, getCurrentInstance, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { switchToMobileView } from '@/utils/device'
+import { session, ownerKey, loadSession, aiGet, selectScope, errorText } from '@/api/client'
 
 const { proxy } = getCurrentInstance()
 const router = useRouter()
 const route = useRoute()
+
+// 经营范围切换（自 GrowthShell 迁入）：AI 相关页面按范围隔离状态，切换后整体重挂载。
+const scopes = ref([])
+const switchingScope = ref(false)
+const scopeKey = computed(() => ownerKey(session.value))
+const currentScopeLabel = computed(
+  () =>
+    scopes.value.find((scope) => scope.execution_scope_id === session.value?.actor?.execution_scope_id)?.label ||
+    '当前范围',
+)
+watch(scopeKey, async () => {
+  scopes.value = []
+  if (session.value?.actor?.subject_type !== 'merchant') return
+  try {
+    scopes.value = (await aiGet('/scopes')).items
+  } catch {
+    // 范围列表加载失败不阻塞管理台；AI 页面自身操作会给出明确报错
+  }
+})
+const changeScope = async (executionScopeId) => {
+  if (switchingScope.value || executionScopeId === session.value?.actor?.execution_scope_id) return
+  switchingScope.value = true
+  try {
+    await selectScope(executionScopeId)
+    proxy.Message.success('经营范围已切换')
+  } catch (reason) {
+    proxy.Message.error(errorText(reason))
+  } finally {
+    switchingScope.value = false
+  }
+}
+onMounted(async () => {
+  try {
+    await loadSession()
+  } catch {
+    // 未登录 assistant 或非商家身份时，范围切换入口保持隐藏
+  }
+})
 
 const pageTitle = computed(() => {
   const list = route.meta.itemList
@@ -176,6 +235,20 @@ const menuList = ref([
       { name: '活动与授权', path: '/ads' },
       { name: '知识库', path: '/knowledge' },
       { name: '人工客服', path: '/support' },
+      { name: '评价分析', path: '/reviewAnalysis' },
+      { name: '增长报告', path: '/growthReport' },
+    ],
+  },
+  {
+    name: 'AI 资产',
+    icon: 'robot',
+    opened: true,
+    children: [
+      { name: '模型配置', path: '/ai/models' },
+      { name: '提示词与技能', path: '/ai/prompts' },
+      { name: '知识索引', path: '/ai/knowledge-index' },
+      { name: '运行浏览器', path: '/ai/runs' },
+      { name: '工具调试台', path: '/ai/tools' },
     ],
   },
 ])

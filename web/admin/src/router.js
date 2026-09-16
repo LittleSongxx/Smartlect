@@ -26,7 +26,14 @@ const DESKTOP_TO_MOBILE = {
   '/merchant': '/m/more/merchant',
   '/ads': '/m/more/ads',
   '/knowledge': '/m/more/knowledge',
-  '/support': '/m/more/support'
+  '/support': '/m/more/support',
+  '/ai/models': '/m/more/aiModels',
+  '/ai/prompts': '/m/more/aiPrompts',
+  '/ai/knowledge-index': '/m/more/aiKnowledgeIndex',
+  '/ai/runs': '/m/more/aiRuns',
+  '/ai/tools': '/m/more/aiTools',
+  '/reviewAnalysis': '/m/more/reviewAnalysis',
+  '/growthReport': '/m/more/growthReport'
 }
 
 function resolveMobilePath(desktopPath) {
@@ -74,7 +81,14 @@ export const routes = [
       { path: 'more/merchant', component: () => import('@/views/MerchantView.vue'), meta: { title: '经营助手', tab: '/m/more', showBack: true } },
       { path: 'more/ads', component: () => import('@/views/AdsView.vue'), meta: { title: '活动与授权', tab: '/m/more', showBack: true } },
       { path: 'more/knowledge', component: () => import('@/views/KnowledgeView.vue'), meta: { title: '知识库', tab: '/m/more', showBack: true } },
-      { path: 'more/support', component: () => import('@/views/SupportView.vue'), meta: { title: '人工客服', tab: '/m/more', showBack: true } }
+      { path: 'more/support', component: () => import('@/views/SupportView.vue'), meta: { title: '人工客服', tab: '/m/more', showBack: true } },
+      { path: 'more/aiModels', component: () => import('@/views/ai/ModelConfigView.vue'), meta: { title: '模型配置', tab: '/m/more', showBack: true } },
+      { path: 'more/aiPrompts', component: () => import('@/views/ai/PromptSkillView.vue'), meta: { title: '提示词与技能', tab: '/m/more', showBack: true } },
+      { path: 'more/aiKnowledgeIndex', component: () => import('@/views/ai/KnowledgeIndexView.vue'), meta: { title: '知识索引', tab: '/m/more', showBack: true } },
+      { path: 'more/aiRuns', component: () => import('@/views/ai/AgentRunsView.vue'), meta: { title: '运行浏览器', tab: '/m/more', showBack: true } },
+      { path: 'more/aiTools', component: () => import('@/views/ai/ToolDebugView.vue'), meta: { title: '工具调试台', tab: '/m/more', showBack: true } },
+      { path: 'more/reviewAnalysis', component: () => import('@/views/biz/ReviewAnalysisView.vue'), meta: { title: '评价分析', tab: '/m/more', showBack: true } },
+      { path: 'more/growthReport', component: () => import('@/views/biz/GrowthReportView.vue'), meta: { title: '增长报告', tab: '/m/more', showBack: true } }
     ]
   },
   {
@@ -107,7 +121,14 @@ export const routes = [
       { path: '/merchant', name: 'merchant', component: () => import('@/views/MerchantView.vue'), meta: { itemList: ['经营', '经营助手'] } },
       { path: '/ads', name: 'ads', component: () => import('@/views/AdsView.vue'), meta: { itemList: ['经营', '活动与授权'] } },
       { path: '/knowledge', name: 'knowledge', component: () => import('@/views/KnowledgeView.vue'), meta: { itemList: ['经营', '知识库'] } },
-      { path: '/support', name: 'support', component: () => import('@/views/SupportView.vue'), meta: { itemList: ['经营', '人工客服'] } }
+      { path: '/support', name: 'support', component: () => import('@/views/SupportView.vue'), meta: { itemList: ['经营', '人工客服'] } },
+      { path: '/reviewAnalysis', name: 'reviewAnalysis', component: () => import('@/views/biz/ReviewAnalysisView.vue'), meta: { itemList: ['经营', '评价分析'] } },
+      { path: '/growthReport', name: 'growthReport', component: () => import('@/views/biz/GrowthReportView.vue'), meta: { itemList: ['经营', '增长报告'] } },
+      { path: '/ai/models', name: 'aiModels', component: () => import('@/views/ai/ModelConfigView.vue'), meta: { itemList: ['AI 资产', '模型配置'] } },
+      { path: '/ai/prompts', name: 'aiPrompts', component: () => import('@/views/ai/PromptSkillView.vue'), meta: { itemList: ['AI 资产', '提示词与技能'] } },
+      { path: '/ai/knowledge-index', name: 'aiKnowledgeIndex', component: () => import('@/views/ai/KnowledgeIndexView.vue'), meta: { itemList: ['AI 资产', '知识索引'] } },
+      { path: '/ai/runs', name: 'aiRuns', component: () => import('@/views/ai/AgentRunsView.vue'), meta: { itemList: ['AI 资产', '运行浏览器'] } },
+      { path: '/ai/tools', name: 'aiTools', component: () => import('@/views/ai/ToolDebugView.vue'), meta: { itemList: ['AI 资产', '工具调试台'] } }
     ]
   }
 ]
