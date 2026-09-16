@@ -48,5 +48,12 @@ AI 资产（模型配置、提示词/技能、知识索引、Agent 留痕、工�
   900+ 行断言级测试，纯美学重写带来回归风险而无功能收益；待下一轮专项处理。
 - 运行浏览器按需查询，未给 agent_run 的 created_at 之外的维度建复合索引；
   数据量上来后再按查询画像加。
+- **Phase 5/6 的三项交付未做**（后续补记，2026-09-16 复查）：提示词页的版本 diff 视图、
+  system prompt 的 Markdown 编辑器（EditorMarkdown）、增长报告的 ECharts 图与
+  `/admin-api/assistant/attribution` 的 UI 接入。当前提示词页是「版本列表 + 文本域编辑
+  + 确认激活」；增长报告是「确定性快照数字 + 建议列表」，不含图表。
+- 引擎面：skill 热编辑只校验结构（键集合/skill_id/semver）与 tools ⊆ 打包集；
+  instructions/output_contract 文本可自由改写，语义正确性靠 dev 评测集把关。
 - 评测：本次各阶段以单测 + MySQL 契约锁行为；dev 评测集回归在接入真实栈后执行
-  （holdout 不动）。
+  （holdout 不动）。**2026-09-16 复查补记**：MySQL 契约测试此前在 CI 与本地默认都被跳过
+  （`SMARTLECT_RUN_MYSQL_TESTS` 未设），18 个失败因此长期不可见；已修完并把该套件接进 CI。

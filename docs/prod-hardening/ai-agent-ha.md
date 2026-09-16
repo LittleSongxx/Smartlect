@@ -69,11 +69,11 @@ pymysql.connections.__init__ → _create_ssl_ctx → ssl.create_default_context 
 | 400 | ~14 | 7.3s | 60s(超时) | 10.9% |
 
 - 控制面吞吐平台 ≈ **30 req/s**（修复前实测同场景 ≈3 req/s + 大面积超时）。
-- 400 VU 仍拥塞：剩余瓶颈为每请求 6-10 次 MySQL **新建连接**（握手已便宜但仍有成本）+ to_thread 默认 12 线程 + Java 召回往返。
+- 400 VU 仍拥塞：剩余瓶颈为 to_thread 默认 12 线程 + Java 召回往返。（后续「全面加强浪潮」已把每事务新建连接换成线程本地长连接并复测：控制面平台没有因此上移，剩余瓶颈是推荐链路多跳深度。）
 
 ## 五、下一排杠杆（按性价比，未做）
 
-1. growth 侧 MySQL **连接池**（DBUtils PooledDB 或等价，预估控制面吞吐 2-5×）；
+1. ~~growth 侧 MySQL 连接池~~——线程本地长连接已落地（1e0652f），复测 30 req/s 平台未上移；
 2. uvicorn workers>1 或多进程（突破单事件循环）；
 3. recommendations 链路里 Java 召回结果的短 TTL 缓存；
 4. 模型信号量按负载分级（如队列深度>阈值时临时放大并加告警）。

@@ -1,8 +1,10 @@
 # AI 资产运维化 + admin 全站统一 · 实施路线
 
 > 本文档是跨会话执行用 to-do list（2026-09-16 制定）。
-> **执行状态（2026-09-16）**：Phase 0-7 已完成并分批提交；唯一偏离：Phase 7 的 growth-console.scss
-> 全量退役延后（见 docs/adr/0005-ai-asset-ops-surface.md「已知边界」），四页仅统一页头。来源：Smartore 可借鉴点调研（知识运维/模型配置/Agent 留痕/工具调试/分析类功能）+ Smartlect 实现级体检。
+> **执行状态（2026-09-16）**：Phase 0-7 已完成并分批提交。两处偏离已记入
+> docs/adr/0005-ai-asset-ops-surface.md「已知边界」：Phase 7 的 growth-console.scss 全量退役延后
+> （四页仅统一页头）；Phase 5/6 的 diff 视图、EditorMarkdown、ECharts 图与 attribution UI 接入未做。
+> 下方复选框保留为原始清单，未逐项勾销；完成度以 ADR 的「已知边界」为准。来源：Smartore 可借鉴点调研（知识运维/模型配置/Agent 留痕/工具调试/分析类功能）+ Smartlect 实现级体检。
 > 完成一项勾一项；顺序原则上按阶段推进，阶段内条目可并行。每阶段结束：CI 三 job 全绿 + 本文档勾销 + IMPLEMENTATION_STATUS.md 追记。
 
 ## 已拍板的决策（不再讨论）

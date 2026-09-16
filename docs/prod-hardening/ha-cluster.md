@@ -163,7 +163,7 @@ TOTAL_SENT=2430 / TOTAL_RECEIVED=2430 / ZERO_LOSS=PASS
 
 **k6 尾延迟 ≈ Hikari 等连接时间**（859ms≈858ms 对到毫秒）。因果链：browse 流量全压 product → `SMARTLECT_DB_POOL_MAX_SIZE` 默认 4 条 MySQL 连接串行服务 → 池满排队 → Tomcat 200 线程被等连接的请求塞满（800 VU 时恰好 active=200）→ 吞吐封顶 4 连接×(1000/6ms)≈605。
 
-修复=一行 env：`SMARTLECT_DB_POOL_MAX_SIZE=12`（配置注释本就预留此杠杆；预算核对：10 服务×12=120 + nacos/growth/exporter≈20 < MySQL max_connections 160，池 min-idle=1 空闲自动回缩）。第二轮结果：
+修复=一行 env：`SMARTLECT_DB_POOL_MAX_SIZE=12`（配置注释本就预留此杠杆；预算核对：10 服务×12=120 + nacos/growth/exporter≈20 < MySQL max_connections 200（compose 已从 160 提到 200），池 min-idle=1 空闲自动回缩）。第二轮结果：
 
 | 负载档 | req/s | p95 | 备注 |
 |---|---|---|---|

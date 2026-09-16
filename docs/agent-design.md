@@ -35,6 +35,9 @@ flowchart LR
 | order_service | 本人订单与付款/退款状态、待确认取消/退款；没有付款执行工具 |
 
 版本化 Skill 在 [skills目录](../growth/src/smartlect/skills/)，随安装包发布；聊天、文档和商品描述不能安装或修改它们。
+管理端「AI 资产 · 提示词与技能」可以在**不换 skill_id、不改结构**的前提下热改 `instructions` 等文本
+（`prompt_template` 表，激活/回滚单行原子切换，代码文本是冻结回退）；`tools` 只能取打包集合的子集，
+因为 Agent 的可调用工具集正是由这些名字拼出来的（见 [ADR 0005](adr/0005-ai-asset-ops-surface.md)）。
 模型通过原生 `finish_answer` 输出函数提交 `FinalAnswer`，该函数是控制器的输出通道，没有业务副作用。
 模型声明 `request_kind` 与 `handoff_requested`；`answer_status` 与是否建单由控制器按声明 × 本轮证据编译，见 [ADR 0002](adr/0002-decision-compile.md)。复合转交不必把转交挤进 `request_kind`。
 Shopping 请求设置 `tool_choice=required`；模型仍自行选择先调用哪个允许的工具或提交终答。
