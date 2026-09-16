@@ -212,10 +212,14 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     async def lifespan(app):
         if store is not None:
             await db(store.initialize)
+        if indexing is not None:
+            await indexing.resume_stale()
         yield
         for task in tasks.values():
             task.cancel()
         await asyncio.gather(*tasks.values(), return_exceptions=True)
+        if indexing is not None:
+            indexing.shutdown()
 
     app = FastAPI(title="Smartlect AI API", version=__version__, lifespan=lifespan)
 
@@ -828,22 +832,12 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
             return await db(knowledge.publish, actor, doc_id, version)
         if document['status'] != 'DRAFT':
             raise HTTPException(409, 'document_not_draft')
-        if settings.model_mode == 'live' and config.get('SMARTLECT_EMBEDDING_API_KEY'):
-            chunks = await db(knowledge.draft_chunks, actor, doc_id, version)
-            if len(chunks) > 40:
-                raise HTTPException(422, 'document_exceeds_synchronous_index_limit')
-            vectors, publication_id = [], uuid.uuid4().hex
-            for start in range(0, len(chunks), 10):
-                batch = chunks[start:start + 10]
-                audit = IndexModelAudit(store.connect, actor, doc_id, version, publication_id, start // 10)
-                embedded = await provider.embed([c['content'] for c in batch],
-                    before_attempt=lambda: db(audit.start), on_trace=lambda record: db(audit.finish, record),
-                    prompt_version='knowledge-index-v1', schema_version='embedding-v1')
-                meta = embedded['metadata']
-                vectors.extend({'chunk_id': c['chunk_id'], 'vector': v} for c, v in zip(batch, embedded['embeddings'], strict=True))
-            if vectors:
-                await db(knowledge.set_embeddings, actor, doc_id, version, model=meta['model_id'],
-                         index_version=f"{meta['model_id']}:d{meta['dimensions']}:v1", vectors=vectors)
+        if indexing is not None and indexing.embedding_enabled():
+            # Embedding runs as an async index job (smartlect/indexing.py): the request returns
+            # a job immediately; progress is on /knowledgeIndex/jobs, publish happens when the
+            # last batch lands. Without an embedding key the publish stays synchronous and
+            # retrieval falls back to BM25-only, exactly as before.
+            return await indexing.submit(actor, doc_id, version)
         return await db(knowledge.publish, actor, doc_id, version)
 
     @app.post('/admin-api/assistant/knowledge/{doc_id}/{version}/withdraw')
@@ -880,14 +874,17 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
                 break
             await asyncio.sleep(0.5)
 
+    indexing = None
     if store is not None:
-        # Admin ops surface (runs browser, tool debug) lives in its own package; app.py stays
-        # the composition root and only wires dependencies here.
+        # Admin ops surface (runs browser, tool debug, index ops) lives in its own package;
+        # app.py stays the composition root and only wires dependencies here.
         from smartlect import adminapi
+        from smartlect.indexing import IndexingService
         from smartlect.shopping_retrieve import ShoppingRetrieve
+        indexing = IndexingService(store.connect, knowledge, provider, settings=settings, config=config)
         adminapi.register(app, actor_for=actor_for, store=store, commerce=commerce, knowledge=knowledge,
                           attribution=attribution, provider=provider, config=config, settings=settings,
-                          shopping_retrieve=ShoppingRetrieve(commerce))
+                          shopping_retrieve=ShoppingRetrieve(commerce), indexing=indexing)
 
     return app
 

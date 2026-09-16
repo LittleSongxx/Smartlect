@@ -11,6 +11,7 @@ from smartlect.app import create_app
 from smartlect.auth import ActorContext, IdentityBridge
 from smartlect.commerce import AsyncCommerceClient
 from smartlect.config import Settings
+from smartlect.provider import Provider
 from smartlect.events import canonical
 from smartlect.state import SessionStore
 import test_ledger_mysql
@@ -23,6 +24,81 @@ class AdminApiMySQLTests(unittest.TestCase):
 
     def test_runs_browser_lists_scope_runs_and_debug_invoke_is_audited(self):
         asyncio.run(self.exercise())
+
+    def test_publish_runs_async_index_job_to_published(self):
+        asyncio.run(self.exercise_indexing())
+
+    async def exercise_indexing(self):
+        suffix = uuid.uuid4().hex
+        origin = "http://smartlect.test"
+        config = {"SMARTLECT_USER_PORT": "18105", "SMARTLECT_ORDER_PORT": "18104",
+                  "SMARTLECT_PRODUCT_PORT": "18102", "SMARTLECT_STOCK_PORT": "18103",
+                  "SMARTLECT_INTERNAL_TOKEN": "synthetic", "SMARTLECT_VISITOR_SECRET": "s" * 48,
+                  "SMARTLECT_ALLOWED_ORIGINS": origin,
+                  "SMARTLECT_EMBEDDING_API_KEY": "synthetic-embedding-key",
+                  "SMARTLECT_EMBEDDING_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                  "SMARTLECT_EMBEDDING_MODEL": "text-embedding-v4"}
+
+        def java(request):
+            if request.url.path == "/internal/identity/introspect":
+                data = {"subjectType": "merchant", "actorId": "boss-" + suffix, "sessionId": "boss-session",
+                        "permissions": ["admin:legacy", "shopping:read"]}
+                return httpx.Response(200, json={"status": "success", "data": data})
+            if request.url.path.endswith("/embeddings"):
+                return httpx.Response(200, json={"model": "text-embedding-v4",
+                                                 "data": [{"index": 0, "embedding": [0.1] * 1024}],
+                                                 "usage": {"prompt_tokens": 4, "total_tokens": 4}})
+            raise AssertionError(request.url.path)
+
+        transport = httpx.MockTransport(java)
+
+        def app():
+            return create_app(Settings(model_mode="live"), config=config, store=SessionStore(self.connect),
+                              identity=IdentityBridge(config, transport=transport),
+                              commerce=AsyncCommerceClient(config, transport=transport),
+                              provider=Provider(config, transport=transport))
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
+            client.cookies.set("adminToken", "boss-" + suffix)
+            session = (await client.get("/admin-api/assistant/session")).json()
+            headers = {"Origin": origin, "X-CSRF-Token": session["csrf_token"]}
+            draft = await client.post("/admin-api/assistant/knowledge", headers=headers, json={
+                "doc_id": "ops-doc-" + suffix, "title": "运维测试文档", "body": "退款政策原文：七天内可退。" * 30,
+                "source_uri": "test://ops/" + suffix, "acl": "MERCHANT",
+                "valid_from": "2026-01-01T00:00:00+00:00",
+                "valid_until": "2030-01-01T00:00:00+00:00"})
+            self.assertEqual(draft.status_code, 200, draft.text)
+            version = draft.json()["version"]
+
+            published = await client.post(f"/admin-api/assistant/knowledge/ops-doc-{suffix}/{version}/publish",
+                                          headers=headers, json={})
+            self.assertEqual(published.status_code, 200, published.text)
+            job = published.json()
+            self.assertIn(job["state"], ("PENDING", "RUNNING"))
+            self.assertGreater(job["total_chunks"], 0)
+
+            for _ in range(100):
+                await asyncio.sleep(0.05)
+                poll = await client.get(f"/admin-api/assistant/knowledgeIndex/jobs/{job['job_id']}")
+                if poll.status_code != 200:
+                    raise AssertionError(f"poll {poll.status_code}: {poll.text}")
+                job = poll.json()
+                if job["state"] in ("DONE", "FAILED"):
+                    break
+            self.assertEqual(job["state"], "DONE", job)
+            self.assertEqual(job["processed_chunks"], job["total_chunks"])
+
+            documents = (await client.get("/admin-api/assistant/knowledge")).json()
+            row = next(item for item in documents if item["doc_id"] == "ops-doc-" + suffix)
+            self.assertEqual(row["status"], "PUBLISHED")
+
+            probe = await client.post("/admin-api/assistant/knowledgeIndex/searchProbe", headers=headers,
+                                      json={"query": "退款政策"})
+            self.assertEqual(probe.status_code, 200, probe.text)
+            self.assertGreaterEqual(len(probe.json().get("citations", [])), 1)
+
+            no_permission = await client.get("/admin-api/assistant/knowledgeIndex/jobs")
+            self.assertEqual(no_permission.status_code, 200)  # same merchant, still admin:legacy
 
     async def exercise(self):
         suffix = uuid.uuid4().hex

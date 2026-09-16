@@ -44,69 +44,6 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
             IndexModelAudit(Mock(), SimpleNamespace(subject_type="user", actor_id="user", permissions=(),
                 execution_scope_id="test"), "document", 1, "p" * 32, 0)
 
-    async def test_admin_publish_records_each_attempt_before_http_and_replay_avoids_new_calls(self):
-        from smartlect.app import create_app
-        from smartlect.auth import ActorContext
-        from smartlect.config import Settings
-
-        connection, cursor = MagicMock(), MagicMock()
-        connection.__enter__.return_value = connection
-        connection.cursor.return_value.__enter__.return_value = cursor
-        cursor.rowcount = 1
-        connect = Mock(return_value=connection)
-        actor = ActorContext(subject_type="merchant", actor_id="admin", session_id="synthetic",
-                             permissions=("admin:legacy",), execution_scope_id="test-index")
-        class Identity:
-            async def authenticate(self, *args, **kwargs):
-                return actor  # Only endpoint/audit wiring is tested, not authentication.
-            def require_csrf(self, *args):
-                pass
-        knowledge = Mock()
-        knowledge.get_document.return_value = {"status": "DRAFT"}
-        knowledge.draft_chunks.return_value = [{"chunk_id": "chunk", "content": "synthetic policy text"}]
-        knowledge.publish.return_value = {"status": "PUBLISHED"}
-        requests = []
-        def handler(request):
-            requests.append(request)
-            inserted = [c for c in cursor.execute.call_args_list if "INSERT INTO knowledge_index_attempt" in c.args[0]]
-            self.assertEqual(len(inserted), len(requests))
-            if len(requests) == 1:
-                return httpx.Response(503, text="SECRET_FAILURE_BODY")
-            if len(requests) == 2:
-                return httpx.Response(200, json={"model": "text-embedding-v4", "data": [{"index": 0, "embedding": [0.1] * 64}],
-                    "usage": {"prompt_tokens": 4, "total_tokens": 4}})
-            return httpx.Response(401, text="SECRET_FAILURE_BODY")
-        provider = Provider(CONFIG, transport=httpx.MockTransport(handler))
-        app = create_app(Settings(model_mode="live"), config=CONFIG, store=SimpleNamespace(connect=connect),
-            knowledge=knowledge, identity=Identity(), provider=provider,
-            attribution=SimpleNamespace(resolve_actor=lambda actor:actor,assert_scope_writable=lambda actor:None),
-            merchant=SimpleNamespace(store=SimpleNamespace(selected_actor=lambda actor: actor)))
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://smartlect.test") as client:
-            path = "/admin-api/assistant/knowledge/document/1/publish"
-            response = await client.post(path, json={})
-            self.assertEqual(response.status_code, 200, response.text)
-            updates = [c for c in cursor.execute.call_args_list if "UPDATE knowledge_index_attempt" in c.args[0]]
-            traces = [json.loads(c.args[1][1]) for c in updates]
-            self.assertEqual([t["status"] for t in traces], ["failed", "succeeded"])
-            self.assertEqual([t["attempt"] for t in traces], [1, 2])
-            self.assertEqual(traces[-1]["usage"]["input_tokens"], 4)
-            self.assertTrue(all(t["prompt_version"] == "knowledge-index-v1" for t in traces))
-            self.assertNotIn("synthetic policy text", json.dumps(traces))
-            self.assertNotIn("SECRET_FAILURE_BODY", json.dumps(traces))
-            knowledge.get_document.return_value = {"status": "PUBLISHED"}
-            self.assertEqual((await client.post(path, json={})).status_code, 200)
-            self.assertEqual(len(requests), 2)
-            knowledge.get_document.return_value = {"status": "DRAFT"}
-            before = knowledge.publish.call_count
-            response = await client.post(path, json={})
-            self.assertEqual(response.status_code, 503)
-            self.assertEqual(knowledge.publish.call_count, before)
-            last = [c for c in cursor.execute.call_args_list if "UPDATE knowledge_index_attempt" in c.args[0]][-1]
-            failed = json.loads(last.args[1][1])
-            self.assertEqual((failed["status"], failed["http_status"]), ("failed", 401))
-            self.assertIsNone(failed["usage"]["total_tokens"])
-            self.assertEqual(len(requests), 3)
-
     async def test_required_tool_choice_is_explicit_and_rejects_unregistered_modes(self):
         bodies = []
         def handler(request):

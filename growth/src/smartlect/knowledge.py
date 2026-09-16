@@ -522,6 +522,59 @@ class KnowledgeStore(SessionStore):
                 [(model, dimensions, index_version, canonical(vector), scope, doc_id, version, key) for key, vector in mapped.items()])
         return {"model": model, "index_version": index_version, "dimensions": dimensions, "chunks": len(mapped)}
 
+    def draft_chunks_with_status(self, actor, doc_id, version):
+        """draft_chunks plus an embedded flag, so an index job can resume and skip done chunks."""
+        _merchant(actor)
+        with self._transaction() as cursor:
+            self._document(cursor, _actor(actor)[2], doc_id, version)
+            cursor.execute("SELECT chunk_id,heading,content,(vector_json IS NOT NULL) AS embedded FROM knowledge_chunk "
+                "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s ORDER BY chunk_id",
+                (_actor(actor)[2], doc_id, version))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def embed_batch(self, actor, doc_id, version, *, model, index_version, vectors):
+        """Batch-wise vector write for the async index pipeline: same validation as
+        set_embeddings but without the all-chunks-at-once completeness check, so a job can
+        persist progress batch by batch and a resumed job only re-embeds missing chunks."""
+        _merchant(actor)
+        model, index_version = _text(model, "embedding_model", 128), _text(index_version, "index_version", 128)
+        if not isinstance(vectors, list) or not vectors:
+            raise StateError("invalid_embeddings", 422)
+        mapped, dimensions = {}, None
+        for item in vectors:
+            if not isinstance(item, dict) or set(item) != {"chunk_id", "vector"}:
+                raise StateError("invalid_embeddings", 422)
+            key = _text(item["chunk_id"], "chunk_id", 32)
+            vector = _vector(item["vector"], dimensions)
+            if key in mapped:
+                raise StateError("duplicate_embedding_chunk", 422)
+            mapped[key], dimensions = vector, len(vector)
+        scope = _actor(actor)[2]
+        with self._transaction() as cursor:
+            row = self._document(cursor, scope, doc_id, version)
+            if row["status"] != "DRAFT":
+                raise StateError("document_not_draft")
+            cursor.execute("SELECT chunk_id FROM knowledge_chunk WHERE execution_scope_id=%s AND doc_id=%s AND version=%s",
+                           (scope, doc_id, version))
+            known = {item["chunk_id"] for item in cursor.fetchall()}
+            if not set(mapped) <= known:
+                raise StateError("unknown_embedding_chunk", 422)
+            cursor.executemany("UPDATE knowledge_chunk SET embedding_model=%s,embedding_dimensions=%s,index_version=%s,vector_json=%s "
+                "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s AND chunk_id=%s",
+                [(model, dimensions, index_version, canonical(vector), scope, doc_id, version, key)
+                 for key, vector in mapped.items()])
+        return {"chunks": len(mapped), "model": model, "index_version": index_version}
+
+    def embedding_counts(self, actor, doc_id, version):
+        _merchant(actor)
+        with self._transaction() as cursor:
+            self._document(cursor, _actor(actor)[2], doc_id, version)
+            cursor.execute("SELECT COUNT(*) AS total,COALESCE(SUM(vector_json IS NOT NULL),0) AS embedded "
+                "FROM knowledge_chunk WHERE execution_scope_id=%s AND doc_id=%s AND version=%s",
+                (_actor(actor)[2], doc_id, version))
+            row = cursor.fetchone()
+            return {"total": row["total"], "embedded": row["embedded"]}
+
     def search(self, actor, query, *, query_vector=None, embedding_model=None, index_version=None,
                product_id=None, category_id=None, utterance=None, model_query=None):
         kind, actor_id, scope = _actor(actor)
