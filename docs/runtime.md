@@ -100,6 +100,23 @@ F3命令已实跑：`scripts/check_f3.py`（真实Java交易＋合成广告触�
 
 三个项目并行时，构建、临时MySQL测试和全链路验收仍串行。暂不需要运行界面/API时可先 `./scripts/dev.sh apps-down`，保留中间件及卷；之后 `up` 逐个启动并等待健康，避免多个JVM同时预热。仅管理Smartlect已校验归属的进程，不能重启WSL/Docker或停其他项目。
 
+## 部署前的两道门（2026-09-17 起）
+
+`ci-deploy.sh` 在 `systemctl restart smartlect-apps` **之前**跑两步，目的是让"坏了就别下线"：
+
+1. `python3 scripts/runtime.py check-apps`（秒级，每次部署都跑）：为 13 个服务各拼一遍启动计划，
+   确认可执行文件与产物（JAR / Python 包 / 前端 dist）都在。2026-09-17 一次 `runtime.py` 重构
+   漏绑定产物路径，直接导致重启失败、整站不可用——这一步就是那次事故的对策。
+2. `python3 scripts/runtime.py smoke`（约 5 分钟，backend/ 或 scripts/ 有改动时跑）：用同一份 JAR、
+   同一份 env 让 Spring 上下文真刷新一次。普通服务用 `--spring.main.web-application-type=none`
+   （不监听端口、不注册 Nacos），gateway 是 WebFlux 应用，改用 reactive + `--server.port=0`
+   + 关注册；判定以启动日志为准（看到 `Started ... in ... seconds` 通过，看到
+   `APPLICATION FAILED TO START` 失败），结束后主动回收进程。
+
+前端产物改由 CI 构建并下发：`web` job 上传 dist artifact，`deploy` job 打 tar.gz 经网关
+`upload-dist` 动词送到 `/root/deploy/incoming-dist.tar.gz`，服务器解包到 `web/*/dist` 并跳过本机
+npm 构建；文件缺失或比 bundle 旧时自动回退本机构建（回滚路径同样适用）。
+
 ## 前端样式约定：单一 token 源
 
 `web/shared/design-tokens.scss` 是两个前端的**唯一**颜色/圆角/阴影/字号来源，取值对齐参考项目 Smartore（动作蓝 `#2563eb`、页面底 `#f5f7fa`、白卡 + 1px `#e5e7eb` + 8px 圆角、无阴影）。两端各自只做两件事：用 vite `resolve.alias` 的 `@tokens` 引入本文件，并各在一个入口 include 一次 `tokens-root`（生成 `:root` CSS 变量）；页面里不再出现裸 hex，历史变量名（`$color-gold`、`--gold`、`--accent` 等）保留为指向新调色板的别名。

@@ -434,52 +434,99 @@ def java_launch_args(service, env):
                         f"-Dotel.service.name=smartlect-{service}",
                         f"-Dotel.exporter.otlp.endpoint={endpoint}",
                         "-Dotel.exporter.otlp.protocol=http/protobuf"]
-    return executable, command, source_sha, stamp
+    return executable, command, source_sha, stamp, runtime_jar
 
 
 def launch_env_for(service, env):
-    launch_env = launch_env_for(service, env)
+    launch_env = {**os.environ, **env}
+    for variable in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "PYTHONPATH"):
+        launch_env.pop(variable, None)
+    launch_env["SMARTLECT_PROJECT_FOLDER"] = str(ROOT / "run/uploads") + "/"
+    launch_env["SMARTLECT_WORKER_STATUS_FILE"] = str(ROOT / "run/worker-status.json")
+    launch_env['LANGSMITH_TRACING'] = 'false'
+    launch_env['LANGCHAIN_TRACING_V2'] = 'false'
+    if service in {'web-user', 'web-admin'}:
+        launch_env = {k: v for k, v in os.environ.items() if k in {'PATH', 'LANG', 'LC_ALL', 'TZ'}}
     return launch_env
 
 
 def smoke_apps(env, timeout=180):
     """启动前冒烟：同一份 JAR、同一份 env，只多一个 --spring.main.web-application-type=none。
 
-    装配期错误（缺构造器、Bean 冲突、Flyway 连不上库）会让上下文刷新直接失败并退出非零，
-    而不必等全部应用停掉再发现——2026-09-16 就是因为没有这一步把整站停在了 502 上。
-    非 web 应用在上下文刷新成功后 main() 自然返回，进程以 0 退出。
+    装配期错误（缺构造器、Bean 冲突、Flyway 连不上库）会让上下文刷新失败并打出
+    "APPLICATION FAILED TO START"，而不必等全部应用停掉再发现——2026-09-16 就是因为
+    没有这一步把整站停在了 502 上。非 web 应用不会自己退出（Nacos/连接池有非守护线程），
+    所以用例以启动日志为准：看到 "Started ... in ... seconds" 即通过，随后主动回收进程。
     """
     failures = []
     for service in APPS:
         if service in {"growth", "growth-worker", "web-user", "web-admin"}:
             continue
-        executable, command, _, _ = java_launch_args(service, env)
+        executable, command, _, _, _ = app_launch(service, env)
         if not executable.exists():
             failures.append((service, f"missing java: {executable}"))
             continue
-        smoke = [*command, "--spring.main.web-application-type=none",
-                 "--spring.main.banner-mode=off", "--logging.level.root=WARN"]
+        # gateway 是 WebFlux 应用：非 web 模式下 NettyConfiguration 拿不到 ServerProperties，
+        # 只能按 reactive 起来并绑随机端口；同时关掉服务注册，避免冒烟进程进 Nacos 名单。
+        if service == "gateway":
+            smoke = [*command, "--spring.main.web-application-type=reactive", "--server.port=0",
+                     "--spring.cloud.nacos.discovery.enabled=false"]
+        else:
+            smoke = [*command, "--spring.main.web-application-type=none"]
+        smoke += ["--spring.main.banner-mode=off", "--logging.level.root=INFO"]
         started = time.monotonic()
+        process = subprocess.Popen(smoke, cwd=ROOT, env=launch_env_for(service, env),
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, text=True, start_new_session=True)
+        lines = []
+        outcome = None
         try:
-            result = subprocess.run(smoke, cwd=ROOT, env=launch_env_for(service, env),
-                                    capture_output=True, text=True, timeout=timeout)
-            code, output = result.returncode, f"{result.stdout}\n{result.stderr}"
-        except subprocess.TimeoutExpired as error:
-            code, output = -1, f"{error.stdout or ''}\n{error.stderr or ''}（{timeout}s 未退出）"
+            deadline = started + timeout
+            while time.monotonic() < deadline:
+                line = process.stdout.readline()
+                if not line:
+                    if process.poll() is not None:
+                        break
+                    continue
+                lines.append(line.rstrip())
+                if "Started " in line and " in " in line and "seconds" in line:
+                    outcome = "ok"
+                    break
+                if "APPLICATION FAILED TO START" in line:
+                    outcome = "failed"
+                    break
+            if outcome is None:
+                outcome = "failed" if process.poll() not in (None, 0) else "timeout"
+        finally:
+            for reader in (process.stdout, process.stderr):
+                if reader is not None:
+                    reader.close()
+            process.terminate()
+            try:
+                process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=15)
         elapsed = time.monotonic() - started
-        if code == 0:
+        if outcome == "ok":
             print(f"smoke: {service} ok ({elapsed:.0f}s)")
             continue
-        tail = [line for line in output.splitlines() if line.strip()][-6:]
-        failures.append((service, "\n".join(tail)))
-        print(f"smoke: {service} FAILED rc={code} ({elapsed:.0f}s)")
+        detail = "\n".join(lines[-8:]) or "（无输出）"
+        failures.append((service, f"{outcome} after {elapsed:.0f}s\n{detail}"))
+        print(f"smoke: {service} FAILED ({outcome}, {elapsed:.0f}s)")
     if failures:
         for service, detail in failures:
             print(f"smoke failure [{service}]:\n{detail}", file=sys.stderr)
         raise RuntimeError(f"启动冒烟失败：{', '.join(service for service, _ in failures)}")
 
 
-def start_app(service, env, records):
+def app_launch(service, env):
+    """解析某服务的可执行文件、命令行与产物指纹（不启动任何东西）。
+
+    start_app 与部署前的 check-apps / smoke 共用同一份解析：2026-09-17 因为
+    start_app 里少绑定一个产物路径，重启直接失败导致整站不可用——把"能不能拼出
+    启动计划"变成可独立验证的一步，才能在下线重启前发现。
+    """
     if service in {"growth", "growth-worker"}:
         env = {**env, **model_env()}
         executable = ROOT / "growth/.venv/bin/python"
@@ -499,9 +546,23 @@ def start_app(service, env, records):
         command = [str(executable), str(frontend / 'node_modules/vite/bin/vite.js'), 'preview',
                    str(frontend), '--config', str(config)]
     else:
-        executable, command, source_sha, stamp = java_launch_args(service, env)
+        executable, command, source_sha, stamp, artifact = java_launch_args(service, env)
     if not executable.exists():
         raise RuntimeError(f"Missing runtime executable for {service}; run build first")
+    if not Path(artifact).exists():
+        raise RuntimeError(f"Missing runtime artifact for {service}: {artifact}; run build first")
+    return executable, command, source_sha, stamp, artifact
+
+
+def check_apps(env):
+    """部署前自检：为每个服务拼一遍启动计划，确认可执行文件与产物都在。"""
+    for service in APPS:
+        executable, command, _, _, artifact = app_launch(service, env)
+        print(f"check: {service} ok ({Path(artifact).name})")
+
+
+def start_app(service, env, records):
+    executable, command, source_sha, stamp, artifact = app_launch(service, env)
     env_stamp = hashlib.sha256(json.dumps(env, sort_keys=True).encode()).hexdigest()
     if service in records and owned_process(records[service]):
         if (records[service].get("source_sha256") == source_sha and records[service].get("env_stamp") == env_stamp
@@ -513,15 +574,8 @@ def start_app(service, env, records):
         with socket.socket() as probe:
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             probe.bind(("127.0.0.1", port))
-    launch_env = {**os.environ, **env}
-    for variable in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "PYTHONPATH"):
-        launch_env.pop(variable, None)
-    launch_env["SMARTLECT_PROJECT_FOLDER"] = str(ROOT / "run/uploads") + "/"
-    launch_env["SMARTLECT_WORKER_STATUS_FILE"] = str(ROOT / "run/worker-status.json")
-    launch_env['LANGSMITH_TRACING'] = 'false'
-    launch_env['LANGCHAIN_TRACING_V2'] = 'false'
+    launch_env = launch_env_for(service, env)
     if service in {'web-user', 'web-admin'}:
-        launch_env = {k: v for k, v in os.environ.items() if k in {'PATH', 'LANG', 'LC_ALL', 'TZ'}}
         launch_env['SMARTLECT_' + service.upper().replace('-', '_') + '_PORT'] = str(port)
         launch_env['SMARTLECT_GATEWAY_URL'] = 'http://127.0.0.1:' + env['SMARTLECT_GATEWAY_PORT']
     logs = ROOT / "run/logs"
@@ -795,6 +849,8 @@ def main():
         apps_check(env)
     elif command == "smoke":
         smoke_apps(env)
+    elif command == "check-apps":
+        check_apps(env)
     elif command == "apps-down":
         apps_down()
     elif command == "down":
