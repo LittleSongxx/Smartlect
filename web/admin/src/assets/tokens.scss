@@ -1,0 +1,42 @@
+// Smartlect admin 单一 token 源：所有颜色/圆角/阴影/字体变量集中在此。
+// 规则：新增页面一律引用这里的变量，不再新建平行变量体系（growth-console 的 --gc-* 桥接最终也收敛到这里）。
+:root {
+    // 文字
+    --text: #17202a;
+    --text2: #4b5b63;
+    --text3: #73848c;
+    // 品牌
+    --pink: #fff3f0;
+    --red: #dc2626;
+    --primary: #0f766e;
+    --primary-hover: #0b665f;
+    --primary-soft: #ecfdf5;
+    --primary-muted: rgba(15, 118, 110, 0.1);
+    --link: #2563eb;
+    --link2: #1d4ed8;
+    --green: #16a34a;
+    --gold: #2563eb;
+    --gold-soft: #eff6ff;
+    --gold-muted: rgba(37, 99, 235, 0.14);
+    // 布局与表面
+    --card-radius: 8px;
+    --page-bg: #f4f7f8;
+    --surface: #ffffff;
+    --header-bg: #ffffff;
+    --header-border: #dde5e8;
+    --sidebar-bg: #17202a;
+    --sidebar-bg-end: #0f3f3b;
+    --sidebar-text: rgba(255, 255, 255, 0.72);
+    --sidebar-text-muted: rgba(255, 255, 255, 0.45);
+    --sidebar-text-active: #ffffff;
+    --sidebar-hover: rgba(255, 255, 255, 0.08);
+    --sidebar-active-bg: rgba(255, 255, 255, 0.12);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
+    --el-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
+        'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+    // 详情/审计原文展示（结构化字段之外的原始载荷）
+    --mono-font: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+    --detail-bg: #eef2f3;
+    --detail-fs: 12px;
+}

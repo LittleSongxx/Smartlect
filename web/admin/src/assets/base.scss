@@ -1,3 +1,5 @@
+@use 'tokens';
+
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -19,40 +21,6 @@
 
 ::-webkit-scrollbar-corner {
     background: #f5f5f7;
-}
-
-:root {
-    --text: #17202a;
-    --text2: #4b5b63;
-    --text3: #73848c;
-    --pink: #fff3f0;
-    --red: #dc2626;
-    --primary: #0f766e;
-    --primary-hover: #0b665f;
-    --primary-soft: #ecfdf5;
-    --primary-muted: rgba(15, 118, 110, 0.1);
-    --link: #2563eb;
-    --link2: #1d4ed8;
-    --green: #16a34a;
-    --gold: #2563eb;
-    --gold-soft: #eff6ff;
-    --gold-muted: rgba(37, 99, 235, 0.14);
-    --card-radius: 8px;
-    --page-bg: #f4f7f8;
-    --surface: #ffffff;
-    --header-bg: #ffffff;
-    --header-border: #dde5e8;
-    --sidebar-bg: #17202a;
-    --sidebar-bg-end: #0f3f3b;
-    --sidebar-text: rgba(255, 255, 255, 0.72);
-    --sidebar-text-muted: rgba(255, 255, 255, 0.45);
-    --sidebar-text-active: #ffffff;
-    --sidebar-hover: rgba(255, 255, 255, 0.08);
-    --sidebar-active-bg: rgba(255, 255, 255, 0.12);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-    --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
-    --el-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
-        'Helvetica Neue', 'Microsoft YaHei', sans-serif;
 }
 
 body {

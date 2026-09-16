@@ -6,15 +6,13 @@ import AdsView from '../src/views/AdsView.vue';
 import App from '../src/GrowthShell.vue';
 import { createAdminRouter } from '../src/router.js';
 import { aiGet, aiWrite, clearSession, selectScope, session } from '../src/api/client';
+import { response, button, field } from './helpers';
 
 const actor = { subject_type: 'merchant', actor_id: 'm1', session_id: 's1', execution_scope_id: 'store', permissions: ['admin:legacy'] };
 const plan = { plan_id: 'plan1', version: 3, status: 'WAIT_APPROVAL', observation_id: 'obs1', grant_id: null, diagnosis: [{ code: 'payment_failures', explanation: 'Java 记录了一次模拟渠道拒付；其他原因仍需新证据。', evidence_ids: ['ev1'], observed_facts: [{ evidence_id: 'ev1', metric: 'declined_attempts', value: 1 }] }], spec: { objective: '核对净成交并保护库存', summary: '先保护已观察售罄的活动。', product_scope: ['p1'], period: 'scope_lifetime', planned_budget_cents: 100, evidence_ids: ['ev1'], actions: [{ action_type: 'pause_campaign', campaign_id: 'c1', expected_version: 4 }], expected_signals: ['等待新的库存和支付尝试事实'] } };
 const campaign = { campaign_id: 'c1', name: '活动', owner_id: 'm1', product_id: 'p1', sku_key: 'hash1', status: 'ACTIVE', version: 4, budget_cents: 100, spent_cents: 20, cpc_cents: 10 };
 const sku = { product_id: 'p1', sku_key: 'hash1', product_name: '真实产品', sku_name: '黑色 256G', price_cents: 1999, stock: 3 };
-const response = (value, status=200) => ({ ok: status < 400, status, json: async () => value });
 let state, ads, calls, handler, currentActor; const wrappers=[];
-const button = (wrapper,name) => wrapper.findAll('button').find(item => item.text() === name);
-const field = (wrapper,name) => wrapper.findAll('label').find(item => item.text().startsWith(name)).find('input,textarea,select');
 const render = async (component,options={}) => {
   const global = { ...(options.global || {}) };
   if (component === App) {

@@ -39,6 +39,10 @@ import CouponOrderCover from "@/components/CouponOrderCover.vue";
 import Avatar from "@/components/Avatar.vue";
 import OpBtn from "@/components/OpBtn.vue";
 import Price from "@/components/Price.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import StatusTag from "@/components/StatusTag.vue";
+import DetailText from "@/components/DetailText.vue";
+import JsonCollapse from "@/components/JsonCollapse.vue";
 
 const app = createApp(App)
 app.use(ElementPlus);
@@ -54,6 +58,10 @@ app.component('Drawer', Drawer)
 app.component('Table', Table)
 app.component('OpBtn', OpBtn)
 app.component("Price", Price);
+app.component('PageHeader', PageHeader)
+app.component('StatusTag', StatusTag)
+app.component('DetailText', DetailText)
+app.component('JsonCollapse', JsonCollapse)
 
 app.config.globalProperties.Request = Request;
 app.config.globalProperties.Message = Message;

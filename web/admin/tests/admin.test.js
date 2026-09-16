@@ -5,6 +5,7 @@ import AdsView from '../src/views/AdsView.vue';
 import SupportView from '../src/views/SupportView.vue';
 import KnowledgeView from '../src/views/KnowledgeView.vue';
 import { aiWrite, clearSession, integer, loadSession, session } from '../src/api/client';
+import { field, button } from './helpers';
 
 const actor = { subject_type: 'merchant', actor_id: 'm1', session_id: 's1', execution_scope_id: 'store', permissions: ['admin:legacy'] };
 const current = () => ({ actor: { ...actor }, csrf_token: 'current-csrf' });
@@ -13,8 +14,6 @@ const grant = { grant_id: 'g1', initial_plan_id: 'stable-plan', initial_plan_ver
 let data; let calls; let handler; const wrappers = [];
 const reply = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 const render = async component => { const wrapper = mount(component); wrappers.push(wrapper); await flushPromises(); return wrapper; };
-const field = (wrapper, label) => wrapper.findAll('label').find(item => item.text().startsWith(label)).find('input, select, textarea');
-const button = (wrapper, text) => wrapper.findAll('button').find(item => item.text() === text);
 const form = (wrapper, heading) => wrapper.findAll('form').find(item => item.text().includes(heading));
 beforeEach(() => {
   clearSession(); session.value = current(); calls = []; handler = null;
