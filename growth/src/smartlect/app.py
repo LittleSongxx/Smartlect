@@ -22,7 +22,7 @@ import uvicorn
 
 from smartlect import __version__
 from smartlect.auth import IdentityBridge
-from smartlect.commerce import AsyncCommerceClient, CommerceError, CommerceRejected
+from smartlect.commerce import AsyncCommerceClient, CommerceError, CommerceRejected, ORDER_ACTION_STATUS_PATH
 from smartlect.config import Settings
 from prometheus_client import Counter as PrometheusCounter
 
@@ -47,6 +47,9 @@ from smartlect.ads.inference import sync_behavior_preferences
 from smartlect.ads.service import (AdsService, CampaignRequest, CreativeRequest, GrantRequest,
                                   ActionRequest, RevokeRequest, AdExposureRequest, AdClickRequest)
 from smartlect.ads.store import AdsStore
+from smartlect.merchant.store import MerchantStore
+from smartlect.merchant.service import (MerchantService, MerchantRunRequest, PlanExecuteRequest,
+                                        ExperienceApproveRequest, ScopeSelectRequest)
 
 
 async def db(function, *args, **kwargs):
@@ -139,13 +142,13 @@ async def execute_proposal(proposal, actor, commerce, attribution=None):
             raise CommerceRejected(403, 'mock_payment_disabled')
         params = proposal['parameters']
         query = {'actionType': 'PAYMENT', 'params': {'payOrderId': params['payOrderId']}}
-        current = await commerce.request('order', '/internal/order/commerce/v2/actionStatus', actor=actor, data=query)
+        current = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor, data=query)
         if current.get('amountCents') != params['expected_amount_cents']:
             raise CommerceRejected(409, 'RECONFIRM_REQUIRED')
         if current.get('paymentStatus') == 'PENDING':
             await commerce.request('pay', '/internal/pay/mock/complete', actor=actor,
                                    data={'payOrderId': params['payOrderId']}, key=proposal['idempotency_key'])
-            current = await commerce.request('order', '/internal/order/commerce/v2/actionStatus', actor=actor, data=query)
+            current = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor, data=query)
         return current
     kinds = {"order": "CREATE_ORDER", "cancel": "CANCEL_ORDER", "refund": "REFUND"}
     if action not in kinds:
@@ -153,7 +156,7 @@ async def execute_proposal(proposal, actor, commerce, attribution=None):
     params = proposal["parameters"]
     if proposal["recover_only"]:
         try:
-            status = await commerce.request("order", "/internal/order/commerce/v2/actionStatus", actor=actor, data={
+            status = await commerce.request("order", ORDER_ACTION_STATUS_PATH, actor=actor, data={
                 "actionType": kinds[action], "idempotencyKey": proposal["idempotency_key"],
                 "params": {} if action == "order" else params})
         except CommerceRejected:
@@ -182,9 +185,6 @@ async def execute_proposal(proposal, actor, commerce, attribution=None):
     return await commerce.request("order", "/internal/order/commerce/v2/executeAction", actor=actor,
                                   key=proposal["idempotency_key"], data={"actionType": kinds[action], "params": params})
 
-
-from smartlect.merchant.store import MerchantStore
-from smartlect.merchant.service import MerchantService, MerchantRunRequest, PlanExecuteRequest, ExperienceApproveRequest, ScopeSelectRequest
 
 def create_app(settings=None, *, config=None, store=None, ledger=None, identity=None, commerce=None,
                knowledge=None, memory=None, provider=None, attribution=None, recommendations=None, ads=None, merchant=None):
@@ -716,14 +716,14 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.get('/api/assistant/payments/{pay_id}')
     async def payment_status(pay_id: str, request: Request, response: Response):
         actor = await actor_for(request, response, user=True)
-        result = await commerce.request('order', '/internal/order/commerce/v2/actionStatus', actor=actor,
+        result = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor,
                                         data={'actionType': 'PAYMENT', 'params': {'payOrderId': pay_id}})
         return {**result, 'amount_cents': result.get('amountCents')}
 
     @app.post('/api/assistant/payments/{pay_id}/complete')
     async def complete_payment(pay_id: str, payload: PaymentRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True, user=True)
-        current = await commerce.request('order', '/internal/order/commerce/v2/actionStatus', actor=actor,
+        current = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor,
                                          data={'actionType': 'PAYMENT', 'params': {'payOrderId': pay_id}})
         if current.get('amountCents') != payload.expected_amount_cents:
             raise HTTPException(409, 'RECONFIRM_REQUIRED')

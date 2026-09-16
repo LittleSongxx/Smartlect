@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
-from smartlect.commerce import CommerceError
+from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
 from smartlect.state import StateError, _integer
 from smartlect.tools import Arguments
 from smartlect.catalog_gate import RecommendationRequest, constraints, eligible_skus, scope_filter
@@ -166,10 +166,10 @@ class AdsService:
             return {'items': [], 'ranking_mode': 'rule', 'observed_at': datetime.now(timezone.utc).isoformat()}
         products = sorted({row['product_id'] for row in candidates})
         request = constraints(RecommendationRequest().model_dump(exclude_unset=True), preferences)
-        snapshot = await self.commerce.request('product', '/internal/product/snapshotBatch', data={'productIds': products})
+        snapshot = await self.commerce.request('product', PRODUCT_SNAPSHOT_BATCH_PATH, data={'productIds': products})
         if not isinstance(snapshot, dict) or not isinstance(snapshot.get('skus'), list):
             raise CommerceError('commerce_outcome_unknown')
-        stocks = await self.commerce.request('stock', '/internal/stock/getBatch', data=[
+        stocks = await self.commerce.request('stock', STOCK_BATCH_PATH, data=[
             {'productId': product, 'propertyValueIdHash': sku}
             for product, sku in sorted({(row['product_id'], row['sku_key']) for row in candidates})])
         if not isinstance(stocks, list):
@@ -195,7 +195,7 @@ class AdsService:
                 'observed_at': datetime.now(timezone.utc).isoformat()}
 
     async def create_campaign(self, actor, request):
-        snapshot = await self.commerce.request('product', '/internal/product/snapshotBatch',
+        snapshot = await self.commerce.request('product', PRODUCT_SNAPSHOT_BATCH_PATH,
                                                data={'productIds': [request['product_id']]})
         if not isinstance(snapshot, dict) or not isinstance(snapshot.get('skus'), list):
             raise CommerceError('commerce_outcome_unknown')
@@ -211,7 +211,7 @@ class AdsService:
         ticket = await asyncio.to_thread(self.store.begin_observation, actor, target['product_id'], target['sku_key'])
         stock = None
         try:
-            rows = await asyncio.wait_for(self.commerce.request('stock', '/internal/stock/getBatch', data=[{
+            rows = await asyncio.wait_for(self.commerce.request('stock', STOCK_BATCH_PATH, data=[{
                 'productId': target['product_id'], 'propertyValueIdHash': target['sku_key']}]), timeout=.9)
             if isinstance(rows, list):
                 matches = [row for row in rows if isinstance(row, dict) and row.get('productId') == target['product_id']

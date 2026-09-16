@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from smartlect.commerce import CommerceError, CommerceRejected
+from smartlect.commerce import CommerceError, CommerceRejected, ORDER_ACTION_STATUS_PATH
 from smartlect.ads.analytics import to_cents
 from smartlect.business_skills import load_skill
 from smartlect.knowledge import compose_search_query
@@ -296,7 +296,7 @@ async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, e
             raise ValueError('comparison_service_unavailable')
         return await compare(params)
     if name == "get_payment_status":
-        return await commerce.request("order", "/internal/order/commerce/v2/actionStatus", actor=actor,
+        return await commerce.request("order", ORDER_ACTION_STATUS_PATH, actor=actor,
                                       data={"actionType": "PAYMENT", "params": params})
     if name == "list_my_coupons":
         result = await commerce.request("coupon", "/internal/coupon/commerce/listUserCoupons", actor=actor, data={})

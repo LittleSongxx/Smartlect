@@ -6,7 +6,7 @@ from pydantic import Field
 from pymysql.err import OperationalError
 
 from smartlect.agents.merchant import run_merchant
-from smartlect.commerce import CommerceError
+from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
 from smartlect.events import canonical
 from smartlect.privacy import redact_text
 from smartlect.state import StateError
@@ -133,11 +133,11 @@ class MerchantService:
         if not isinstance(ids,list): raise CommerceError('commerce_outcome_unknown')
         ids=[identifier for identifier in ids if identifier not in scope['exclude'] and (scope['include'] is None or identifier in scope['include'])][:100]
         if not ids: return {'items':[],'observed_at':None}
-        snapshot=await self.ads.commerce.request('product','/internal/product/snapshotBatch',data={'productIds':ids})
+        snapshot=await self.ads.commerce.request('product',PRODUCT_SNAPSHOT_BATCH_PATH,data={'productIds':ids})
         if not isinstance(snapshot,dict) or not isinstance(snapshot.get('skus'),list): raise CommerceError('commerce_outcome_unknown')
         names={r['productId']:r.get('productName',r['productId']) for r in snapshot.get('products',[])}
         skus=snapshot['skus']
-        stocks=await self.ads.commerce.request('stock','/internal/stock/getBatch',data=[{'productId':r['productId'],'propertyValueIdHash':r['propertyValueIdHash']} for r in skus])
+        stocks=await self.ads.commerce.request('stock',STOCK_BATCH_PATH,data=[{'productId':r['productId'],'propertyValueIdHash':r['propertyValueIdHash']} for r in skus])
         stock_map={(r['productId'],r['propertyValueIdHash']):r.get('stock') for r in stocks} if isinstance(stocks,list) else {}
         from smartlect.ads.analytics import to_cents
         from smartlect.attribution import iso

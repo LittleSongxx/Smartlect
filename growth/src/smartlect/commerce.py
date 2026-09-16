@@ -12,6 +12,12 @@ class CommerceError(RuntimeError):
     pass
 
 
+# Internal paths referenced from more than one call site; single source shared with tools and routes.
+PRODUCT_SNAPSHOT_BATCH_PATH = "/internal/product/snapshotBatch"
+STOCK_BATCH_PATH = "/internal/stock/getBatch"
+ORDER_ACTION_STATUS_PATH = "/internal/order/commerce/v2/actionStatus"
+
+
 class CommerceRejected(CommerceError):
     def __init__(self, code, reason):
         super().__init__(reason)

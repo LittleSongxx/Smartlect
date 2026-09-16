@@ -6,7 +6,7 @@ import math
 
 from smartlect.catalog_gate import (RecommendationRequest, _fold, constraints, eligible_skus,
                                     in_scope, scope_filter)
-from smartlect.commerce import CommerceError
+from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
 from smartlect.events import canonical
 from smartlect.knowledge import tokens
 from smartlect.state import StateError, _actor
@@ -96,14 +96,14 @@ class RecommendationService:
         product_ids = [product_id for product_id in dict.fromkeys(product_ids) if in_scope(product_id, scope)][:MAX_PRODUCTS]
         if not product_ids:
             return [], {}
-        snapshot = await self.commerce.request('product', '/internal/product/snapshotBatch', data={'productIds': product_ids})
+        snapshot = await self.commerce.request('product', PRODUCT_SNAPSHOT_BATCH_PATH, data={'productIds': product_ids})
         skus = [sku for sku in snapshot.get('skus', []) if sku.get('productId') in product_ids
                 and (allowed_sku_keys is None or str(sku.get('productId')) + ':' + str(sku.get('propertyValueIdHash')) in allowed_sku_keys)]
         if not skus:
             return [], {'no_sku': len(product_ids)}
         if len(skus) > 500:
             raise StateError('recommendation_sku_capacity_exceeded', 503)
-        stocks = await self.commerce.request('stock', '/internal/stock/getBatch', data=[{
+        stocks = await self.commerce.request('stock', STOCK_BATCH_PATH, data=[{
             'productId': sku['productId'], 'propertyValueIdHash': sku['propertyValueIdHash']} for sku in skus])
         return eligible_skus({**snapshot, 'skus': skus}, stocks, request, product_scope=scope, allowed_sku_keys=allowed_sku_keys)
 

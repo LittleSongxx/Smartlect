@@ -1,7 +1,7 @@
 """Derive inferred likes/categories/purpose from Java browse and order history."""
 import asyncio
 
-from smartlect.commerce import CommerceError
+from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
 from smartlect.state import StateError
 
 INTEREST_TERMS = (
@@ -90,7 +90,7 @@ async def collect_behavior_snapshot(commerce, actor):
     if not ids:
         return [], order_names
     snapshot = await commerce.request(
-        'product', '/internal/product/snapshotBatch', data={'productIds': ids})
+        'product', PRODUCT_SNAPSHOT_BATCH_PATH, data={'productIds': ids})
     products = snapshot.get('products') if isinstance(snapshot, dict) else []
     return list(products or []), order_names
 
