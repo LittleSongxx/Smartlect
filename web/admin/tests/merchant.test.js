@@ -15,12 +15,13 @@ const campaign = { campaign_id: 'c1', name: '活动', owner_id: 'm1', product_id
 const sku = { product_id: 'p1', sku_key: 'hash1', product_name: '真实产品', sku_name: '黑色 256G', price_cents: 1999, stock: 3 };
 let state, ads, calls, handler, currentActor; const wrappers=[];
 const render = async (component,options={}) => {
-  const global = { components: sharedComponents, ...(options.global || {}) };
+  // 页面已迁移到 Element Plus 控件：直接挂载也要装插件，否则 el-* 解析不到
+  const global = { components: sharedComponents, plugins: [ElementPlus], ...(options.global || {}) };
   if (component === Layout) {
     const router = createAdminRouter(createMemoryHistory());
     await router.push(options.path || '/ads');
     // Layout 顶栏用的是 Element Plus 组件，不装插件时它们解析不到、页头断言会静默落空。
-    global.plugins = [...(global.plugins || []), ElementPlus, router];
+    global.plugins = [...(global.plugins || []), router];
     const wrapper = mount(component, { ...options, global });
     wrappers.push(wrapper);
     await router.isReady();
@@ -60,7 +61,10 @@ it('preserves the original run request after a network failure and never starts 
   let writes=0;
   handler=(path)=>{if(path.endsWith('/merchant/runs')){if(writes++===0)throw new TypeError('Network unavailable');return response({state:'WAIT_OUTCOME',unchanged_observation:true,latest_plan:plan});}};
   const wrapper=await render(MerchantView);const form=wrapper.find('form');
-  await field(wrapper,'规划方式').setValue('rule');await field(wrapper,'计划预算约束').setValue('100');await wrapper.find('input[type=checkbox][value=p1]').setValue(true);
+  // 规划方式已改为 el-select，用组件 API 设值
+  await wrapper.findComponent({ name: 'ElSelect' }).setValue('rule');
+  await field(wrapper,'计划预算约束').setValue('100');
+  await wrapper.find('input[type=checkbox][value=p1]').setValue(true);
   await form.trigger('submit');await flushPromises();expect(field(wrapper,'目标和约束').element.readOnly).toBe(true);
   await form.trigger('submit');await flushPromises();const requests=calls.filter(item=>item.path.endsWith('/merchant/runs'));
   expect(requests).toHaveLength(2);expect(requests[0].options.body).toBe(requests[1].options.body);expect(JSON.parse(requests[0].options.body)).toMatchObject({mode:'rule',planned_budget_cents:100,product_scope:['p1']});
