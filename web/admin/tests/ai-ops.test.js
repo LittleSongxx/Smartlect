@@ -152,8 +152,9 @@ it('knowledge view imports product drafts and filters by source', async () => {
 
   await wrapper.findAll('button').find((item) => item.text() === '从商品导入').trigger('click')
   await flushPromises()
-  const idsOption = wrapper.findAll('option').find((item) => item.text().includes('指定商品 ID'))
-  expect(idsOption.exists()).toBe(true)
+  expect(wrapper.text()).toContain('全部在售商品')
+  expect(wrapper.text()).toContain('指定商品 ID')
+  expect(wrapper.findComponent({ name: 'ElRadioGroup' }).exists()).toBe(true)
   await wrapper.find('form.operation').trigger('submit')
   await flushPromises()
   const invoke = calls.filter((item) => item.path.endsWith('/knowledgeImport/products'))
