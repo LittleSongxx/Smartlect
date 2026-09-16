@@ -144,7 +144,9 @@ public class ProductCommerceInternalController extends ABaseController {
         if (p == null) {
             return getSuccessResponseVO(null);
         }
-        return getSuccessResponseVO(buildDetail(p));
+        // Same assembling path as the batch variant, so the two shapes cannot drift apart.
+        List<Map<String, Object>> details = buildDetails(List.of(p));
+        return getSuccessResponseVO(details.isEmpty() ? null : details.get(0));
     }
 
     /**
@@ -165,50 +167,83 @@ public class ProductCommerceInternalController extends ABaseController {
         query.setProductIdList(productIds);
         List<ProductInfo> products = productInfoMapper.selectList(query);
         List<Map<String, Object>> result = new ArrayList<>();
-        for (ProductInfo p : products) {
-            if (p != null) {
-                result.add(buildDetail(p));
-            }
+        for (Map<String, Object> detail : buildDetails(products)) {
+            result.add(detail);
         }
         return getSuccessResponseVO(result);
     }
 
-    private Map<String, Object> buildDetail(ProductInfo p) {
-        Map<String, Object> m = toProductCard(p);
-        m.put("status", p.getStatus());
-        m.put("maxPrice", p.getMaxPrice());
-        String searchableDescription =
-                ProductIndexTextSanitizer.sanitize(p.getProductDesc());
-        m.put("description", searchableDescription);
-        m.put("productDesc", searchableDescription);
-
-        ProductSkuQuery skuQuery = new ProductSkuQuery();
-        skuQuery.setProductId(p.getProductId());
-        skuQuery.setOrderBy(com.smartlect.entity.query.SafeSort.of("sort asc"));
-        List<ProductSku> skus = productSkuMapper.selectList(skuQuery);
-        m.put("skus", skus == null ? Collections.emptyList() : skus);
-
-        ProductPropertyValueQuery pvQuery = new ProductPropertyValueQuery();
-        pvQuery.setProductId(p.getProductId());
-        List<ProductPropertyValue> pvs = productPropertyValueMapper.selectList(pvQuery);
-        m.put("propertyValues", pvs == null ? Collections.emptyList() : pvs);
-        if (pvs != null) {
-            for (ProductPropertyValue property : pvs) {
-                if (property.getPropertyName() != null
-                        && property.getPropertyName().contains("品牌")
-                        && !StringTools.isEmpty(property.getPropertyValue())) {
-                    m.put("brand", property.getPropertyValue());
-                    break;
-                }
+    /**
+     * Detail payloads for one or more products with three bulk lookups instead of three per
+     * product: the batch endpoint exists to avoid per-product round trips, and a per-product
+     * stock Feign call would have reintroduced them.
+     */
+    private List<Map<String, Object>> buildDetails(List<ProductInfo> products) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (products == null || products.isEmpty()) {
+            return result;
+        }
+        List<String> ids = new ArrayList<>();
+        for (ProductInfo p : products) {
+            if (p != null) {
+                ids.add(p.getProductId());
             }
         }
-        Map<String, Integer> stockByProduct = stockFeignSupport.totalByProducts(List.of(p.getProductId()));
-        if (stockByProduct.containsKey(p.getProductId())) {
-            Integer totalStock = stockByProduct.get(p.getProductId());
-            m.put("totalStock", totalStock);
-            m.put("inStock", totalStock != null && totalStock > 0);
+        Map<String, Integer> stockByProduct = ids.isEmpty() ? Collections.emptyMap() : stockFeignSupport.totalByProducts(ids);
+
+        Map<String, List<ProductSku>> skusByProduct = new HashMap<>();
+        Map<String, List<ProductPropertyValue>> propertiesByProduct = new HashMap<>();
+        if (!ids.isEmpty()) {
+            ProductSkuQuery skuQuery = new ProductSkuQuery();
+            skuQuery.setProductIdList(ids);
+            skuQuery.setOrderBy(com.smartlect.entity.query.SafeSort.of("product_id asc, sort asc"));
+            for (ProductSku sku : orEmpty(productSkuMapper.selectList(skuQuery))) {
+                skusByProduct.computeIfAbsent(sku.getProductId(), key -> new ArrayList<>()).add(sku);
+            }
+            ProductPropertyValueQuery pvQuery = new ProductPropertyValueQuery();
+            pvQuery.setProductIdList(ids);
+            for (ProductPropertyValue property : orEmpty(productPropertyValueMapper.selectList(pvQuery))) {
+                propertiesByProduct.computeIfAbsent(property.getProductId(), key -> new ArrayList<>()).add(property);
+            }
         }
-        return m;
+
+        for (ProductInfo p : products) {
+            if (p == null) {
+                continue;
+            }
+            String productId = p.getProductId();
+            Map<String, Object> m = toProductCard(p);
+            m.put("status", p.getStatus());
+            m.put("maxPrice", p.getMaxPrice());
+            String searchableDescription = ProductIndexTextSanitizer.sanitize(p.getProductDesc());
+            m.put("description", searchableDescription);
+            m.put("productDesc", searchableDescription);
+            List<ProductSku> skus = skusByProduct.get(productId);
+            m.put("skus", skus == null ? Collections.emptyList() : skus);
+            List<ProductPropertyValue> pvs = propertiesByProduct.get(productId);
+            m.put("propertyValues", pvs == null ? Collections.emptyList() : pvs);
+            if (pvs != null) {
+                for (ProductPropertyValue property : pvs) {
+                    if (property.getPropertyName() != null
+                            && property.getPropertyName().contains("品牌")
+                            && !StringTools.isEmpty(property.getPropertyValue())) {
+                        m.put("brand", property.getPropertyValue());
+                        break;
+                    }
+                }
+            }
+            if (stockByProduct.containsKey(productId)) {
+                Integer totalStock = stockByProduct.get(productId);
+                m.put("totalStock", totalStock);
+                m.put("inStock", totalStock != null && totalStock > 0);
+            }
+            result.add(m);
+        }
+        return result;
+    }
+
+    private static <T> List<T> orEmpty(List<T> list) {
+        return list == null ? Collections.emptyList() : list;
     }
 
     /**

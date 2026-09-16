@@ -53,6 +53,12 @@ class OrderProductCommentsTest {
         verify(service).findListByParam(captor.capture());
         assertEquals("p1", captor.getValue().getProductId());
         assertEquals(10, captor.getValue().getSimplePage().getEnd());
+        // The sort fragment and the page window are raw SQL text: assert them literally, a
+        // camelCase column or an offset would only fail in MySQL, not in this unit test.
+        assertEquals("o.comment_time desc", captor.getValue().getOrderBy().toString());
+        assertEquals(0, captor.getValue().getSimplePage().getStart());
+        // Soft-deleted and pending-image-review rows must not reach the analysis.
+        assertEquals(0, captor.getValue().getStatus());
     }
 
     @Test

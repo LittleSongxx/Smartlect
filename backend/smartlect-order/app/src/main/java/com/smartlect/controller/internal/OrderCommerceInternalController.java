@@ -1,5 +1,6 @@
 package com.smartlect.controller.internal;
 
+import com.smartlect.api.enums.CommentStatusEnum;
 import com.smartlect.api.enums.OrderCommentStatusEnum;
 import com.smartlect.api.enums.OrderStatusEnum;
 import com.smartlect.biz.OrderCommentService;
@@ -18,6 +19,7 @@ import com.smartlect.entity.po.RefundRequest;
 import com.smartlect.entity.query.OrderCommentQuery;
 import com.smartlect.entity.query.OrderInfoQuery;
 import com.smartlect.entity.query.OrderItemQuery;
+import com.smartlect.entity.query.SafeSort;
 import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.exception.BusinessException;
@@ -72,7 +74,7 @@ public class OrderCommerceInternalController extends ABaseController {
         OrderInfoQuery query = new OrderInfoQuery();
         query.setUserId(userId);
         query.setQueryItems(true);
-        query.setOrderBy(com.smartlect.entity.query.SafeSort.of("o.order_time desc"));
+        query.setOrderBy(SafeSort.of("o.order_time desc"));
         String orderId = str(body, "orderId");
         if (!StringTools.isEmpty(orderId)) {
             query.setOrderId(orderId);
@@ -148,7 +150,7 @@ public class OrderCommerceInternalController extends ABaseController {
         DelegatedUserIdentity.requireOwner(userId, order == null ? null : order.getUserId());
         OrderItemQuery iq = new OrderItemQuery();
         iq.setOrderId(orderId);
-        iq.setOrderBy(com.smartlect.entity.query.SafeSort.of("order_item_id asc"));
+        iq.setOrderBy(SafeSort.of("order_item_id asc"));
         List<OrderItem> items = orderItemService.findListByParam(iq);
         List<Map<String, Object>> result = new ArrayList<>();
         if (items != null) {
@@ -217,8 +219,8 @@ public class OrderCommerceInternalController extends ABaseController {
     }
 
     /**
-     * Product-level comment facts for the growth review analysis. Comments in this system
-     * are written once and shown as-is; there is no moderation gate to filter by.
+     * Product-level comment facts for the growth review analysis. Soft-deleted and
+     * image-review-pending rows stay out, exactly like the admin comment list.
      */
     @PostMapping("/productComments")
     public ResponseVO<List<Map<String, Object>>> productComments(@RequestBody Map<String, Object> body) {
@@ -233,8 +235,9 @@ public class OrderCommerceInternalController extends ABaseController {
         }
         OrderCommentQuery q = new OrderCommentQuery();
         q.setProductId(productId);
-        q.setOrderBy(com.smartlect.entity.query.SafeSort.of("commentTime desc"));
-        q.setSimplePage(new com.smartlect.entity.query.SimplePage(1, limit));
+        q.setStatus(CommentStatusEnum.NORMAL.getStatus());
+        q.setOrderBy(SafeSort.of("o.comment_time desc"));
+        q.setSimplePage(new SimplePage(0, limit));
         List<OrderComment> list = orderCommentService.findListByParam(q);
         List<Map<String, Object>> result = new java.util.ArrayList<>();
         if (list == null) {

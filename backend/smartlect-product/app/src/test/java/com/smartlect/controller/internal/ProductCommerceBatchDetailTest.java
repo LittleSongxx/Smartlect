@@ -43,13 +43,24 @@ class ProductCommerceBatchDetailTest {
         ReflectionTestUtils.setField(controller, "productPropertyValueMapper", propertyValueMapper);
         ReflectionTestUtils.setField(controller, "stockFeignSupport", stockFeignSupport);
         when(productSkuMapper.selectList(any())).thenReturn(List.of());
-        when(propertyValueMapper.selectList(any())).thenReturn(List.of(
-                property("品牌", "Smartlect")));
+        // Properties carry their product id: the store queries by product, so a row without
+        // one could not come back from the real mapper.
+        when(propertyValueMapper.selectList(any())).thenAnswer(invocation -> {
+            ProductPropertyValueQuery query = invocation.getArgument(0);
+            List<String> ids = query.getProductIdList() != null ? query.getProductIdList()
+                    : List.of(query.getProductId());
+            List<ProductPropertyValue> rows = new java.util.ArrayList<>();
+            for (String id : ids) {
+                rows.add(property(id, "品牌", "Smartlect"));
+            }
+            return rows;
+        });
         when(stockFeignSupport.totalByProducts(anyList())).thenReturn(Map.of());
     }
 
-    private ProductPropertyValue property(String name, String value) {
+    private ProductPropertyValue property(String productId, String name, String value) {
         ProductPropertyValue pv = new ProductPropertyValue();
+        pv.setProductId(productId);
         pv.setPropertyName(name);
         pv.setPropertyValue(value);
         return pv;
@@ -82,6 +93,30 @@ class ProductCommerceBatchDetailTest {
         ArgumentCaptor<ProductInfoQuery> captor = ArgumentCaptor.forClass(ProductInfoQuery.class);
         verify(productInfoMapper).selectList(captor.capture());
         assertEquals(List.of("p1", "p2", "missing"), captor.getValue().getProductIdList());
+
+        // The point of the batch endpoint: one stock round trip and two bulk lookups for the
+        // whole batch, not three queries per product.
+        ArgumentCaptor<List<String>> stockIds = ArgumentCaptor.forClass(List.class);
+        verify(stockFeignSupport, times(1)).totalByProducts(stockIds.capture());
+        assertEquals(List.of("p1", "p2"), stockIds.getValue());
+        verify(productSkuMapper, times(1)).selectList(any());
+        verify(propertyValueMapper, times(1)).selectList(any());
+        ArgumentCaptor<ProductSkuQuery> skuQuery = ArgumentCaptor.forClass(ProductSkuQuery.class);
+        verify(productSkuMapper).selectList(skuQuery.capture());
+        assertEquals(List.of("p1", "p2"), skuQuery.getValue().getProductIdList());
+    }
+
+    @Test
+    void singleDetailKeepsTheSameShapeAsTheBatchVariant() {
+        when(productInfoMapper.selectByProductId("p1")).thenReturn(product("p1", "描述"));
+        when(stockFeignSupport.totalByProducts(List.of("p1"))).thenReturn(Map.of("p1", 7));
+
+        Map<String, Object> detail = controller.getDetail(Map.of("productId", "p1")).getData();
+        assertEquals("p1", detail.get("productId"));
+        assertEquals("Smartlect", detail.get("brand"));
+        assertEquals(7, detail.get("totalStock"));
+        assertEquals(true, detail.get("inStock"));
+        assertEquals(List.of(), detail.get("skus"));
     }
 
     @Test
