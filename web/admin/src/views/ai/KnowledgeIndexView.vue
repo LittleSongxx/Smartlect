@@ -2,11 +2,11 @@
   <div class="ai-page">
     <PageHeader title="知识索引" description="知识发布后的异步向量化流水线：任务进度与失败原因；发布入口在「知识库」页。">
       <template #actions>
-        <el-button :icon="Refresh" :loading="busy" @click="load">刷新</el-button>
+        <el-button :icon="Refresh" :loading="busy" @click="refresh">刷新</el-button>
       </template>
     </PageHeader>
 
-    <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="table-gap" />
+    <el-alert v-if="error || progress.error" :title="error || progress.error" show-icon :closable="false" class="table-gap" />
 
     <div v-if="runningJob" class="table-data-card progress-card">
       <div class="progress-head">
@@ -111,12 +111,24 @@ const load = async () => {
   }
 }
 
+// 轮询走一个不吞异常的取数函数：连续失败由 useTaskProgress 计数后停下，
+// 吞掉异常的话那条保护永远不会触发，坏掉的接口会被空转到 deadline。
+const pollState = async () => {
+  jobs.value = (await aiGet('/knowledgeIndex/jobs')).items
+}
+
 // 容错轮询：有进行中任务时每 2s 刷新，全部终态后自动停止单次加载
-const progress = useTaskProgress(load, {
+const progress = useTaskProgress(pollState, {
   intervalMs: 2000,
   deadlineMs: 30 * 60 * 1000,
   isDone: () => !runningJob.value,
 })
+
+// 刷新＝手动取数 + 重启轮询：终态后出现新任务（例如另一个标签页发布了文档）时恢复跟踪。
+const refresh = async () => {
+  await load()
+  if (runningJob.value) progress.begin()
+}
 
 const runProbe = async () => {
   if (!probe.query.trim() || probeBusy.value) return
@@ -135,8 +147,7 @@ const runProbe = async () => {
 onMounted(async () => {
   await load()
   if (runningJob.value) progress.begin()
-})
-</script>
+})</script>
 
 <style scoped lang="scss">
 .ai-page {

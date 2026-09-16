@@ -85,8 +85,8 @@
         </div>
       </header>
       <main class="right-body" :class="{ 'is-home': route.path === '/home' }">
-        <router-view v-slot="{ Component }">
-          <component :is="Component" :key="scopeKey" />
+        <router-view v-if="sessionReady" v-slot="{ Component }">
+          <component :is="Component" :key="scopeKey" v-bind="pageProps" />
         </router-view>
       </main>
     </div>
@@ -115,8 +115,39 @@ const currentScopeLabel = computed(
     scopes.value.find((scope) => scope.execution_scope_id === session.value?.actor?.execution_scope_id)?.label ||
     '当前范围',
 )
+// 经营计划的审批交接（自 GrowthShell 迁入）：经营页点“明确批准授权”把计划带到活动页，
+// 活动页批准后回经营页提示，两条路径都要求这两页是同一个 router-view 的兄弟路由。
+const approvalPlan = ref(null)
+const merchantNotice = ref('')
+const reviewGrant = (plan) => {
+  approvalPlan.value = plan || null
+  merchantNotice.value = ''
+  router.push({ name: 'ads' })
+}
+const grantApproved = () => {
+  approvalPlan.value = null
+  merchantNotice.value = '稳定授权已保存；请核对计划状态，并通过执行器继续或恢复原回执。'
+  router.push({ name: 'merchant' })
+}
+const closePlan = () => {
+  approvalPlan.value = null
+  merchantNotice.value = ''
+  router.push({ name: 'merchant' })
+}
+// 只给需要的那一页绑定计划审批的 props/监听：其余页面收到未声明的 attrs 会刷警告。
+const pageProps = computed(() => {
+  if (route.name === 'ads') {
+    return { merchantPlan: approvalPlan.value, onGrantApproved: grantApproved, onClosePlan: closePlan }
+  }
+  if (route.name === 'merchant') {
+    return { initialNotice: merchantNotice.value, onReviewGrant: reviewGrant }
+  }
+  return {}
+})
 watch(scopeKey, async () => {
   scopes.value = []
+  approvalPlan.value = null
+  merchantNotice.value = ''
   if (session.value?.actor?.subject_type !== 'merchant') return
   try {
     scopes.value = (await aiGet('/scopes')).items
@@ -136,11 +167,16 @@ const changeScope = async (executionScopeId) => {
     switchingScope.value = false
   }
 }
+// 页面 key 取自会话里的 ownerKey；会话解析前它是空串，解析后才变成真实 id。若直接挂载
+// 子路由，冷启动会先按空 key 挂一次、再按真实 key 重挂一次，每个页面的首屏请求都发两遍。
+const sessionReady = ref(false)
 onMounted(async () => {
   try {
     await loadSession()
   } catch {
     // 未登录 assistant 或非商家身份时，范围切换入口保持隐藏
+  } finally {
+    sessionReady.value = true
   }
 })
 

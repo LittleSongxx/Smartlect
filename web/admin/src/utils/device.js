@@ -91,7 +91,14 @@ export function resolveDesktopPath(mobilePath) {
     '/m/more/merchant': '/merchant',
     '/m/more/ads': '/ads',
     '/m/more/knowledge': '/knowledge',
-    '/m/more/support': '/support'
+    '/m/more/support': '/support',
+    '/m/more/reviewAnalysis': '/reviewAnalysis',
+    '/m/more/growthReport': '/growthReport',
+    '/m/more/aiModels': '/ai/models',
+    '/m/more/aiPrompts': '/ai/prompts',
+    '/m/more/aiKnowledgeIndex': '/ai/knowledge-index',
+    '/m/more/aiRuns': '/ai/runs',
+    '/m/more/aiTools': '/ai/tools'
   }
   return map[mobilePath] || '/home'
 }

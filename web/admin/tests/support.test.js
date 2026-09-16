@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import SupportView from '../src/views/SupportView.vue';
 import { clearSession, session } from '../src/api/client';
+import { sharedComponents } from './helpers';
 
 const actor = { subject_type: 'merchant', actor_id: 'support-admin', session_id: 'session', execution_scope_id: 'scope', permissions: ['admin:legacy'] };
 const ticket = { ticket_id: 'ticket', conversation_id: 'conversation', status: 'TAKEN_OVER', assigned_actor_id: actor.actor_id, version: 2, reason: '退款人工核对' };
@@ -30,7 +31,7 @@ afterEach(() => { wrapper?.unmount(); vi.unstubAllGlobals(); });
 
 describe('人工工单持久会话详情', () => {
   it('loads and merges real API pages, showing escaped historical citations and current proposals without trade controls', async () => {
-    wrapper = mount(SupportView); await flushPromises();
+    wrapper = mount(SupportView, { global: { components: sharedComponents } }); await flushPromises();
     expect(requests.some(item => item.path.endsWith('/support/ticket'))).toBe(false);
     await button('查看会话').trigger('click'); await flushPromises();
     expect(wrapper.text()).toContain('请人工核对原退款');
@@ -60,7 +61,7 @@ describe('人工工单持久会话详情', () => {
         },
       }],
     }) : null;
-    wrapper = mount(SupportView); await flushPromises();
+    wrapper = mount(SupportView, { global: { components: sharedComponents } }); await flushPromises();
     await button('查看会话').trigger('click'); await flushPromises();
     expect(wrapper.text()).toContain('本轮如何决定');
     expect(wrapper.text()).toContain('询问已发布事实');
@@ -69,7 +70,7 @@ describe('人工工单持久会话详情', () => {
   });
 
   it('clears displayed context when an older-page request is denied after another assignment', async () => {
-    wrapper = mount(SupportView); await flushPromises(); await button('查看会话').trigger('click'); await flushPromises();
+    wrapper = mount(SupportView, { global: { components: sharedComponents } }); await flushPromises(); await button('查看会话').trigger('click'); await flushPromises();
     handle = path => path.includes('before_sequence') ? response({ error: 'ticket_assigned_to_another' }, 403) : null;
     await button('加载更早消息').trigger('click'); await flushPromises();
     expect(wrapper.find('.support-detail').exists()).toBe(false);
@@ -79,7 +80,7 @@ describe('人工工单持久会话详情', () => {
 
   it('disables another operator’s context and keeps detail reads separate from explicit takeover', async () => {
     handle = path => path.endsWith('/support') ? response([{ ...ticket, assigned_actor_id: 'another-admin' }]) : null;
-    wrapper = mount(SupportView); await flushPromises();
+    wrapper = mount(SupportView, { global: { components: sharedComponents } }); await flushPromises();
     expect(button('查看会话').element.disabled).toBe(true);
     expect(requests.some(item => item.path.endsWith('/support/ticket'))).toBe(false);
   });

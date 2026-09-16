@@ -6,7 +6,8 @@ import AdsView from '../src/views/AdsView.vue';
 import Layout from '../src/views/Layout.vue';
 import { createAdminRouter } from '../src/router.js';
 import { aiGet, aiWrite, clearSession, selectScope, session } from '../src/api/client';
-import { response, button, field } from './helpers';
+import ElementPlus from 'element-plus';
+import { response, button, field, sharedComponents } from './helpers';
 
 const actor = { subject_type: 'merchant', actor_id: 'm1', session_id: 's1', execution_scope_id: 'store', permissions: ['admin:legacy'] };
 const plan = { plan_id: 'plan1', version: 3, status: 'WAIT_APPROVAL', observation_id: 'obs1', grant_id: null, diagnosis: [{ code: 'payment_failures', explanation: 'Java 记录了一次模拟渠道拒付；其他原因仍需新证据。', evidence_ids: ['ev1'], observed_facts: [{ evidence_id: 'ev1', metric: 'declined_attempts', value: 1 }] }], spec: { objective: '核对净成交并保护库存', summary: '先保护已观察售罄的活动。', product_scope: ['p1'], period: 'scope_lifetime', planned_budget_cents: 100, evidence_ids: ['ev1'], actions: [{ action_type: 'pause_campaign', campaign_id: 'c1', expected_version: 4 }], expected_signals: ['等待新的库存和支付尝试事实'] } };
@@ -14,18 +15,19 @@ const campaign = { campaign_id: 'c1', name: '活动', owner_id: 'm1', product_id
 const sku = { product_id: 'p1', sku_key: 'hash1', product_name: '真实产品', sku_name: '黑色 256G', price_cents: 1999, stock: 3 };
 let state, ads, calls, handler, currentActor; const wrappers=[];
 const render = async (component,options={}) => {
-  const global = { ...(options.global || {}) };
+  const global = { components: sharedComponents, ...(options.global || {}) };
   if (component === Layout) {
     const router = createAdminRouter(createMemoryHistory());
-    await router.push('/ads');
-    global.plugins = [...(global.plugins || []), router];
+    await router.push(options.path || '/ads');
+    // Layout 顶栏用的是 Element Plus 组件，不装插件时它们解析不到、页头断言会静默落空。
+    global.plugins = [...(global.plugins || []), ElementPlus, router];
     const wrapper = mount(component, { ...options, global });
     wrappers.push(wrapper);
     await router.isReady();
     await flushPromises();
     return wrapper;
   }
-  const wrapper = mount(component, options);
+  const wrapper = mount(component, { ...options, global });
   wrappers.push(wrapper);
   await flushPromises();
   return wrapper;
@@ -154,4 +156,25 @@ it('asks to recover an uncertain plan instead of claiming a new run was saved',a
   expect(wrapper.text()).toContain('请先恢复原计划回执');
   expect(wrapper.text()).not.toContain('请求已保存');
   expect(calls.some(item=>item.path.endsWith('/runs/undefined'))).toBe(false);
+});
+
+it('carries the plan from the merchant page to the ads page approval and back',async()=>{
+  // The hand-off needs a listener on the shared router-view: mounting either page alone
+  // passes without one, which is exactly how this wiring went missing.
+  handler=path=>path.endsWith('/ads/grants')?response({grant_id:'g1'}):null;
+  const wrapper=await render(Layout,{path:'/merchant'});
+  await button(wrapper,'查看计划并明确批准授权').trigger('click'); await flushPromises();
+  expect(wrapper.text()).toContain('本次审批绑定经营计划 plan1');
+  expect(wrapper.text()).toContain('先保护已观察售罄的活动');
+  expect(field(wrapper,'首次计划 ID').element.readOnly).toBe(true);
+
+  await field(wrapper,'授权有效期').setValue('2030-01-01T12:00');
+  await wrapper.find('.approval input').setValue(true);
+  await wrapper.findAll('form').find(item=>item.text().includes('明确批准稳定授权')).trigger('submit');
+  await flushPromises();
+
+  const body=JSON.parse(calls.find(item=>item.path.endsWith('/ads/grants')).options.body);
+  expect(body).toMatchObject({merchant_plan_id:'plan1',expected_campaign_versions:{c1:4}});
+  expect(wrapper.text()).toContain('稳定授权已保存');
+  expect(wrapper.text()).not.toContain('本次审批绑定经营计划');
 });

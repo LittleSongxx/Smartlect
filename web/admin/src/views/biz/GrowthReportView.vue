@@ -70,10 +70,18 @@ const history = ref([])
 const busy = ref(false)
 const error = ref('')
 
+// The snapshot stores the suggestion list as a JSON array; older rows may carry the
+// {"suggestions": [...]} envelope, so accept both and never let a parse error hide a list.
 const suggestions = computed(() => {
   const raw = latest.value?.suggestions
   if (Array.isArray(raw)) return raw
-  if (typeof raw === 'string') { try { return JSON.parse(raw).suggestions || [] } catch { return [] } }
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed
+      if (Array.isArray(parsed?.suggestions)) return parsed.suggestions
+    } catch { /* a malformed snapshot reports "no suggestions" rather than breaking the page */ }
+  }
   return []
 })
 
