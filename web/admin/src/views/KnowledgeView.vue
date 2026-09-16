@@ -5,7 +5,15 @@
         <h2>知识文档与版本</h2>
         <p class="muted">草稿保存后单独发布，撤回后不再用于新的客服引用。</p>
       </div>
-      <button @click="refresh" :disabled="busy">刷新文档</button>
+      <div class="button-row">
+        <select v-model="sourceFilter" aria-label="来源筛选" class="source-filter">
+          <option value="">全部来源</option>
+          <option value="MANUAL">手动编写</option>
+          <option value="PRODUCT_AUTO">商品自动导入</option>
+        </select>
+        <button @click="importing = true" :disabled="busy || !canWrite">从商品导入</button>
+        <button @click="refresh" :disabled="busy">刷新文档</button>
+      </div>
     </div>
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
@@ -44,12 +52,13 @@
     </form>
     <section class="panel">
       <h3>服务器文档列表</h3>
-      <p v-if="!documents.length" class="empty-state">暂无文档。</p>
-      <article v-for="item in documents" :key="`${item.doc_id}:${item.version}`" class="plan-card">
+      <p v-if="!filteredDocuments.length" class="empty-state">暂无文档。</p>
+      <article v-for="item in filteredDocuments" :key="`${item.doc_id}:${item.version}`" class="plan-card">
         <div class="section-heading">
           <div>
             <h3>{{ item.title }}</h3>
             <span class="badge" :class="badgeTone(item.status)">{{ knowledgeStatusText(item.status) }}</span>
+            <span v-if="item.source_type === 'PRODUCT_AUTO'" class="badge auto-source">商品自动</span>
             <span class="muted">{{ aclText(item.acl) }} · v{{ item.version }}</span>
             <p class="muted">{{ timestamp(item.valid_from) }} — {{ timestamp(item.valid_until) }}</p>
           </div>
@@ -62,6 +71,23 @@
         <GrowthTechDetails title="版本、校验和与发布凭据" :value="item" />
       </article>
     </section>
+    <form v-if="importing" class="panel operation" @submit.prevent="submitImport">
+      <h3>从商品导入知识草稿</h3>
+      <p class="muted">从 Java 商品服务拉取在售商品的描述/参数/价格库存，生成「商品自动」来源的 DRAFT 文档；重复导入按商品覆盖旧草稿，不碰手动文档与已发布版本。导入后请核对正文再发布。</p>
+      <fieldset :disabled="busy || !canWrite">
+        <label>导入范围
+          <select v-model="importForm.mode">
+            <option value="all">全部在售商品（每次最多 200 个）</option>
+            <option value="ids">指定商品 ID</option>
+          </select>
+        </label>
+        <label v-if="importForm.mode === 'ids'">商品 ID（逗号分隔）<input v-model="importForm.ids" placeholder="例如 12, 15, 20"></label>
+        <div class="button-row">
+          <button class="primary" :disabled="busy || !canWrite || (importForm.mode === 'ids' && !importForm.ids.trim())">开始导入</button>
+          <button type="button" @click="importing = false" :disabled="busy">关闭</button>
+        </div>
+      </fieldset>
+    </form>
     <form v-if="selected" class="panel operation" @submit.prevent="transition">
       <h3>{{ selected.action === 'publish' ? '确认发布' : '确认撤回' }}：{{ selected.title }} · v{{ selected.version }}</h3>
       <p>文档 {{ selected.doc_id }}，范围 {{ selected.acl }}，有效期至 {{ timestamp(selected.valid_until) }}。</p>
@@ -88,6 +114,8 @@ const local = time => { const date = new Date(time); date.setMinutes(date.getMin
 const form = reactive({ doc_id: crypto.randomUUID(), title: '', source_uri: '', language: 'zh-CN', acl: 'PUBLIC', acl_actor_id: '', body: '', valid_from: local(Date.now()), valid_until: local(Date.now() + 365 * 86400000) });
 const productIds = ref(''); const categoryIds = ref(''); const factsText = ref('{}');
 const documents = ref([]); const selected = ref(null); const busy = ref(false); const error = ref(''); const notice = ref(''); const uncertain = ref(false);
+const sourceFilter = ref(''); const importing = ref(false); const importForm = reactive({ mode: 'all', ids: '' });
+const filteredDocuments = computed(() => sourceFilter.value ? documents.value.filter(item => (item.source_type || 'MANUAL') === sourceFilter.value) : documents.value);
 const canWrite = computed(() => hasAdminPermission(session.value?.actor, 'admin:legacy'));
 async function work(task) { if (busy.value) return; busy.value = true; error.value = ''; notice.value = ''; try { await task(); } catch (reason) { error.value = errorText(reason); } finally { busy.value = false; } }
 async function read() { documents.value = await aiGet('/knowledge'); }
@@ -119,6 +147,19 @@ async function transition() { await work(async () => {
     notice.value = '生命周期操作已返回，当前版本如下。';
   }
   await read();
+}); }
+async function submitImport() { await work(async () => {
+  const body = importForm.mode === 'ids'
+    ? { productIds: importForm.ids.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean) }
+    : {};
+  const summary = await aiWrite('/knowledgeImport/products', body);
+  const parts = [`导入 ${summary.imported.length} 个`];
+  if (summary.skipped.length) parts.push(`跳过 ${summary.skipped.length} 个（无可引用内容）`);
+  if (summary.failed.length) parts.push(`失败 ${summary.failed.length} 个`);
+  if (summary.published_pending_review.length) parts.push(`${summary.published_pending_review.length} 个商品存在已发布旧版，重导入后请确认是否撤回旧版`);
+  if (summary.truncated) parts.push('本次已达 200 个上限，可再次执行继续导入');
+  notice.value = parts.join('；') + '。' + (summary.note || '');
+  importing.value = false; await read();
 }); }
 onMounted(refresh);
 </script>

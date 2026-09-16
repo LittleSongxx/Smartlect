@@ -134,3 +134,35 @@ it('knowledge publish surfaces the async job notice', async () => {
   expect(wrapper.text()).toContain('向量索引任务 job12345')
   wrapper.unmount()
 })
+
+it('knowledge view imports product drafts and filters by source', async () => {
+  const { default: KnowledgeView } = await import('../src/views/KnowledgeView.vue')
+  handler = (path, options) => {
+    if (path.endsWith('/knowledge') && options?.method !== 'POST') {
+      return response([
+        { doc_id: 'manual-1', version: 1, title: '人工政策', status: 'PUBLISHED', acl: 'PUBLIC', source_type: 'MANUAL', valid_from: '2026-01-01T00:00:00Z', valid_until: '2030-01-01T00:00:00Z' },
+        { doc_id: 'product-p1', version: 2, title: '商品知识：保温杯', status: 'DRAFT', acl: 'PUBLIC', source_type: 'PRODUCT_AUTO', valid_from: '2026-01-01T00:00:00Z', valid_until: '2030-01-01T00:00:00Z' },
+      ])
+    }
+    if (path.endsWith('/knowledgeImport/products')) {
+      return response({ imported: ['p1'], skipped: [], failed: [], published_pending_review: [], requested: 1, truncated: false, note: '' })
+    }
+    return null
+  }
+  const wrapper = await mountView(KnowledgeView)
+  expect(wrapper.text()).toContain('人工政策')
+  expect(wrapper.text()).toContain('商品知识：保温杯')
+  expect(wrapper.text()).toContain('商品自动')
+
+  await wrapper.findAll('button').find((item) => item.text() === '从商品导入').trigger('click')
+  await flushPromises()
+  const idsOption = wrapper.findAll('option').find((item) => item.text().includes('指定商品 ID'))
+  expect(idsOption.exists()).toBe(true)
+  await wrapper.find('form.operation').trigger('submit')
+  await flushPromises()
+  const invoke = calls.filter((item) => item.path.endsWith('/knowledgeImport/products'))
+  expect(invoke).toHaveLength(1)
+  expect(JSON.parse(invoke[0].options.body)).toEqual({})  // default 全部在售
+  expect(wrapper.text()).toContain('导入 1 个')
+  wrapper.unmount()
+})
