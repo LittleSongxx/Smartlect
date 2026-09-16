@@ -1,89 +1,125 @@
 <template>
-  <section class="growth-console">
+  <div class="support-page">
     <PageHeader title="人工客服工单" description="接管后自动回复和新交易确认会被服务端阻止；回复由人工明确提交。">
       <template #actions>
-        <button @click="refresh" :disabled="busy">刷新工单</button>
+        <el-button type="primary" :loading="busy" @click="refresh">刷新工单</el-button>
       </template>
     </PageHeader>
-    <p v-if="error" class="notice error" role="alert">{{ error }}</p>
-    <p v-if="notice" class="notice" role="status">{{ notice }}</p>
-    <section class="panel">
-      <p v-if="!tickets.length" class="empty-state">暂无人工工单。</p>
-      <article v-for="item in tickets" :key="item.ticket_id" class="plan-card">
-        <div class="section-heading">
-          <div>
+
+    <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="table-gap" />
+    <el-alert v-if="notice" type="success" :title="notice" show-icon :closable="false" class="table-gap" />
+
+    <div class="table-data-card">
+      <el-empty v-if="!tickets.length" description="暂无人工工单。" :image-size="80" />
+      <article v-for="item in tickets" :key="item.ticket_id" class="ticket">
+        <div class="ticket-head">
+          <div class="ticket-title">
             <h3>{{ ticketReasonText(item.reason) }}</h3>
-            <span class="badge" :class="badgeTone(item.status)">{{ ticketStatusText(item.status) }}</span>
-            <span class="muted">v{{ item.version }}</span>
-            <p class="muted">创建 {{ timestamp(item.created_at) }} · 当前接管人 {{ item.assigned_actor_id || '待分配' }}</p>
+            <StatusTag :label="ticketStatusText(item.status)" :tone="badgeTone(item.status)" />
+            <span class="muted-note">v{{ item.version }}</span>
+            <p class="muted-note">创建 {{ timestamp(item.created_at) }} · 当前接管人 {{ item.assigned_actor_id || '待分配' }}</p>
           </div>
           <div class="button-row">
-            <button @click="view(item)" :disabled="busy || !canManage(item)">查看会话</button>
-            <button v-if="item.status === 'OPEN'" @click="update(item, 'take_over')" :disabled="busy || !canManage(item)">接管</button>
-            <button v-if="item.status !== 'CLOSED'" @click="closing = item" :disabled="busy || !canManage(item)">核对结束</button>
+            <el-button :disabled="busy || !canManage(item)" @click="view(item)">查看会话</el-button>
+            <el-button v-if="item.status === 'OPEN'" type="primary" :disabled="busy || !canManage(item)" @click="update(item, 'take_over')">接管</el-button>
+            <el-button v-if="item.status !== 'CLOSED'" :disabled="busy || !canManage(item)" @click="closing = item">核对结束</el-button>
           </div>
         </div>
-        <p v-if="item.resolution" class="creative-copy">最近人工回复：{{ item.resolution }}</p>
+        <p v-if="item.resolution" class="resolution">最近人工回复：{{ item.resolution }}</p>
         <GrowthTechDetails title="移交证据和工单凭据" :value="item" />
-        <form v-if="item.status === 'TAKEN_OVER' && canManage(item)" @submit.prevent="update(item, 'reply')">
-          <label>人工回复<textarea v-model="replies[item.ticket_id]" required maxlength="4000" rows="3" :disabled="busy"></textarea></label>
-          <button class="primary" :disabled="busy || !replies[item.ticket_id]?.trim()">提交人工回复</button>
-        </form>
+        <el-form
+          v-if="item.status === 'TAKEN_OVER' && canManage(item)"
+          label-width="72px"
+          class="reply-form"
+          @submit.prevent="update(item, 'reply')"
+        >
+          <el-form-item label="人工回复">
+            <el-input
+              v-model="replies[item.ticket_id]"
+              type="textarea"
+              :rows="3"
+              maxlength="4000"
+              show-word-limit
+              :disabled="busy"
+              placeholder="写清处理结论与依据；提交后工单状态由服务端返回"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" native-type="submit" :disabled="busy || !replies[item.ticket_id]?.trim()">提交人工回复</el-button>
+          </el-form-item>
+        </el-form>
       </article>
-    </section>
-    <section v-if="detail" class="panel support-detail" aria-label="工单会话详情">
-      <div class="section-heading">
-        <div>
+    </div>
+
+    <div v-if="detail" class="table-data-card support-detail table-gap" aria-label="工单会话详情">
+      <div class="ticket-head">
+        <div class="ticket-title">
           <h3>工单会话详情</h3>
-          <p class="muted">{{ ticketStatusText(detail.ticket.status) }} · {{ detail.conversation.subject_type }} {{ detail.conversation.actor_id }}</p>
+          <p class="muted-note">
+            {{ ticketStatusText(detail.ticket.status) }} · {{ detail.conversation.subject_type }} {{ detail.conversation.actor_id }}
+          </p>
         </div>
-        <button @click="detail = null" :disabled="busy">收起会话</button>
+        <el-button :disabled="busy" @click="detail = null">收起会话</el-button>
       </div>
-      <button v-if="detail.next_before_sequence" @click="older" :disabled="busy">加载更早消息</button>
-      <p v-if="!detail.messages.length" class="muted">此会话尚无消息。</p>
-      <article v-for="message in detail.messages" :key="message.message_id" class="record support-message">
-        <p class="muted">{{ speaker(message) }} · {{ timestamp(message.created_at) }} · #{{ message.sequence }}</p>
-        <p class="creative-copy">{{ message.content }}</p>
+
+      <el-button v-if="detail.next_before_sequence" size="small" :disabled="busy" @click="older">加载更早消息</el-button>
+      <el-empty v-if="!detail.messages.length" description="此会话尚无消息。" :image-size="60" />
+      <article v-for="message in detail.messages" :key="message.message_id" class="support-message">
+        <p class="muted-note">{{ speaker(message) }} · {{ timestamp(message.created_at) }} · #{{ message.sequence }}</p>
+        <p class="message-body">{{ message.content }}</p>
       </article>
+
       <section v-if="detail.runs.length" aria-label="关联助手运行与引用">
         <h3>关联助手运行与引用</h3>
         <article v-for="run in detail.runs" :key="run.agent_run_id" class="plan-card">
-          <p><span class="badge">{{ run.state }}</span> {{ modeText(run.model_mode) }}</p>
+          <p><StatusTag :label="run.state" /> {{ modeText(run.model_mode) }}</p>
           <p v-if="run.result.answer_status">回答状态：{{ run.result.answer_status }}</p>
           <GrowthDecisionCard :decision="run.result.decision" :checks="run.result.checks" />
-          <p v-if="run.result.error || run.result.wait_reason" class="muted">{{ run.result.error || run.result.wait_reason }}</p>
-          <details v-if="run.result.citations?.length">
-            <summary>回复时保存的引用（{{ run.result.citations.length }}）</summary>
-            <p class="muted">以下为当时引用记录；当前政策适用性仍需核对。</p>
-            <article v-for="source in run.result.citations" :key="`${source.doc_id}:${source.version}:${source.chunk_id}`" class="creative">
-              <p><strong>{{ source.title }}</strong> · v{{ source.version }}</p>
-              <p class="muted">{{ source.source_uri }} · {{ source.heading }} · 行 {{ source.start_line }}–{{ source.end_line }}</p>
-              <p class="creative-copy">{{ source.content }}</p>
-            </article>
-          </details>
+          <p v-if="run.result.error || run.result.wait_reason" class="muted-note">{{ run.result.error || run.result.wait_reason }}</p>
+          <el-collapse v-if="run.result.citations?.length">
+            <el-collapse-item :title="`回复时保存的引用（${run.result.citations.length}）`">
+              <p class="muted-note">以下为当时引用记录；当前政策适用性仍需核对。</p>
+              <article v-for="source in run.result.citations" :key="`${source.doc_id}:${source.version}:${source.chunk_id}`" class="citation">
+                <p><strong>{{ source.title }}</strong> · v{{ source.version }}</p>
+                <p class="muted-note">{{ source.source_uri }} · {{ source.heading }} · 行 {{ source.start_line }}–{{ source.end_line }}</p>
+                <p class="message-body">{{ source.content }}</p>
+              </article>
+            </el-collapse-item>
+          </el-collapse>
         </article>
       </section>
+
       <section aria-label="已保存交易提案">
         <h3>已保存交易提案</h3>
-        <p class="muted">提案与回执仅供人工核对；接管、回复或结束工单均不代表用户确认交易。</p>
-        <p v-if="!detail.proposals.length">已加载消息未关联交易提案。</p>
+        <p class="muted-note">提案与回执仅供人工核对；接管、回复或结束工单均不代表用户确认交易。</p>
+        <p v-if="!detail.proposals.length" class="muted-note">已加载消息未关联交易提案。</p>
         <article v-for="proposal in detail.proposals" :key="proposal.proposal_id" class="plan-card">
-          <p><strong>{{ actionName(proposal.action_type) }}</strong> · <span class="badge">{{ proposalStatusText(proposal.status) }}</span></p>
-          <p class="muted">版本 {{ proposal.version }} · 用户确认 {{ proposal.approved === true ? '已批准' : proposal.approved === false ? '已拒绝' : '尚无确认' }} · 结果 {{ proposal.outcome || '待核对' }} · 有效期 {{ timestamp(proposal.expires_at) }}</p>
+          <p>
+            <strong>{{ actionName(proposal.action_type) }}</strong> ·
+            <StatusTag :label="proposalStatusText(proposal.status)" />
+          </p>
+          <p class="muted-note">
+            版本 {{ proposal.version }} · 用户确认 {{ proposal.approved === true ? '已批准' : proposal.approved === false ? '已拒绝' : '尚无确认' }}
+            · 结果 {{ proposal.outcome || '待核对' }} · 有效期 {{ timestamp(proposal.expires_at) }}
+          </p>
           <p v-if="proposal.quote_total_cents != null">原报价金额：¥{{ money(proposal.quote_total_cents) }}</p>
-          <GrowthTechDetails title="交易参数与已保存回执" :value="{ parameters: proposal.parameters, receipt: proposal.receipt, proposal_id: proposal.proposal_id }" />
+          <GrowthTechDetails
+            title="交易参数与已保存回执"
+            :value="{ parameters: proposal.parameters, receipt: proposal.receipt, proposal_id: proposal.proposal_id }"
+          />
         </article>
       </section>
-    </section>
-    <form v-if="closing" class="panel operation" @submit.prevent="update(closing, 'close')">
+    </div>
+
+    <div v-if="closing" class="table-data-card table-gap">
       <h3>确认结束工单</h3>
-      <p>{{ closing.ticket_id }} · 当前 v{{ closing.version }}。确认问题已处理后结束人工服务。</p>
+      <p class="muted-note">{{ closing.ticket_id }} · 当前 v{{ closing.version }}。确认问题已处理后结束人工服务。</p>
       <div class="button-row">
-        <button class="primary" :disabled="busy">确认结束</button>
-        <button type="button" @click="closing = null" :disabled="busy">返回处理</button>
+        <el-button type="primary" :loading="busy" @click="update(closing, 'close')">确认结束</el-button>
+        <el-button :disabled="busy" @click="closing = null">返回处理</el-button>
       </div>
-    </form>
-  </section>
+    </div>
+  </div>
 </template>
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
@@ -131,3 +167,74 @@ async function update(item, action) {
 }
 onMounted(refresh);
 </script>
+
+<style scoped lang="scss">
+.support-page {
+  .table-gap {
+    margin-bottom: 12px;
+  }
+
+  .ticket {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-soft);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  .ticket-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .ticket-title {
+    min-width: 0;
+
+    h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      color: var(--text);
+    }
+  }
+
+  .resolution {
+    margin: 0 0 8px;
+    color: var(--text-2);
+  }
+
+  .reply-form {
+    margin-top: 10px;
+  }
+
+  .message-body {
+    margin: 0;
+    color: var(--text);
+    white-space: pre-wrap;
+  }
+
+  .support-message {
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border-soft);
+  }
+
+  .citation {
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+  }
+
+  .plan-card {
+    padding: 10px 0;
+  }
+
+  h3 {
+    font-size: 15px;
+    color: var(--text);
+  }
+}
+</style>

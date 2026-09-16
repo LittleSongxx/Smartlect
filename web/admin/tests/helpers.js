@@ -1,3 +1,4 @@
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import PageHeader from '../src/components/PageHeader.vue'
 import StatusTag from '../src/components/StatusTag.vue'
 import DetailText from '../src/components/DetailText.vue'
@@ -39,4 +40,13 @@ export const response = (value, status = 200) => ({ ok: status < 400, status, js
 
 export const button = (wrapper, text) => wrapper.findAll('button').find((item) => item.text() === text)
 
-export const field = (wrapper, label) => wrapper.findAll('label').find((item) => item.text().startsWith(label)).find('input, select, textarea')
+// 字段定位：兼容两种写法 —— 原生 <label>包着控件，以及 Element Plus 的
+// `<label class="el-form-item__label">` 与控件是兄弟节点（转换到 EP 表单后就是后者）。
+export const field = (wrapper, label) => {
+  const labelEl = wrapper.findAll('label').find((item) => item.text().startsWith(label))
+  if (!labelEl) return undefined
+  const native = labelEl.find('input, select, textarea')
+  if (native.exists()) return native
+  const formItem = labelEl.element.closest('.el-form-item')
+  return formItem ? new DOMWrapper(formItem).find('input, select, textarea') : undefined
+}
