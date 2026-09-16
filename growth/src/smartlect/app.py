@@ -880,6 +880,15 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
                 break
             await asyncio.sleep(0.5)
 
+    if store is not None:
+        # Admin ops surface (runs browser, tool debug) lives in its own package; app.py stays
+        # the composition root and only wires dependencies here.
+        from smartlect import adminapi
+        from smartlect.shopping_retrieve import ShoppingRetrieve
+        adminapi.register(app, actor_for=actor_for, store=store, commerce=commerce, knowledge=knowledge,
+                          attribution=attribution, provider=provider, config=config, settings=settings,
+                          shopping_retrieve=ShoppingRetrieve(commerce))
+
     return app
 
 
