@@ -5,6 +5,7 @@ import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.RedisConnectionException;
 import org.redisson.config.Config;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,6 +24,9 @@ public class RedissionConfig {
     private final String sentinelMaster;
     private final String sentinelNodes;
 
+    // 有两个构造器时必须显式标注注入点：否则 Spring 会去找无参构造器并在启动时报
+    // "No default constructor found"（本次线上就是这么起不来的）。
+    @Autowired
     public RedissionConfig(
             @Value("${spring.data.redis.host:127.0.0.1}") String redisHost,
             @Value("${spring.data.redis.port:16379}") int redisPort,
