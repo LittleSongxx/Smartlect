@@ -37,6 +37,7 @@ import { useAgentSession } from '@/composables/useAgentSession';
 import { bindVisitor } from '@/api/traffic';
 import { safeNext } from '@/utils/navigation';
 import { useOpenAgent } from '@/composables/useOpenAgent';
+import { useAuthStore } from '@/stores/auth';
 import { PUBLIC_REGISTER_ENABLED, TRIAL_VISITOR } from '@/constants/trial';
 const PASSWORD = /^(?=.*\d)(?=.*[a-zA-Z])[\da-zA-Z~!@#$%^&*_]{8,18}$/;
 const email = ref(TRIAL_VISITOR.email); const password = ref<string>(TRIAL_VISITOR.password); const nickName = ref(''); const code = ref(''); const key = ref(''); const captchaImage = ref('');
@@ -44,7 +45,8 @@ const usingTrial = computed(() => mode.value === 'login'
   && email.value.trim().toLowerCase() === TRIAL_VISITOR.email
   && password.value === TRIAL_VISITOR.password);
 const busy = ref(false); const error = ref(''); const notice = ref(''); const mode = ref<'login' | 'register'>('login');
-const router = useRouter(); const route = useRoute(); const { conversationId, reset, restore } = useAgentSession();
+const router = useRouter(); const route = useRoute(); const authStore = useAuthStore();
+const { conversationId, reset, restore } = useAgentSession();
 const { openAgent } = useOpenAgent();
 async function captcha() {
   try { const result = await javaGet('/account/checkCode'); key.value = result.checkCodeKey; captchaImage.value = result.checkCode; code.value = ''; }
@@ -76,17 +78,19 @@ async function login() {
   if (busy.value) return; busy.value = true; error.value = ''; notice.value = '';
   const previousConversation = conversationId.value;
   try {
-    await javaPost('/account/login', {
+    const data = await javaPost('/account/login', {
       email: email.value,
       password: password.value,
       checkCodeKey: usingTrial.value ? '' : key.value,
       checkCode: usingTrial.value ? '' : code.value,
     });
-    password.value = ''; await loadSession();
+    password.value = '';
+    if (data?.userId) authStore.userInfo = data;
+    await loadSession();
     const binding = await bindVisitor();
     reset();
     if (binding?.bound && previousConversation && binding.conversation_ids.includes(previousConversation)) await restore(previousConversation);
-    await router.replace(safeNext(route.query.next || route.query.redirect));
+    await router.replace(safeNext(route.query.next || route.query.redirect, '/'));
   } catch (reason) { error.value = errorText(reason); if (!usingTrial.value) await captcha(); }
   finally { busy.value = false; }
 }

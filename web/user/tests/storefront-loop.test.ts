@@ -54,9 +54,9 @@ describe('封面、库存与登录回跳', () => {
     expect(canPurchase({ subjectType: 'user', addressId: 'a1', selected: { stock: 2 }, quantity: 3 })).toBe(false);
     expect(canPurchase({ subjectType: 'user', addressId: 'a1', selected: { stock: 2 }, quantity: 2 })).toBe(true);
     expect(canPurchase({ subjectType: 'user', addressId: 'a1', selected: { stock: 0 }, quantity: 1 })).toBe(false);
-    expect(safeNext('https://evil.example/x')).toBe('/assistant');
-    expect(safeNext('//evil.example')).toBe('/assistant');
-    expect(safeNext('/login?next=/orders')).toBe('/assistant');
+    expect(safeNext('https://evil.example/x')).toBe('/');
+    expect(safeNext('//evil.example')).toBe('/');
+    expect(safeNext('/login?next=/orders')).toBe('/');
     expect(safeNext('/catalog?product=p1')).toBe('/catalog?product=p1');
     expect(safeNext('/catalog?product=p1&sku=s1')).toBe('/catalog?product=p1&sku=s1');
     expect(loginTarget('/catalog', '/catalog?product=p1')).toBe(`/login?next=${encodeURIComponent('/catalog?product=p1')}`);
@@ -125,7 +125,7 @@ describe('封面、库存与登录回跳', () => {
     expect(wrapper.text()).toContain('满减券');
   });
 
-  it('登录成功后回到 next，默认仍去助手页', async () => {
+  it('登录成功后回到 next，默认回商城首页', async () => {
     let loggedIn = false;
     vi.stubGlobal('fetch', vi.fn(async (path: string) => {
       if (path.endsWith('/account/checkCode')) return json({ code: 200, data: { checkCodeKey: 'captcha1', checkCode: 'data:image/png;base64,' } });

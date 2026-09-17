@@ -5,7 +5,7 @@ export function resolveSafeRedirect(raw: unknown, fallback = '/'): string {
   return path;
 }
 
-export function safeNext(value: unknown, fallback = '/assistant'): string {
+export function safeNext(value: unknown, fallback = '/'): string {
   return resolveSafeRedirect(value, fallback);
 }
 
