@@ -31,13 +31,14 @@ class RecommendationAttributionClientTest {
 
     @Test
     void appliesOnlyCanonicalServerFields() throws Exception {
+        var receivedToken = new java.util.concurrent.atomic.AtomicReference<String>();
+        var receivedBody = new java.util.concurrent.atomic.AtomicReference<String>();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        // 断言放在 handler 外：handler 线程里抛出的断言会被 HttpServer 吞掉，
+        // 客户端只看到失败响应，真正的原因（请求没到 / 头不对）就丢了
         server.createContext("/internal/attribution/validateBatch", exchange -> {
-            assertEquals("internal-test", exchange.getRequestHeaders().getFirst("X-Internal-Token"));
-            String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            assertTrue(requestBody.contains("\"userId\":\"u1\""));
-            assertTrue(requestBody.contains("\"requestId\":\"request-1\""));
-            assertTrue(requestBody.contains("\"skuKey\":\"sku-1\""));
+            receivedToken.set(exchange.getRequestHeaders().getFirst("X-Internal-Token"));
+            receivedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             respond(exchange, """
                     {"status":"success","code":200,"data":[{
                       "requestId":"request-1","productId":"p1","skuKey":"sku-1","position":2,
@@ -52,6 +53,11 @@ class RecommendationAttributionClientTest {
         item.setRecommendationAttributedAt(new Date(1));
         client(server.getAddress().getPort()).validateAndApply("u1", List.of(item));
 
+        assertEquals("internal-test", receivedToken.get(), "内部令牌没送到");
+        assertNotNull(receivedBody.get(), "请求没到达：客户端把这次调用当成 growth 不可用处理了");
+        assertTrue(receivedBody.get().contains("\"userId\":\"u1\""), receivedBody.get());
+        assertTrue(receivedBody.get().contains("\"requestId\":\"request-1\""), receivedBody.get());
+        assertTrue(receivedBody.get().contains("\"skuKey\":\"sku-1\""), receivedBody.get());
         assertEquals("request-1", item.getRecommendationRequestId());
         assertEquals(2, item.getRecommendationPosition());
         assertEquals("hybrid", item.getRecommendationSource());
@@ -80,9 +86,9 @@ class RecommendationAttributionClientTest {
     @Test
     void oneValidatedSkuAppliesToEveryMatchingCarrierWithoutDuplicateRequests() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var receivedBody = new java.util.concurrent.atomic.AtomicReference<String>();
         server.createContext("/internal/attribution/validateBatch", exchange -> {
-            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            assertEquals(1, body.split("\\\"requestId\\\"", -1).length - 1);
+            receivedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             respond(exchange, """
                     {"status":"success","code":200,"data":[{
                       "requestId":"request-1","productId":"p1","skuKey":"sku-1","position":2,
@@ -93,6 +99,8 @@ class RecommendationAttributionClientTest {
         server.start();
         ProductItem first = candidate(), second = candidate();
         client(server.getAddress().getPort()).validateAndApply("u1", List.of(first, second));
+        assertNotNull(receivedBody.get(), "请求没到达");
+        assertEquals(1, receivedBody.get().split("\"requestId\"", -1).length - 1, "同一 SKU 不应重复请求");
         for (ProductItem item : List.of(first, second)) {
             assertEquals("request-1", item.getRecommendationRequestId());
             assertEquals("hybrid", item.getRecommendationSource());
@@ -158,12 +166,15 @@ class RecommendationAttributionClientTest {
     }
 
     private static RecommendationAttributionClient client(int port) {
+        // 超时给宽裕值：这几条用例查的是字段归一化，不是超时行为。原来的 100/200ms 在负载较高的
+        // CI 上会真的读超时，客户端按"growth 不可用"降级清空字段，最终只表现为 requestId 为 null，
+        // 排查时完全看不出是超时（2026-09-17 遇到过一次）。
         return new RecommendationAttributionClient(
                 RestClient.builder(),
                 "http://127.0.0.1:" + port,
                 "internal-test",
-                100,
-                200);
+                2000,
+                3000);
     }
 
     private static void respond(HttpExchange exchange, String body) throws IOException {
