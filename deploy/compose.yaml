@@ -119,12 +119,13 @@ services:
       retries: 30
 
   postgres:
+    profiles: ["pgvector"]
     image: pgvector/pgvector:pg16
-    ports: ["127.0.0.1:${SMARTLECT_POSTGRES_PORT:?run bootstrap}:5432"]
+    ports: ["127.0.0.1:${SMARTLECT_POSTGRES_PORT:-15432}:5432"]
     environment:
-      POSTGRES_USER: ${SMARTLECT_POSTGRES_USER:?run bootstrap}
-      POSTGRES_PASSWORD: ${SMARTLECT_POSTGRES_PASSWORD:?run bootstrap}
-      POSTGRES_DB: ${SMARTLECT_POSTGRES_DATABASE:?run bootstrap}
+      POSTGRES_USER: ${SMARTLECT_POSTGRES_USER:-smartlect}
+      POSTGRES_PASSWORD: ${SMARTLECT_POSTGRES_PASSWORD:-smartlect}
+      POSTGRES_DB: ${SMARTLECT_POSTGRES_DATABASE:-smartlect_growth}
       TZ: Asia/Shanghai
     volumes:
       - postgres:/var/lib/postgresql/data
