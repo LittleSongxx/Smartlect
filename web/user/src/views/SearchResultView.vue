@@ -53,7 +53,7 @@
       </div>
       <div v-else-if="!loading" class="page-empty">
         <el-empty description="暂无搜索结果">
-          <el-button type="primary" @click="router.push('/')">去首页</el-button>
+          <el-button type="primary" @click="$router.push('/')">去首页</el-button>
         </el-empty>
       </div>
       <div ref="sentinelRef" class="load-sentinel" />
@@ -64,199 +64,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
 import ProductCard from '@/components/business/ProductCard.vue';
-import { usePageListCache } from '@/composables/usePageListCache';
-import { productApi } from '@/api/modules';
-import { useSearchStore } from '@/stores/search';
-import { filterStorefrontProducts } from '@/utils/product';
-import { usePagedList } from '@/composables/usePagedList';
-import {
-  sortModeToQuery,
-  sortQueryToMode,
-  type SortMode
-} from '@/utils/productSort';
-import { toast } from '@/utils/toast';
-import { usePageRefresh } from '@/composables/pullRefresh';
-import { ProductQueryError, normalizePriceRange } from '@/utils/productQuery';
+import { useSearchPage } from '@/composables/useSearchPage';
 
-const router = useRouter();
-const route = useRoute();
-const searchStore = useSearchStore();
-
-const resolveKeywords = () => {
-  const fromQuery = typeof route.query.q === 'string' ? route.query.q.trim() : '';
-  if (fromQuery) return fromQuery;
-  return searchStore.payload.keyWords.trim();
-};
-
-const loadError = ref('');
-const sentinelRef = ref<HTMLElement | null>(null);
-const activeKeywords = ref('');
-
-const query = reactive({
-  keyWords: searchStore.payload.keyWords,
-  priceFrom: searchStore.payload.priceFrom,
-  priceTo: searchStore.payload.priceTo,
-  sortKey: searchStore.payload.sortKey,
-  sortDirection: searchStore.payload.sortDirection
-});
-
-const sortMode = computed<SortMode>({
-  get: () => sortQueryToMode(query.sortKey, query.sortDirection),
-  set: (mode) => Object.assign(query, sortModeToQuery(mode))
-});
-
-const cacheKey = () =>
-  [
-    '/search-result',
-    query.keyWords.trim(),
-    query.priceFrom,
-    query.priceTo,
-    query.sortKey,
-    query.sortDirection,
-    searchStore.payload.categoryId
-  ].join('|');
-
-const paged = usePagedList<any>({
-  sentinel: sentinelRef,
-  canLoad: () => !!query.keyWords.trim(),
-  transform: (rows) => filterStorefrontProducts(rows),
-  fetchPage: async (next) => {
-    const keyWords = query.keyWords.trim();
-    activeKeywords.value = keyWords;
-    loadError.value = '';
-    // 搜索框的价格同样不能原样转给 Java
-    const range = normalizePriceRange(query.priceFrom, query.priceTo);
-    return productApi.searchProducts({
-      keyWords,
-      pageNo: next,
-      categoryId: searchStore.payload.categoryId || undefined,
-      priceFrom: range.priceFrom,
-      priceTo: range.priceTo,
-      sortKey: query.sortKey || undefined,
-      sortDirection: query.sortDirection || undefined
-    });
-  },
-  onError: (e: any) => {
-    loadError.value = e instanceof ProductQueryError
-      ? e.message
-      : e?.info || e?.message || '搜索失败，请稍后重试';
-  }
-});
-const { pageNo, pageTotal, total, list, loading, loadingMore, finished, loadMore, setupObserver } = paged;
-
-const pageCache = usePageListCache({
-  cacheKey,
-  getState: () => ({
-    query: { ...query },
-    list: list.value,
-    pageNo: pageNo.value,
-    pageTotal: pageTotal.value,
-    total: total.value,
-    finished: finished.value,
-    activeKeywords: activeKeywords.value
-  }),
-  setState: (state) => {
-    const q = state.query as typeof query;
-    if (q) Object.assign(query, q);
-    paged.restore(state);
-    activeKeywords.value = String(state.activeKeywords ?? '');
-  },
-  afterRestore: setupObserver
-});
-
-const resetAndLoad = () => {
-  paged.reset();
-  window.scrollTo(0, 0);
-  loadMore();
-};
-
-const onSortChange = () => {
-  if (!query.keyWords.trim()) return;
-  pageCache.clear();
-  searchStore.setSearch({
-    keyWords: query.keyWords.trim(),
-    categoryId: searchStore.payload.categoryId,
-    priceFrom: query.priceFrom,
-    priceTo: query.priceTo,
-    sortKey: query.sortKey,
-    sortDirection: query.sortKey === 'PRICE' ? query.sortDirection : ''
-  });
-  resetAndLoad();
-};
-
-const onSearch = () => {
-  pageCache.clear();
-  const keyWords = query.keyWords.trim();
-  if (!keyWords) {
-    toast.warning('请输入搜索关键词');
-    return;
-  }
-  if (query.sortKey === 'PRICE' && !query.sortDirection) {
-    query.sortDirection = 'DESC';
-  }
-  searchStore.setSearch({
-    keyWords,
-    categoryId: searchStore.payload.categoryId,
-    priceFrom: query.priceFrom,
-    priceTo: query.priceTo,
-    sortKey: query.sortKey,
-    sortDirection: query.sortKey === 'PRICE' ? query.sortDirection : ''
-  });
-  if (route.query.q !== keyWords) {
-    router.replace({ path: '/search-result', query: { q: keyWords } });
-  }
-  resetAndLoad();
-};
-
-const goDetail = (p: any) => router.push(`/product/${p.productId}`);
-
-const applySearch = (keyWords: string) => {
-  searchStore.setSearch({
-    ...searchStore.payload,
-    keyWords
-  });
-  query.keyWords = keyWords;
-  activeKeywords.value = keyWords;
-  resetAndLoad();
-};
-
-onMounted(async () => {
-  const keyWords = resolveKeywords();
-  if (!keyWords) {
-    router.replace('/search-result');
-    return;
-  }
-  Object.assign(query, searchStore.payload);
-  query.keyWords = keyWords;
-
-  const restored = await pageCache.tryRestore();
-  if (!restored) {
-    applySearch(keyWords);
-  } else {
-    activeKeywords.value = query.keyWords.trim();
-  }
-  setupObserver();
-});
-
-watch(
-  () => route.query.q,
-  (q) => {
-    if (typeof q !== 'string') return;
-    const keyWords = q.trim();
-    if (!keyWords || keyWords === query.keyWords.trim()) return;
-    applySearch(keyWords);
-  }
-);
-
-usePageRefresh(() => {
-  pageCache.clear();
-  resetAndLoad();
-});
-
-onUnmounted(() => paged.disconnect());
+// 查询状态、分页、缓存、店铺同步与路由监听都在 useSearchPage 里（PC 版共用同一份）
+const {
+  query, sortMode, activeKeywords, loadError,
+  total, list, loading, loadingMore, finished,
+  sentinelRef, onSearch, onSortChange, goDetail, resetAndLoad
+} = useSearchPage({ scope: 'mobile' });
 </script>
 
 <style scoped lang="scss">

@@ -6,6 +6,7 @@ import ElementPlus from 'element-plus';
 import { JSDOM } from 'jsdom';
 import CategoryView from '../src/views/CategoryView.vue';
 import SearchResultView from '../src/views/SearchResultView.vue';
+import PcSearchResultView from '../src/views/pc/PcSearchResultView.vue';
 import { productApi } from '../src/api/modules';
 
 // 两个列表页共用 usePagedList：这里锁住"首屏一次请求 + 翻页追加 + 门店范围过滤 + 非法价格不发请求"，
@@ -23,11 +24,14 @@ const searchPayload = {
 };
 
 let wrapper: VueWrapper | undefined;
+// 用可手动触发的 IntersectionObserver 替身：滚动到底是通过它回到达的，比伸手进组件状态更接近真实路径
+let triggerIntersect: (() => void) | null = null;
 
 const mountPage = async (component: any, path: string, query = '') => {
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/category/:categoryId', component: CategoryView },
     { path: '/search-result', component: SearchResultView },
+    { path: '/pc-search-result', component: PcSearchResultView },
     { path: '/product/:productId', component: { template: '<div />' } },
     { path: '/search', component: { template: '<div />' } },
     { path: '/', component: { template: '<div />' } }
@@ -42,6 +46,15 @@ const mountPage = async (component: any, path: string, query = '') => {
 
 beforeEach(() => {
   setActivePinia(createPinia());
+  triggerIntersect = null;
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: IntersectionObserverCallback) {
+      triggerIntersect = () => callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
   vi.stubGlobal('localStorage', new JSDOM('', { url: 'http://localhost' }).window.localStorage);
   vi.stubGlobal('sessionStorage', new JSDOM('', { url: 'http://localhost' }).window.sessionStorage);
   vi.spyOn(productApi, 'loadCategory').mockResolvedValue([
@@ -83,10 +96,27 @@ describe('搜索结果页：分页列表', () => {
     expect(search.mock.calls[0][0]).toMatchObject({ keyWords: '手机', pageNo: 1 });
     expect(wrapper.findAll('.product-card-stub')).toHaveLength(1);
 
-    // 触发加载更多：组件把哨兵交给 IntersectionObserver，测试里直接走同一个入口
-    await (wrapper.vm as any).$.setupState.loadMore();
+    // 模拟滚到底：哨兵进入视口触发下一页
+    expect(triggerIntersect).toBeTypeOf('function');
+    triggerIntersect!();
     await flushPromises();
     expect(search).toHaveBeenCalledTimes(2);
     expect(wrapper.findAll('.product-card-stub').map((n) => n.text())).toEqual(['智能手机', '折叠屏手机']);
+  });
+});
+
+describe('PC 搜索结果页：与移动端共用同一份查询逻辑', () => {
+  it('价格非法时不发请求，正常时按关键词查并渲染商品', async () => {
+    const search = vi.spyOn(productApi, 'searchProducts').mockResolvedValue(searchPayload as any);
+    wrapper = await mountPage(PcSearchResultView, '/pc-search-result', '?q=%E6%89%8B%E6%9C%BA');
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(search.mock.calls[0][0]).toMatchObject({ keyWords: '手机', pageNo: 1 });
+    expect(wrapper.findAll('.pc-product-tile').length).toBeGreaterThan(0);
+
+    // PC 版此前漏掉了价格校验，现在与移动端同一套：非法值在客户端就被拦下
+    const priceInput = wrapper.findAll('input')[0]!;
+    await priceInput.setValue('abc');
+    expect(document.body.textContent).toContain('价格需为非负金额');
+    expect(search).toHaveBeenCalledTimes(1);
   });
 });

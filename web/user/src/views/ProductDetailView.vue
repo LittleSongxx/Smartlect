@@ -224,7 +224,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowRight, Star, StarFilled } from '@element-plus/icons-vue';
 import AgentServiceEntry from '@/components/agent/AgentServiceEntry.vue';
@@ -235,7 +235,9 @@ import BrandMark from '@/components/common/BrandMark.vue';
 import CommentReportDialog from '@/components/business/CommentReportDialog.vue';
 import { useProductDetailPage } from '@/composables/useProductDetailPage';
 import { maskCommenterName } from '@/utils/comment';
-import { userMemberApi, productApi } from '@/api/modules';
+import { productApi } from '@/api/modules';
+import { useSimilarProducts } from '@/composables/useSimilarProducts';
+import { useCommentLevels } from '@/composables/useCommentLevels';
 import { filterStorefrontProducts } from '@/utils/product';
 
 const route = useRoute();
@@ -275,90 +277,18 @@ const {
   buyNow
 } = useProductDetailPage();
 
-const commentLevelCache = ref<Record<string, { levelCode: number; levelName: string }>>({});
+// 会员等级徽章：缓存/懒加载/类名在 useCommentLevels 里（PC 详情页共用同一份）
+const { fetchLevels: fetchCommentLevels, getLevel: getCommentLevel, tagClass: commentLevelTagClass } =
+  useCommentLevels({ baseClass: 'level-default' });
 
-const fetchCommentLevel = (userId: string) => {
-  if (!userId || commentLevelCache.value[userId]) return;
-  userMemberApi.getLevelBadge(userId).then((res: any) => {
-    if (res?.levelCode != null) {
-      commentLevelCache.value = { ...commentLevelCache.value, [userId]: res };
-    }
-  }).catch(() => {});
-};
-
-const getCommentLevel = (userId?: string) => (userId && commentLevelCache.value[userId]) || null;
-
-const commentLevelTagClass = (code: number) => {
-  if (code >= 3) return 'level-gold';
-  if (code >= 2) return 'level-silver';
-  return 'level-default';
-};
-
-watch(previewComments, () => {
-  previewComments.value.forEach((c: any) => {
-    if (c.userId) fetchCommentLevel(c.userId);
-  });
-}, { immediate: true });
+watch(previewComments, () => fetchCommentLevels(previewComments.value), { immediate: true });
 
 const reportDialogRef = ref<InstanceType<typeof CommentReportDialog>>();
 
-const similarProducts = ref<any[]>([]);
-const loadingMore = ref(false);
-const finished = ref(false);
-const allSimilarProducts = ref<any[]>([]);
-const displayCount = ref(6);
-const PAGE_SIZE = 6;
-const maxSimilarProducts = 12;
-let scrollTicking = false;
-
-const onScroll = () => {
-  if (scrollTicking || finished.value || loadingMore.value) return;
-  scrollTicking = true;
-  requestAnimationFrame(() => {
-    scrollTicking = false;
-    const st = window.scrollY || document.documentElement.scrollTop;
-    const sh = document.documentElement.scrollHeight;
-    const ch = window.innerHeight;
-    if (sh - st - ch < 200) loadMore();
-  });
-};
-
-const loadMore = () => {
-  if (finished.value || loadingMore.value) return;
-  if (displayCount.value >= allSimilarProducts.value.length) {
-    finished.value = true;
-    return;
-  }
-  loadingMore.value = true;
-  setTimeout(() => {
-    displayCount.value = Math.min(displayCount.value + PAGE_SIZE, maxSimilarProducts, allSimilarProducts.value.length);
-    similarProducts.value = allSimilarProducts.value.slice(0, displayCount.value);
-    if (displayCount.value >= allSimilarProducts.value.length) finished.value = true;
-    loadingMore.value = false;
-  }, 300);
-};
-
-const loadSimilarProducts = async () => {
-  loadingMore.value = true;
-  try {
-    const data = await productApi.loadCommendProduct();
-    const list = filterStorefrontProducts(Array.isArray(data) ? data : data?.list || []);
-    if (!list.length) { finished.value = true; return; }
-
-    let filled = [...list];
-    while (filled.length < maxSimilarProducts) {
-      filled = filled.concat(list);
-    }
-    allSimilarProducts.value = filled.slice(0, maxSimilarProducts);
-    similarProducts.value = allSimilarProducts.value.slice(0, displayCount.value);
-    if (allSimilarProducts.value.length <= displayCount.value) finished.value = true;
-  } catch (error) {
-    console.error('ProductDetailView: loadSimilarProducts error', error);
-    finished.value = true;
-  } finally {
-    loadingMore.value = false;
-  }
-};
+// "猜你喜欢"的分批放出与滚动触底也在 composable 里（滚动监听由它在挂载时注册）
+const { similarProducts, loadingMore, finished } = useSimilarProducts({
+  pageSize: 6, max: 12, label: 'ProductDetailView'
+});
 
 const formatPrice = (price: any): string => {
   const n = Number(price);
@@ -369,13 +299,6 @@ const formatPrice = (price: any): string => {
 const goDetail = (p: any) => {
   if (p?.productId) router.push(`/product/${p.productId}`);
 };
-
-onMounted(() => {
-  loadSimilarProducts();
-  window.addEventListener('scroll', onScroll, { passive: true });
-});
-
-onUnmounted(() => window.removeEventListener('scroll', onScroll));
 
 const openReport = (payload: { orderId: string; commentContent?: string }) => {
   reportDialogRef.value?.show({

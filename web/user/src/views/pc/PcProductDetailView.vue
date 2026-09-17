@@ -214,7 +214,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowRight, Star, StarFilled } from '@element-plus/icons-vue';
 import AgentServiceEntry from '@/components/agent/AgentServiceEntry.vue';
@@ -223,7 +223,9 @@ import MarkdownContent from '@/components/common/MarkdownContent.vue';
 import CommentReportDialog from '@/components/business/CommentReportDialog.vue';
 import { useProductDetailPage } from '@/composables/useProductDetailPage';
 import { maskCommenterName } from '@/utils/comment';
-import { productApi, userMemberApi } from '@/api/modules';
+import { productApi } from '@/api/modules';
+import { useSimilarProducts } from '@/composables/useSimilarProducts';
+import { useCommentLevels } from '@/composables/useCommentLevels';
 import { resolveAvatarUrl } from '@/utils/image';
 import { filterStorefrontProducts } from '@/utils/product';
 
@@ -262,63 +264,10 @@ const {
 
 const reportDialogRef = ref<InstanceType<typeof CommentReportDialog>>();
 
-const similarProducts = ref<any[]>([]);
-const loadingMore = ref(false);
-const finished = ref(false);
-const allSimilarProducts = ref<any[]>([]);
-const displayCount = ref(8);
-const PAGE_SIZE = 8;
-const MAX_SIMILAR = 16;
-let scrollTicking = false;
-
-const onScroll = () => {
-  if (scrollTicking || finished.value || loadingMore.value) return;
-  scrollTicking = true;
-  requestAnimationFrame(() => {
-    scrollTicking = false;
-    const st = window.scrollY || document.documentElement.scrollTop;
-    const sh = document.documentElement.scrollHeight;
-    const ch = window.innerHeight;
-    if (sh - st - ch < 200) loadMore();
-  });
-};
-
-const loadMore = () => {
-  if (finished.value || loadingMore.value) return;
-  if (displayCount.value >= allSimilarProducts.value.length) {
-    finished.value = true;
-    return;
-  }
-  loadingMore.value = true;
-  setTimeout(() => {
-    displayCount.value = Math.min(displayCount.value + PAGE_SIZE, MAX_SIMILAR, allSimilarProducts.value.length);
-    similarProducts.value = allSimilarProducts.value.slice(0, displayCount.value);
-    if (displayCount.value >= allSimilarProducts.value.length) finished.value = true;
-    loadingMore.value = false;
-  }, 300);
-};
-
-const loadSimilarProducts = async () => {
-  loadingMore.value = true;
-  try {
-    const r = await productApi.loadCommendProduct();
-    const list = filterStorefrontProducts(Array.isArray(r) ? r : r?.list || []);
-    if (!list.length) { finished.value = true; return; }
-
-    let filled = [...list];
-    while (filled.length < MAX_SIMILAR) {
-      filled = filled.concat(list);
-    }
-    allSimilarProducts.value = filled.slice(0, MAX_SIMILAR);
-    similarProducts.value = allSimilarProducts.value.slice(0, displayCount.value);
-    if (allSimilarProducts.value.length <= displayCount.value) finished.value = true;
-  } catch (error) {
-    console.error('PcProductDetailView: loadSimilarProducts error', error);
-    finished.value = true;
-  } finally {
-    loadingMore.value = false;
-  }
-};
+// "猜你喜欢"分批放出 + 滚动触底与移动端共用同一份（滚动监听由 composable 注册）
+const { similarProducts, loadingMore, finished } = useSimilarProducts({
+  pageSize: 8, max: 16, label: 'PcProductDetailView'
+});
 
 const formatPrice = (price: any): string => {
   const n = Number(price);
@@ -328,44 +277,25 @@ const formatPrice = (price: any): string => {
 
 const goDetail = (p: any) => router.push(`/product/${p.productId}`);
 
-const levelCache = ref<Record<string, { levelCode: number; levelName: string }>>({});
+// 等级徽章缓存/懒加载与移动端共用；PC 用 level-normal 作为基线档类名
+const {
+  fetchLevel: fetchCommentLevel,
+  fetchLevels: fetchCommentLevels,
+  getLevel: getCommentLevel,
+  tagClass: commentLevelTagClass
+} = useCommentLevels({ baseClass: 'level-normal' });
 
-const fetchCommentLevel = (userId: string) => {
-  if (!userId || levelCache.value[userId]) return;
-  userMemberApi.getLevelBadge(userId).then((res: any) => {
-    if (res?.levelCode != null) {
-      levelCache.value = { ...levelCache.value, [userId]: res };
-    }
-  }).catch(() => {});
-};
-
-const getCommentLevelProxy = (userId: string | number | undefined): { levelCode: number; levelName: string } | null => {
+// PC 是"取用即拉取"：列表渲染时顺手补一次缺失的等级
+const getCommentLevelProxy = (userId: string | number | undefined) => {
   if (!userId) return null;
-  const key = String(userId);
-
-  fetchCommentLevel(key);
-  return levelCache.value[key] ?? null;
-};
-
-const commentLevelTagClass = (code: number): string => {
-  if (code >= 3) return 'level-gold';
-  if (code >= 2) return 'level-silver';
-  return 'level-normal';
+  fetchCommentLevel(userId);
+  return getCommentLevel(userId);
 };
 
 watch(comments, (val) => {
   if (!val?.length) return;
-  val.forEach((c: any) => {
-    if (c.userId) fetchCommentLevel(String(c.userId));
-  });
+  fetchCommentLevels(val);
 }, { immediate: true });
-
-onMounted(() => {
-  loadSimilarProducts();
-  window.addEventListener('scroll', onScroll, { passive: true });
-});
-
-onUnmounted(() => window.removeEventListener('scroll', onScroll));
 
 const openReport = (payload: { orderId: string; commentContent?: string }) => {
   reportDialogRef.value?.show({
