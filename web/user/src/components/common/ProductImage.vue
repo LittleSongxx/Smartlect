@@ -3,6 +3,7 @@
     :src="src"
     :fit="fit"
     :lazy="lazy"
+    :alt="altText"
     class="product-image"
     :class="{ 'is-dense': dense }"
     :style="sizeStyle"
@@ -35,6 +36,8 @@ const props = withDefaults(
     fit?: 'cover' | 'contain' | 'fill';
     lazy?: boolean;
     useThumbnail?: boolean;
+    /** 无障碍文本；不传时用商品名，纯装饰场景显式传空串 */
+    alt?: string;
 
     dense?: boolean;
   }>(),
@@ -42,6 +45,7 @@ const props = withDefaults(
 );
 
 const rawSource = computed(() => props.source ?? (props.product ? pickProductCover(props.product) : ''));
+const altText = computed(() => props.alt ?? String(props.product?.productName ?? ''));
 
 // 主图（useThumbnail=false）请求的是去掉 _thumbnail 的原图。只存了缩略图的商品原图并不
 // 存在，服务端现在会回退到缩略图，但已经被缓存成空响应的那条 URL 换不掉——只能在这里失败

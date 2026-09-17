@@ -4,7 +4,7 @@
     width: width ? width + 'px' : '100%',
     'aspect-ratio': scale
   }">
-    <el-image v-if="coverFile" :lazy="lazy" :src="coverFile" :fit="fit" @click="showViewerHandler">
+    <el-image v-if="coverFile" :lazy="lazy" :src="coverFile" :fit="fit" :alt="altText" @click="showViewerHandler">
       <template #placeholder>
         <div class="loading" :style="{ height: loadingHeight + 'px' }">
           <img :src="proxy.Utils.getLocalResource('loading.gif')" />
@@ -75,6 +75,11 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  /** 无障碍文本；默认空串（图旁通常已有商品名，纯装饰） */
+  alt: {
+    type: String,
+    default: '',
+  },
   borderRadius: {
     type: String,
     default: '5px',
@@ -89,6 +94,7 @@ const props = defineProps({
   },
 })
 
+const altText = computed(() => props.alt);
 const coverFile = ref()
 const getCover = async () => {
   if (props.source == 'avatar.png') {
