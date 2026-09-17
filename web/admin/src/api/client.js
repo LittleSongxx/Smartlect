@@ -12,7 +12,14 @@ export function errorText(reason) {
   const messages = { login_required: '请使用管理员账号登录。', invalid_session: '登录已失效，请重新登录。',
     permission_denied: '当前账号没有此操作权限。', version_conflict: '版本已变化，请刷新并重新核对。', ads_version_conflict: '活动或素材版本已变化，请刷新并重新核对。',
     csrf_denied: '会话校验已失效，请刷新。', origin_denied: '当前访问地址不在允许的管理地址内。',
-    merchant_campaign_draft_required: '当前还没有活动草稿。请先到「活动与授权」创建 DRAFT 活动，再回来规划。' };
+    merchant_campaign_draft_required: '当前还没有活动草稿。请先到「活动与授权」创建 DRAFT 活动，再回来规划。',
+    // growth 域的业务码：直接把机器码摆给管理员看不懂，这里给中文
+    no_comments: '这件商品还没有评价，先有评价才能生成分析。',
+    no_scored_comments: '这件商品的评价没有星级，无法统计星级分布。',
+    invalid_insights_json: '模型返回的洞察不是合法 JSON，本次结果未保存。',
+    invalid_insights_structure: '模型返回的洞察结构不符合约定，本次结果未保存。',
+    invalid_suggestions_json: '模型返回的建议不是合法 JSON，本次结果未保存。',
+    invalid_suggestions: '模型返回的建议结构不符合约定，本次结果未保存。' };
   const message = reason instanceof Error ? reason.message : '请求失败，请稍后重试。';
   return messages[message] || message;
 }

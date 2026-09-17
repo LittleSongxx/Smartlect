@@ -307,3 +307,10 @@ it('growth report page renders snapshot numbers and parses stored suggestions', 
   expect(empty.text()).toContain('建议未生成')
   empty.unmount()
 })
+
+it('growth 业务错误码给中文提示，不把机器码摆给管理员', async () => {
+  const { errorText } = await import('../src/api/client')
+  expect(errorText(new Error('no_comments'))).toBe('这件商品还没有评价，先有评价才能生成分析。')
+  expect(errorText(new Error('invalid_suggestions'))).toContain('结构不符合约定')
+  expect(errorText(new Error('something_else'))).toBe('something_else')  // 未知码原样透出，便于排查
+})
