@@ -7,6 +7,7 @@ import { JSDOM } from 'jsdom';
 import CategoryView from '../src/views/CategoryView.vue';
 import SearchResultView from '../src/views/SearchResultView.vue';
 import PcSearchResultView from '../src/views/pc/PcSearchResultView.vue';
+import SearchView from '../src/views/SearchView.vue';
 import { productApi } from '../src/api/modules';
 
 // 两个列表页共用 usePagedList：这里锁住"首屏一次请求 + 翻页追加 + 门店范围过滤 + 非法价格不发请求"，
@@ -32,6 +33,7 @@ const mountPage = async (component: any, path: string, query = '') => {
     { path: '/category/:categoryId', component: CategoryView },
     { path: '/search-result', component: SearchResultView },
     { path: '/pc-search-result', component: PcSearchResultView },
+    { path: '/search', component: SearchView },
     { path: '/product/:productId', component: { template: '<div />' } },
     { path: '/search', component: { template: '<div />' } },
     { path: '/', component: { template: '<div />' } }
@@ -118,5 +120,30 @@ describe('PC 搜索结果页：与移动端共用同一份查询逻辑', () => {
     await priceInput.setValue('abc');
     expect(document.body.textContent).toContain('价格需为非负金额');
     expect(search).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('分类 tab 的搜索框', () => {
+  it('输入关键词回车进搜索结果页（此前是跳转后被弹回的假按钮）', async () => {
+    vi.spyOn(productApi, 'searchProducts').mockResolvedValue(searchPayload as any);
+    // 设备形态来自 UA：jsdom 默认被当作手机（iPhone UA 走移动分支）
+    vi.stubGlobal('navigator', { ...navigator, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' });
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: '/search', component: SearchView },
+      { path: '/search-result', component: SearchResultView },
+      { path: '/category/:categoryId', component: { template: '<div />' } }
+    ] });
+    await router.push('/search'); await router.isReady();
+    wrapper = mount(SearchView, { global: { plugins: [router, ElementPlus] } });
+    await flushPromises();
+
+    const input = wrapper.find('.search-field');
+    expect(input.exists()).toBe(true);
+    await input.setValue('  耳机  ');
+    await wrapper.find('form.input').trigger('submit');
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe('/search-result');
+    expect(router.currentRoute.value.query.q).toBe('耳机');
   });
 });

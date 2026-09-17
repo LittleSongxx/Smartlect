@@ -4,10 +4,19 @@
     <template v-if="!isDesktop">
       <div class="productSort smartlect-goods-cate">
         <header class="header header-fixed">
-          <button type="button" class="input" @click="router.push('/search-result')">
+          <!-- 这里原来是跳 /search-result 的假按钮：没有关键词会被弹回来，等于点不动 -->
+          <form class="input" @submit.prevent="goSearch">
             <el-icon class="search-icon"><Search /></el-icon>
-            <span class="placeholder">搜索商品名称</span>
-          </button>
+            <input
+              v-model="keyword"
+              class="search-field"
+              type="search"
+              placeholder="搜索商品名称"
+              enterkeyhint="search"
+              maxlength="60"
+            />
+            <button type="submit" class="search-go" :disabled="!keyword.trim()">搜索</button>
+          </form>
         </header>
 
         <el-skeleton :loading="loading" animated :rows="8" class="scroll-box-skeleton">
@@ -125,11 +134,21 @@ import { productApi } from '@/api/modules';
 import { countCategoryNodes, storefrontCategoryTree } from '@/utils/category';
 import { useDevice } from '@/composables/useDevice';
 import { usePageRefresh } from '@/composables/pullRefresh';
+import { useSearchStore } from '@/stores/search';
 
 const router = useRouter();
 const { isDesktop } = useDevice();
+const searchStore = useSearchStore();
 const loading = ref(true);
+const keyword = ref('');
 const rootCategories = ref<any[]>([]);
+
+const goSearch = () => {
+  const keyWords = keyword.value.trim();
+  if (!keyWords) return;
+  searchStore.setSearch({ ...searchStore.payload, keyWords });
+  router.push({ path: '/search-result', query: { q: keyWords } });
+};
 const navActive = ref(0);
 const conterRef = ref<HTMLElement | null>(null);
 const asideRef = ref<HTMLElement | null>(null);
@@ -233,21 +252,51 @@ onUnmounted(() => window.removeEventListener('resize', handleResize));
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 14px;
+  padding: 0 6px 0 14px;
   background: $color-bg-subtle;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 8px;
-  cursor: pointer;
-  text-align: left;
+
+  &:focus-within {
+    border-color: $color-primary;
+    background: $color-card;
+  }
 
   .search-icon {
     color: $color-text-muted;
     flex-shrink: 0;
   }
 
-  .placeholder {
+  .search-field {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: none;
+    background: transparent;
     font-size: 13px;
-    color: $color-text-muted;
+    color: $color-text-title;
+    outline: none;
+
+    &::placeholder {
+      color: $color-text-muted;
+    }
+  }
+
+  .search-go {
+    flex-shrink: 0;
+    height: 26px;
+    padding: 0 12px;
+    border: none;
+    border-radius: $radius-sm;
+    background: $color-primary;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+
+    &:disabled {
+      background: $color-border;
+      color: $color-text-muted;
+    }
   }
 }
 
