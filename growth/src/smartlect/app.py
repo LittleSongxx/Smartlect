@@ -444,7 +444,9 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
 
     @app.post('/admin-api/assistant/scopes/select')
     async def merchant_select_scope(payload: ScopeSelectRequest,request: Request,response: Response):
-        actor=await ads_merchant(request,response,write=True)
+        actor=await ads_merchant(request,response)
+        actor.require('admin:legacy')
+        identity.require_csrf(request,actor)
         selected=await db(merchant.store.select_scope,actor,payload.execution_scope_id)
         return {'actor':selected.model_dump(),'csrf_token':identity.csrf_token(selected)}
 
