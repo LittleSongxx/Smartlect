@@ -312,5 +312,6 @@ it('growth 业务错误码给中文提示，不把机器码摆给管理员', asy
   const { errorText } = await import('../src/api/client')
   expect(errorText(new Error('no_comments'))).toBe('这件商品还没有评价，先有评价才能生成分析。')
   expect(errorText(new Error('invalid_suggestions'))).toContain('结构不符合约定')
-  expect(errorText(new Error('something_else'))).toBe('something_else')  // 未知码原样透出，便于排查
+  // 未收录的码给可读兜底并保留原因码（便于排查，但不是裸机器码）
+  expect(errorText(new Error('something_else'))).toBe('操作未完成（原因码：something_else）。')
 })

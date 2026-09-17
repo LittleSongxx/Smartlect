@@ -75,7 +75,7 @@ describe('人工工单持久会话详情', () => {
     handle = path => path.includes('before_sequence') ? response({ error: 'ticket_assigned_to_another' }, 403) : null;
     await button('加载更早消息').trigger('click'); await flushPromises();
     expect(wrapper.find('.support-detail').exists()).toBe(false);
-    expect(wrapper.text()).toContain('ticket_assigned_to_another');
+    expect(wrapper.text()).toContain('该工单已由其他客服接管');
     expect(requests.every(item => !item.options.method)).toBe(true);
   });
 

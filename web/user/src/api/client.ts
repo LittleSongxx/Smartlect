@@ -33,10 +33,35 @@ const descriptions: Record<string, string> = {
   commerce_outcome_unknown: '交易结果暂未核实，请刷新原操作查询结果。',
   recommendation_unavailable: '推荐暂时不可用，请稍后刷新。',
   product_scope_denied: '该商品不在当前店铺可售范围内，请换一件再下单。',
+  user_required: '请先登录后再操作。',
+  conversation_not_found: '当前会话已失效，请刷新页面后重试。',
+  conversation_version_conflict: '会话已在别处更新，请刷新后重试。',
+  assistant_busy: '助手正在处理上一条消息，请稍候。',
+  actor_run_limit: '同时进行的对话太多了，请等前面的完成再问。',
+  proposal_not_found: '这张确认卡已不存在，请重新发起。',
+  proposal_version_conflict: '确认卡已被更新，请刷新后重新核对。',
+  proposal_not_confirmed: '这张确认卡还没被确认，无法执行。',
+  action_already_terminal: '该动作已经结束，不能重复执行。',
+  action_not_started: '该动作尚未开始，请稍后再试。',
+  tool_call_not_found: '对应的执行记录已不存在，请刷新查看。',
+  tool_call_already_terminal: '该执行已经结束，不能重复提交。',
+  run_deadline_exceeded: '本次运行超时，请重新发起。',
+  run_not_running: '本次运行已结束，请刷新查看结果。',
+  human_control_active: '会话已转人工，自动回复暂停。',
+  handoff_state_changed: '转人工状态已变化，请刷新会话。',
+  evidence_not_found: '引用依据已失效，请重新提问。',
+  citation_no_longer_visible: '引用的资料已不可见，请刷新后重试。',
+  explicit_preference_has_priority: '这条偏好是您明确设定的，不会被自动改写。',
+  invalid_preference_value: '偏好值不合法，请重新填写。',
+  invalid_preference_key: '偏好项目不合法，请从列表中选择。',
+  message_id_conflict: '消息编号冲突，请重新发送。',
+  document_expired: '该资料已过期，不再用于回答。',
+  knowledge_capacity_exceeded: '知识库已达容量上限，请先归档旧资料。',
 };
 export function errorText(error: unknown) {
   const raw = error instanceof Error ? error.message : '请求失败，请稍后重试。';
-  return descriptions[raw] || raw;
+  // 未收录的原因码给出可读兜底，同时保留原因码便于排查
+  return descriptions[raw] || (/^[a-z][a-z0-9_]{3,}$/.test(raw) ? `操作未完成（原因码：${raw}）。` : raw);
 }
 async function request<T>(url: string, options: RequestInit = {}, java = false): Promise<T> {
   const epoch = sessionEpoch;
