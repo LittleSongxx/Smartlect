@@ -22,7 +22,7 @@
           <el-descriptions-item label="支付总额(分)">{{ latest.data.payments?.paid_cents ?? '—' }}</el-descriptions-item>
           <el-descriptions-item label="退款总额(分)">{{ latest.data.payments?.refunded_cents ?? '—' }}</el-descriptions-item>
           <el-descriptions-item label="已发布知识文档">{{ latest.data.ai_activity?.published_documents ?? '—' }}</el-descriptions-item>
-          <el-descriptions-item label="运行状态分布"><span class="mono">{{ JSON.stringify(latest.data.ai_activity?.run_states || {}) }}</span></el-descriptions-item>
+          <el-descriptions-item label="运行状态分布">{{ runStatesText }}</el-descriptions-item>
         </el-descriptions>
       </div>
 
@@ -69,6 +69,21 @@ const latest = ref(null)
 const history = ref([])
 const busy = ref(false)
 const error = ref('')
+
+// 快照里的运行状态是 {COMPLETED: 147, FAILED: 1} 这种计数字典；直接 stringify 会在页面上
+// 露出原始 JSON，改成"已完成 147 · 失败 1"的可读形式（未知键原样保留）
+const RUN_STATE_LABELS = {
+  COMPLETED: '已完成', RUNNING: '运行中', WAIT_USER: '等待用户确认',
+  FAILED: '失败', CANCELLED: '已取消', PENDING: '排队中'
+}
+const runStatesText = computed(() => {
+  const states = latest.value?.data?.ai_activity?.run_states
+  if (!states || typeof states !== 'object') return '—'
+  const parts = Object.entries(states)
+    .filter(([, count]) => Number(count) > 0)
+    .map(([state, count]) => `${RUN_STATE_LABELS[state] || state} ${count}`)
+  return parts.length ? parts.join(' · ') : '—'
+})
 
 // The snapshot stores the suggestion list as a JSON array; older rows may carry the
 // {"suggestions": [...]} envelope, so accept both and never let a parse error hide a list.

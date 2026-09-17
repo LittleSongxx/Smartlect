@@ -71,6 +71,7 @@ import { usePageListCache } from '@/composables/usePageListCache';
 import { productApi } from '@/api/modules';
 import { useSearchStore } from '@/stores/search';
 import { filterStorefrontProducts } from '@/utils/product';
+import { usePagedList } from '@/composables/usePagedList';
 import {
   sortModeToQuery,
   sortQueryToMode,
@@ -90,16 +91,8 @@ const resolveKeywords = () => {
   return searchStore.payload.keyWords.trim();
 };
 
-const pageNo = ref(0);
-const pageTotal = ref(1);
-const total = ref(0);
-const list = ref<any[]>([]);
-const loading = ref(false);
-const loadingMore = ref(false);
 const loadError = ref('');
-const finished = ref(false);
 const sentinelRef = ref<HTMLElement | null>(null);
-let observer: IntersectionObserver | null = null;
 const activeKeywords = ref('');
 
 const query = reactive({
@@ -126,17 +119,33 @@ const cacheKey = () =>
     searchStore.payload.categoryId
   ].join('|');
 
-const setupObserver = () => {
-  observer?.disconnect();
-  if (!sentinelRef.value) return;
-  observer = new IntersectionObserver(
-    (entries) => {
-      if (entries.some((e) => e.isIntersecting)) loadMore();
-    },
-    { rootMargin: '120px' }
-  );
-  observer.observe(sentinelRef.value);
-};
+const paged = usePagedList<any>({
+  sentinel: sentinelRef,
+  canLoad: () => !!query.keyWords.trim(),
+  transform: (rows) => filterStorefrontProducts(rows),
+  fetchPage: async (next) => {
+    const keyWords = query.keyWords.trim();
+    activeKeywords.value = keyWords;
+    loadError.value = '';
+    // 搜索框的价格同样不能原样转给 Java
+    const range = normalizePriceRange(query.priceFrom, query.priceTo);
+    return productApi.searchProducts({
+      keyWords,
+      pageNo: next,
+      categoryId: searchStore.payload.categoryId || undefined,
+      priceFrom: range.priceFrom,
+      priceTo: range.priceTo,
+      sortKey: query.sortKey || undefined,
+      sortDirection: query.sortDirection || undefined
+    });
+  },
+  onError: (e: any) => {
+    loadError.value = e instanceof ProductQueryError
+      ? e.message
+      : e?.info || e?.message || '搜索失败，请稍后重试';
+  }
+});
+const { pageNo, pageTotal, total, list, loading, loadingMore, finished, loadMore, setupObserver } = paged;
 
 const pageCache = usePageListCache({
   cacheKey,
@@ -152,68 +161,14 @@ const pageCache = usePageListCache({
   setState: (state) => {
     const q = state.query as typeof query;
     if (q) Object.assign(query, q);
-    list.value = (state.list as any[]) || [];
-    pageNo.value = Number(state.pageNo) || 0;
-    pageTotal.value = Number(state.pageTotal) || 1;
-    total.value = Number(state.total) || 0;
-    finished.value = !!state.finished;
+    paged.restore(state);
     activeKeywords.value = String(state.activeKeywords ?? '');
-    loading.value = false;
-    loadingMore.value = false;
   },
   afterRestore: setupObserver
 });
 
-const loadMore = async () => {
-  const keyWords = query.keyWords.trim();
-  if (!keyWords) return;
-  if (loadingMore.value || finished.value) return;
-  if (pageNo.value >= pageTotal.value && pageNo.value > 0) {
-    finished.value = true;
-    return;
-  }
-
-  loadingMore.value = true;
-  if (!list.value.length) loading.value = true;
-  activeKeywords.value = keyWords;
-  loadError.value = '';
-  try {
-    const next = pageNo.value + 1;
-    // 搜索框的价格同样不能原样转给 Java
-    const range = normalizePriceRange(query.priceFrom, query.priceTo);
-    const r = await productApi.searchProducts({
-      keyWords,
-      pageNo: next,
-      categoryId: searchStore.payload.categoryId || undefined,
-      priceFrom: range.priceFrom,
-      priceTo: range.priceTo,
-      sortKey: query.sortKey || undefined,
-      sortDirection: query.sortDirection || undefined
-    });
-    const chunk = filterStorefrontProducts(r?.list);
-    if (next === 1) list.value = chunk;
-    else list.value = list.value.concat(chunk);
-    pageNo.value = r?.pageNo ?? next;
-    pageTotal.value = r?.pageTotal ?? pageNo.value;
-    total.value = r?.totalCount ?? list.value.length;
-    finished.value = pageNo.value >= pageTotal.value;
-  } catch (e: any) {
-    loadError.value = e instanceof ProductQueryError
-      ? e.message
-      : e?.info || e?.message || '搜索失败，请稍后重试';
-    if (e instanceof ProductQueryError) finished.value = true;
-  } finally {
-    loadingMore.value = false;
-    loading.value = false;
-  }
-};
-
 const resetAndLoad = () => {
-  pageNo.value = 0;
-  pageTotal.value = 1;
-  finished.value = false;
-  list.value = [];
-  total.value = 0;
+  paged.reset();
   window.scrollTo(0, 0);
   loadMore();
 };
@@ -301,7 +256,7 @@ usePageRefresh(() => {
   resetAndLoad();
 });
 
-onUnmounted(() => observer?.disconnect());
+onUnmounted(() => paged.disconnect());
 </script>
 
 <style scoped lang="scss">

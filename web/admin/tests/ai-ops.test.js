@@ -281,7 +281,7 @@ it('growth report page renders snapshot numbers and parses stored suggestions', 
   // envelope and a null column are both covered so neither shape hides a real list.
   const report = (suggestions) => ({ latest: {
     data: { payments: { net_cents: 800, conversions: 3, paid_cents: 1000, refunded_cents: 200 },
-      ai_activity: { conversations: 9, support_tickets: 1, published_documents: 5, run_states: { COMPLETED: 4 } } },
+      ai_activity: { conversations: 9, support_tickets: 1, published_documents: 5, run_states: { COMPLETED: 4, FAILED: 1, WAIT_USER: 0 } } },
     suggestions, model_label: 'qwen3.7-plus@live', model_error: null, updated_at: '2026-09-16T10:00:00Z' },
     history: [] })
 
@@ -290,6 +290,11 @@ it('growth report page renders snapshot numbers and parses stored suggestions', 
   expect(wrapper.text()).toContain('800')
   expect(wrapper.text()).toContain('增加导购入口')
   expect(wrapper.text()).toContain('5')  // published documents
+  // 运行状态是计数字典：页面上要读成"已完成 4 · 失败 1"，不能露出原始 JSON；计数为 0 的不显示
+  expect(wrapper.text()).toContain('已完成 4')
+  expect(wrapper.text()).toContain('失败 1')
+  expect(wrapper.text()).not.toContain('{"COMPLETED"')
+  expect(wrapper.text()).not.toContain('等待用户确认 0')
   wrapper.unmount()
 
   handler = () => response(report('{"suggestions": ["改写客服话术"]}'))

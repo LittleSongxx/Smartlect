@@ -71,19 +71,13 @@ import {
 import { findCategoryInTree, findParentCategory, storefrontCategoryTree } from '@/utils/category';
 import { usePageRefresh } from '@/composables/pullRefresh';
 import { toast } from '@/utils/toast';
+import { usePagedList } from '@/composables/usePagedList';
 import { ProductQueryError, normalizePriceRange } from '@/utils/productQuery';
 
 const route = useRoute();
 const router = useRouter();
 
-const pageNo = ref(0);
-const pageTotal = ref(1);
-const total = ref(0);
-const list = ref<any[]>([]);
-const loadingMore = ref(false);
-const finished = ref(false);
 const sentinelRef = ref<HTMLElement | null>(null);
-let observer: IntersectionObserver | null = null;
 const categoryTree = ref<any[]>([]);
 const activeTabKey = ref('');
 
@@ -152,17 +146,26 @@ const syncActiveTabFromRoute = () => {
   activeTabKey.value = subTabs.value[0]?.key || routeCategoryId.value;
 };
 
-const setupObserver = () => {
-  observer?.disconnect();
-  if (!sentinelRef.value) return;
-  observer = new IntersectionObserver(
-    (entries) => {
-      if (entries.some((e) => e.isIntersecting)) loadMore();
-    },
-    { rootMargin: '120px' }
-  );
-  observer.observe(sentinelRef.value);
-};
+const paged = usePagedList<any>({
+  sentinel: sentinelRef,
+  transform: (rows) => filterStorefrontProducts(rows),
+  fetchPage: async (next) => {
+    // 手改链接/输入框里的价格先判掉，非法值不转给 Java
+    const range = normalizePriceRange(filter.priceFrom, filter.priceTo);
+    return productApi.loadProduct({
+      pageNo: next,
+      categoryId: queryCategoryId.value,
+      priceFrom: range.priceFrom,
+      priceTo: range.priceTo,
+      sortKey: filter.sortKey || undefined,
+      sortDirection: filter.sortDirection || undefined
+    });
+  },
+  onError: (reason: any) => {
+    if (reason instanceof ProductQueryError) toast.warning(reason.message);
+  }
+});
+const { pageNo, pageTotal, total, list, loadingMore, finished, loadMore, setupObserver } = paged;
 
 const pageCache = usePageListCache({
   cacheKey: () =>
@@ -180,12 +183,7 @@ const pageCache = usePageListCache({
     activeTabKey.value = String(state.activeTabKey ?? '');
     const f = state.filter as typeof filter;
     if (f) Object.assign(filter, f);
-    list.value = (state.list as any[]) || [];
-    pageNo.value = Number(state.pageNo) || 0;
-    pageTotal.value = Number(state.pageTotal) || 1;
-    total.value = Number(state.total) || 0;
-    finished.value = !!state.finished;
-    loadingMore.value = false;
+    paged.restore(state);
   },
   afterRestore: setupObserver
 });
@@ -205,47 +203,8 @@ const selectSubTab = (tab: { key: string; categoryId: string }) => {
   }
 };
 
-const loadMore = async () => {
-  if (loadingMore.value || finished.value) return;
-  if (pageNo.value >= pageTotal.value && pageNo.value > 0) {
-    finished.value = true;
-    return;
-  }
-  loadingMore.value = true;
-  try {
-    const next = pageNo.value + 1;
-    // 手改链接/输入框里的价格先判掉，非法值不转给 Java
-    const range = normalizePriceRange(filter.priceFrom, filter.priceTo);
-    const r = await productApi.loadProduct({
-      pageNo: next,
-      categoryId: queryCategoryId.value,
-      priceFrom: range.priceFrom,
-      priceTo: range.priceTo,
-      sortKey: filter.sortKey || undefined,
-      sortDirection: filter.sortDirection || undefined
-    });
-    const chunk = filterStorefrontProducts(r?.list);
-    if (next === 1) list.value = chunk;
-    else list.value = list.value.concat(chunk);
-    pageNo.value = r?.pageNo ?? next;
-    pageTotal.value = r?.pageTotal ?? pageNo.value;
-    total.value = r?.totalCount ?? list.value.length;
-    finished.value = pageNo.value >= pageTotal.value;
-  } catch (reason) {
-    if (reason instanceof ProductQueryError) {
-      toast.warning(reason.message);
-      finished.value = true;
-    }
-  } finally {
-    loadingMore.value = false;
-  }
-};
-
 const resetAndLoad = async () => {
-  pageNo.value = 0;
-  pageTotal.value = 1;
-  finished.value = false;
-  list.value = [];
+  paged.reset();
   window.scrollTo(0, 0);
   await loadMore();
 };
@@ -271,7 +230,7 @@ watch(routeCategoryId, async () => {
 
 onMounted(init);
 usePageRefresh(resetAndLoad);
-onUnmounted(() => observer?.disconnect());
+onUnmounted(() => paged.disconnect());
 </script>
 
 <style scoped lang="scss">
