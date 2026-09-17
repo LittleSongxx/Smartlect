@@ -7,6 +7,7 @@ import com.smartlect.component.RedisComponent;
 import com.smartlect.controller.ABaseController;
 import com.smartlect.entity.dto.AdminPrincipalDTO;
 import com.smartlect.entity.dto.TokenUserInfoDTO;
+import com.smartlect.constants.TrialIdentities;
 import com.smartlect.entity.po.UserInfo;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.exception.BusinessException;
@@ -66,7 +67,11 @@ public class IdentityInternalController extends ABaseController {
                 throw unauthorized();
             }
             actorId = session.getUserId();
-            permissions = List.of("shopping:read", "orders:read", "orders:write");
+            if (TrialIdentities.isTrialUser(user.getUserId(), user.getEmail())) {
+                permissions = List.of("shopping:read", "orders:read", TrialIdentities.ACCOUNT_TRIAL);
+            } else {
+                permissions = List.of("shopping:read", "orders:read", "orders:write");
+            }
         } else {
             AdminPrincipalDTO session = sessions.getAdminPrincipal(token);
             if (session == null || session.getSessionVersion() == null) {

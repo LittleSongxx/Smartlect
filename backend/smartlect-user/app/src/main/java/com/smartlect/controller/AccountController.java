@@ -5,6 +5,7 @@ import com.smartlect.annotation.RateLimit;
 import com.smartlect.component.RedisComponent;
 import com.smartlect.component.UserTempBanService;
 import com.smartlect.constants.Constants;
+import com.smartlect.constants.TrialIdentities;
 import com.smartlect.entity.dto.TokenUserInfoDTO;
 import com.smartlect.entity.enums.DateTimePatternEnum;
 import com.smartlect.api.enums.UserSexEnum;
@@ -119,6 +120,7 @@ public class AccountController extends ABaseController{
         validUserInfo.setEmail(userInfo.getEmail());
         validUserInfo.setNickName(userInfo.getNickName());
         validUserInfo.setAvatar(userInfo.getAvatar());
+        validUserInfo.setTrial(TrialIdentities.isTrialUser(userInfo.getUserId(), userInfo.getEmail()));
         // 否则存入新token，刷新redis
         String newToken = redisComponent.saveTokenUserInfo(validUserInfo);
         validUserInfo.setToken(newToken);
@@ -161,12 +163,14 @@ public class AccountController extends ABaseController{
     @PostMapping("/login")
     public ResponseVO login(@NotEmpty @Email @Size(max = 150) String email,
                             @NotEmpty String password,
-                            @NotEmpty String checkCodeKey,
-                            @NotEmpty String checkCode
+                            String checkCodeKey,
+                            String checkCode
                             ){
         try {
-            // 验证验证码
-            if (!checkCode.equalsIgnoreCase(redisComponent.getCheckCode(checkCodeKey))){
+            if (!TrialIdentities.skipLoginCaptcha(email)
+                    && (StringTools.isEmpty(checkCode)
+                    || StringTools.isEmpty(checkCodeKey)
+                    || !checkCode.equalsIgnoreCase(redisComponent.getCheckCode(checkCodeKey)))) {
                 throw new BusinessException("验证码错误！");
             }
             // 检查账号或密码
@@ -191,6 +195,7 @@ public class AccountController extends ABaseController{
             tokenUserInfoDTO.setEmail(userInfo.getEmail());
             tokenUserInfoDTO.setNickName(userInfo.getNickName());
             tokenUserInfoDTO.setAvatar(userInfo.getAvatar());
+            tokenUserInfoDTO.setTrial(TrialIdentities.isTrialUser(userInfo.getUserId(), userInfo.getEmail()));
             tokenUserInfoDTO.setToken(redisComponent.saveTokenUserInfo(tokenUserInfoDTO));
             HttpServletRequest request = currentRequest();
             HttpServletResponse response = currentResponse();
@@ -206,7 +211,9 @@ public class AccountController extends ABaseController{
             userInfoService.updateByParam(userInfo, userInfoQuery);
             return getSuccessResponseVO(tokenUserInfoDTO);
         }finally {
-            redisComponent.cleanCheckCode(checkCodeKey);
+            if (!StringTools.isEmpty(checkCodeKey)) {
+                redisComponent.cleanCheckCode(checkCodeKey);
+            }
         }
     }
 
@@ -231,6 +238,7 @@ public class AccountController extends ABaseController{
         UserInfo userInfo = userInfoService.getUserInfoByUserId(userId);
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(userInfo, userVO);
+        userVO.setTrial(TrialIdentities.isTrialUser(userInfo.getUserId(), userInfo.getEmail()));
         return getSuccessResponseVO(userVO);
     }
 
@@ -284,6 +292,9 @@ public class AccountController extends ABaseController{
     @RateLimit(limitType = RateLimit.LimitType.IP, windowSeconds = 20, maxCount = 1, message = "获取验证码过于频繁，请稍后再试")
     public ResponseVO getEmailCode(@NotEmpty @Email @Size(max = 150) String email,
                                    @NotEmpty String captchaVerification){
+        if (TrialIdentities.isTrialEmail(email)) {
+            throw new BusinessException(TrialIdentities.USER_DENIED);
+        }
         slideCaptchaVerifier.verify(captchaVerification);
         // 60秒内只能获取一次
         String existingCode = redisComponent.getEmailCode(email);

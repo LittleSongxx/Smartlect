@@ -9,10 +9,9 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from smartlect.indexing import JOB_STATES
-from smartlect.knowledge_import import import_products
 
 
-def build_router(*, actor_for, indexing, knowledge, provider, config, settings, commerce):
+def build_router(*, actor_for, indexing, knowledge, provider, config, settings, commerce, projection=None):
     router = APIRouter()
 
     @router.post("/admin-api/assistant/knowledgeImport/products")
@@ -25,19 +24,36 @@ def build_router(*, actor_for, indexing, knowledge, provider, config, settings, 
                                         or len(product_ids) > 200
                                         or any(not isinstance(item, str) or not item for item in product_ids)):
             raise HTTPException(422, "invalid_product_ids")
-        return await import_products(actor, commerce, knowledge,
-                                     product_ids=None if product_ids is None else product_ids)
+        if projection is None:
+            raise HTTPException(503, "product_projection_unavailable")
+        return await projection.import_catalog(actor, None if product_ids is None else product_ids)
+
+    @router.get("/admin-api/assistant/productProjection/{product_id}")
+    async def product_projection_status(product_id: str, request: Request, response: Response):
+        actor = await actor_for(request, response, realm="merchant")
+        actor.require_any("admin:legacy", "admin:trial")
+        if projection is None:
+            raise HTTPException(503, "product_projection_unavailable")
+        return await asyncio.to_thread(projection.status, actor, product_id)
+
+    @router.post("/admin-api/assistant/productProjection/{product_id}/retry")
+    async def product_projection_retry(product_id: str, request: Request, response: Response):
+        actor = await actor_for(request, response, realm="merchant", write=True)
+        actor.require("admin:legacy")
+        if projection is None:
+            raise HTTPException(503, "product_projection_unavailable")
+        return await asyncio.to_thread(projection.retry, actor, product_id)
 
     @router.get("/admin-api/assistant/knowledgeIndex/jobs")
     async def index_jobs(request: Request, response: Response, limit: int = 20):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         return {"items": await asyncio.to_thread(indexing.jobs.list_jobs, actor, limit), "states": list(JOB_STATES)}
 
     @router.get("/admin-api/assistant/knowledgeIndex/jobs/{job_id}")
     async def index_job(job_id: str, request: Request, response: Response):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         try:
             return await asyncio.to_thread(indexing.jobs.get_job, actor, job_id)
         except Exception as error:

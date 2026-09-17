@@ -2,9 +2,13 @@ import { isProductOnSale as isOnSale } from '@/constants/backendEnums';
 
 export { isProductOnSale } from '@/constants/backendEnums';
 
+export function isIsolatedProductId(productId: string | null | undefined): boolean {
+  const id = String(productId ?? '');
+  return /^(9100|9300)/.test(id);
+}
+
 export function isShelfFillerProduct(product: { productId?: string; productName?: string } | null | undefined): boolean {
-  const id = String(product?.productId ?? '');
-  if (/^91\d{10,}$/.test(id)) return true;
+  if (isIsolatedProductId(product?.productId)) return true;
   const name = String(product?.productName ?? '').trim();
   return /^Smartlect(数码|家居|运动|阅读|数码家电)/.test(name);
 }

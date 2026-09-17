@@ -12,7 +12,7 @@
           </div>
         </div>
         <nav class="menu-nav">
-          <template v-for="item in menuList" :key="item.path || item.name">
+          <template v-for="item in visibleMenu" :key="item.path || item.name">
             <div :class="['menu-item', isMenuActive(item) ? 'active' : '']" @click="jump(item)">
               <div :class="['iconfont', `icon-${item.icon}`, 'menu-icon']"></div>
               <div class="menu-name">{{ item.name }}</div>
@@ -51,7 +51,7 @@
           </el-breadcrumb>
         </div>
         <div class="top-actions">
-          <el-dropdown v-if="scopes.length" trigger="click" @command="changeScope">
+          <el-dropdown v-if="scopes.length && !isTrial" trigger="click" @command="changeScope">
             <button type="button" class="action-pill" :disabled="switchingScope">
               <span class="iconfont icon-folder action-pill__icon"></span>
               {{ currentScopeLabel }}
@@ -70,12 +70,13 @@
             </template>
           </el-dropdown>
           <div class="user-chip">
-            <span class="user-avatar">管</span>
-            <span class="user-name">管理员</span>
+            <span class="user-avatar">{{ isTrial ? '展' : '管' }}</span>
+            <span class="user-name">{{ isTrial ? '作品集展厅' : (principal?.displayName || '管理员') }}</span>
             <button type="button" class="logout-btn" @click="logout">退出</button>
           </div>
         </div>
       </header>
+      <p v-if="isTrial" class="trial-banner">作品集展厅：只能查看经营数据，不能改库存、发知识、发券或查看用户隐私。</p>
       <main class="right-body" :class="{ 'is-home': route.path === '/home' }">
         <router-view v-if="sessionReady" v-slot="{ Component }">
           <component :is="Component" :key="scopeKey" v-bind="pageProps" />
@@ -87,9 +88,10 @@
 
 <script setup>
 import BrandMark from '@/components/BrandMark.vue'
-import { ref, getCurrentInstance, computed, onMounted, watch } from 'vue'
+import { ref, getCurrentInstance, computed, onMounted, watch, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { session, ownerKey, loadSession, aiGet, selectScope, errorText } from '@/api/client'
+import { filterTrialMenu, isTrialAdmin, normalizeAdminPrincipal } from '@/utils/adminAccess'
 
 const { proxy } = getCurrentInstance()
 const router = useRouter()
@@ -161,6 +163,12 @@ const changeScope = async (executionScopeId) => {
 const sessionReady = ref(false)
 onMounted(async () => {
   try {
+    const me = await proxy.Request({ url: proxy.Api.adminMe, method: 'get', showLoading: false })
+    if (me?.data) principal.value = normalizeAdminPrincipal(me.data)
+  } catch {
+    principal.value = null
+  }
+  try {
     await loadSession()
   } catch {
     // 未登录 assistant 或非商家身份时，范围切换入口保持隐藏
@@ -181,6 +189,9 @@ const isMenuActive = (item) => {
 // 菜单只列"演示故事需要"的页面。分类/属性、收货地址、发货信息、敏感词、签到/会员礼券、
 // 统计明细、MQ 补偿、运营工具、图片违规复核都仍在 router 里（可直接访问、随时恢复），
 // 只是不再占菜单位：它们或与看板/Grafana 同源，或由种子脚本与用户端承载，属于遗留电商脚手架。
+const principal = ref(null)
+const isTrial = computed(() => isTrialAdmin(principal.value))
+provide('isTrialAdmin', isTrial)
 const menuList = ref([
   {
     name: '首页',
@@ -193,6 +204,8 @@ const menuList = ref([
     opened: true,
     children: [
       { name: '商品管理', path: '/product' },
+      { name: '分类管理', path: '/product/category' },
+      { name: '商品属性', path: '/product/ProductProperty' },
     ],
   },
   {
@@ -212,6 +225,7 @@ const menuList = ref([
     opened: true,
     children: [
       { name: '用户列表', path: '/user/userList' },
+      { name: '收货地址', path: '/user/address' },
     ],
   },
   {
@@ -220,6 +234,8 @@ const menuList = ref([
     opened: true,
     children: [
       { name: '优惠券管理', path: '/discountCoupon' },
+      { name: '签到发券', path: '/marketing/signReward' },
+      { name: '会员升级礼券', path: '/marketing/memberLevelReward' },
     ],
   },
   {
@@ -236,6 +252,16 @@ const menuList = ref([
     ],
   },
   {
+    name: '设置',
+    icon: 'setting',
+    opened: true,
+    children: [
+      { name: '发货地址', path: '/setting/logistics' },
+      { name: '敏感词', path: '/setting/sensitiveWord' },
+      { name: '图片审核', path: '/setting/imageModeration' },
+    ],
+  },
+  {
     name: 'AI 资产',
     icon: 'robot',
     opened: true,
@@ -248,6 +274,8 @@ const menuList = ref([
     ],
   },
 ])
+
+const visibleMenu = computed(() => (isTrial.value ? filterTrialMenu(menuList.value) : menuList.value))
 
 const jump = (item) => {
   if (item.children) {
@@ -564,6 +592,15 @@ const logout = () => {
           }
         }
       }
+    }
+
+    .trial-banner {
+      margin: 0 20px 0;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: #fff7e6;
+      color: #8a5a00;
+      font-size: 13px;
     }
 
     .right-body {

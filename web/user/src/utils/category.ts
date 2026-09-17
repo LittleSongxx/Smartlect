@@ -1,10 +1,16 @@
 
+const DEMO_CATEGORY_NAMES = new Set(['desk', 'audio', 'acc', 'furniture', 'furn']);
+
 export function isDemoCategoryId(id: unknown): boolean {
   const value = String(id ?? '').trim();
   if (!value) return true;
   if (value.startsWith('S')) return true;
   if (/^9[0-2]/.test(value)) return true;
   return /^\d{1,3}$/.test(value);
+}
+
+export function isDemoCategoryName(name: unknown): boolean {
+  return DEMO_CATEGORY_NAMES.has(String(name ?? '').trim().toLowerCase());
 }
 
 export function categoryPreferenceScore(id: unknown, childCount = 0): number {
@@ -99,6 +105,7 @@ export function dedupeCategoryTree(roots: any[]): any[] {
 export function storefrontCategoryTree(data: unknown): any[] {
   const prune = (nodes: any[]): any[] => nodes
     .map((node) => ({ ...node, children: prune(node.children || []) }))
+    .filter((node) => !isDemoCategoryName(node.categoryName))
     .filter((node) => (node.children?.length) || !isDemoCategoryId(node.categoryId));
   return prune(dedupeCategoryTree(normalizeCategoryTree(data)));
 }

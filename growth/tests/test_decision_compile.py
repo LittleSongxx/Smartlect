@@ -1,11 +1,13 @@
 """Decision compile table and query composition. No case IDs or holdout text."""
 import unittest
 
-from smartlect.agents.shopping import (EMPTY_EVIDENCE_ANSWER, PROVIDER_FAULT_ANSWER,
+from smartlect.agents.shopping import (EMPTY_EVIDENCE_ANSWER, PRODUCT_UNCOVERED_ANSWER,
+                                       PROVIDER_FAULT_ANSWER,
                                        allow_retrieval_rewrite, classify_evidence, close_degraded_turn,
                                        compile_decision, controller_fallback_result,
                                        empty_evidence_result, keep_uncovered_leftovers,
                                        knowledge_observation, looks_like_irreconcilable_sources,
+                                       looks_like_product_unique_fact,
                                        looks_like_service_request,
                                        misses_utterance_constraints,
                                        no_business_claim_has_store_conclusion,
@@ -55,6 +57,28 @@ class DecisionCompileTests(unittest.TestCase):
                          {'answer_status': 'answered', 'open_ticket': False})
         self.assertEqual(compile_decision('request_service', 'unobserved'),
                          {'answer_status': 'needs_human', 'open_ticket': True})
+
+    def test_unique_product_fact_without_grounding_is_insufficient(self):
+        self.assertEqual(
+            compile_decision('inquire_fact', 'unobserved', product_unique_fact=True, product_grounded=False),
+            {'answer_status': 'insufficient', 'open_ticket': False})
+        self.assertEqual(
+            compile_decision('inquire_fact', 'none', product_unique_fact=True, product_grounded=False),
+            {'answer_status': 'insufficient', 'open_ticket': False})
+        self.assertEqual(
+            compile_decision('inquire_fact', 'supported', product_unique_fact=True, product_grounded=False),
+            {'answer_status': 'insufficient', 'open_ticket': False})
+        self.assertEqual(
+            compile_decision('inquire_fact', 'none', product_unique_fact=True, product_grounded=True),
+            {'answer_status': 'insufficient', 'open_ticket': False})
+        self.assertEqual(
+            compile_decision('inquire_fact', 'supported', product_unique_fact=True, product_grounded=True),
+            {'answer_status': 'answered', 'open_ticket': False})
+        self.assertTrue(looks_like_product_unique_fact('这件的成分是什么'))
+        self.assertTrue(looks_like_product_unique_fact('包装里有没有说明书'))
+        self.assertFalse(looks_like_product_unique_fact('运费怎么算'))
+        self.assertFalse(looks_like_product_unique_fact('这件怎么退'))
+        self.assertEqual(PRODUCT_UNCOVERED_ANSWER, '资料未覆盖这一件。可切换到全店询问运费或退换，也可以转人工核实。')
 
     def test_proposal_overrides_ticket_compilation(self):
         self.assertEqual(compile_decision('request_handoff', 'none', proposal={'id': 'p'}),

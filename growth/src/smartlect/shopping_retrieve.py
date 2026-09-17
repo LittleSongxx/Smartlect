@@ -164,7 +164,9 @@ class ShoppingRetrieve:
     async def recommend(self, actor, request, *, mission=None, preferences=(), product_scope=None, semantic_rerank=None):
         kind, _, _ = _actor(actor)
         if 'shopping:read' not in getattr(actor, 'permissions', ()) and not (
-                kind == 'merchant' and 'admin:legacy' in getattr(actor, 'permissions', ())):
+                kind == 'merchant' and (
+                    'admin:legacy' in getattr(actor, 'permissions', ())
+                    or 'admin:trial' in getattr(actor, 'permissions', ()))):
             raise StateError('permission_denied', 403)
         mission = mission or empty_mission()
         request = shopping_request(request, mission)
@@ -234,7 +236,9 @@ class ShoppingRetrieve:
     async def compare(self, actor, request, *, mission=None, preferences=(), product_scope=None, semantic_rerank=None):
         kind, _, _ = _actor(actor)
         if 'shopping:read' not in getattr(actor, 'permissions', ()) and not (
-                kind == 'merchant' and 'admin:legacy' in getattr(actor, 'permissions', ())):
+                kind == 'merchant' and (
+                    'admin:legacy' in getattr(actor, 'permissions', ())
+                    or 'admin:trial' in getattr(actor, 'permissions', ()))):
             raise StateError('permission_denied', 403)
         mission = mission or empty_mission()
         params = dict(request or {})

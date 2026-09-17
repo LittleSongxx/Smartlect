@@ -25,6 +25,19 @@
         :disabled="route.params.productId != null"
       />
     </el-form-item>
+    <el-form-item label="品牌" prop="brand">
+      <el-input v-model="productInfo.brand" maxlength="100" placeholder="选填，内容轴，不参与 SKU" clearable style="width: 300px" />
+    </el-form-item>
+    <el-form-item v-for="section in contentSections" :key="section.key" :label="section.label">
+      <el-input
+        v-model="productInfo[section.key]"
+        type="textarea"
+        :rows="3"
+        :placeholder="section.placeholder"
+        maxlength="4000"
+        show-word-limit
+      />
+    </el-form-item>
     <el-form-item label="商品描述" prop="productDesc">
       <div class="product-desc">
         <EditorMarkdown v-model="productInfo.productDesc"></EditorMarkdown>
@@ -51,6 +64,15 @@ const props = defineProps({
     default: {},
   },
 })
+
+const contentSections = [
+  { key: 'selling_points', label: '卖点', placeholder: '选填，投影为商品知识「卖点」' },
+  { key: 'usage', label: '用法', placeholder: '选填，例如每日两次、用量' },
+  { key: 'ingredients', label: '成分', placeholder: '选填，独特事实需可核对' },
+  { key: 'packaging', label: '包装', placeholder: '选填，规格轴仍在 SKU 页填写' },
+  { key: 'contraindications', label: '禁忌', placeholder: '选填，过敏或不宜人群' },
+  { key: 'after_sale_note', label: '售后备注', placeholder: '选填，本商品售后说明' },
+]
 
 const categoryList = ref([])
 const loadCategory = async () => {

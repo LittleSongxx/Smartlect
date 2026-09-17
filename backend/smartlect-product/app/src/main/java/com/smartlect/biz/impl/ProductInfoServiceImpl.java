@@ -9,6 +9,7 @@ import com.smartlect.api.vo.ProductPropertyValueVO;
 import com.smartlect.biz.ProductInfoService;
 import com.smartlect.component.ProductBloomFilterComponent;
 import com.smartlect.constants.Constants;
+import com.smartlect.integration.ProductProjectionClient;
 import com.smartlect.entity.dto.ProductSaveDTO;
 import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.enums.ResponseCodeEnum;
@@ -63,6 +64,8 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 	private ProductBloomFilterComponent productBloomFilterComponent;
 	@Resource
 	private StockFeignSupport stockFeignSupport;
+	@Resource
+	private ProductProjectionClient productProjectionClient;
 
 	@Override
 	public List<ProductInfo> findListByParam(ProductInfoQuery param) {
@@ -246,6 +249,8 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 				}
 			}
 		});
+		// Projection is after-commit and async: indexing failure cannot roll back save.
+		productProjectionClient.enqueueAfterCommit(productInfo.getProductId());
 	}
 
 	@Override
@@ -398,6 +403,9 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 		ProductInfo productInfo = new ProductInfo();
 		productInfo.setStatus(status);
 		productInfoMapper.updateByProductId(productInfo, productId);
+		if (ProductStatusEnum.ON_SALE.getStatus().equals(status)) {
+			productProjectionClient.enqueueAfterCommit(productId);
+		}
 	}
 
 	@Override

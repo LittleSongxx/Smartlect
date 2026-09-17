@@ -115,8 +115,15 @@ class AttributionStore(SessionStore):
             rows = cursor.fetchall()
         scope = actor.execution_scope_id
         if scope == 'store':
-            return {'include': None,
-                    'exclude': [r['resource_id'] for r in rows if r['execution_scope_id'] != 'store']}
+            from smartlect.catalog_gate import is_isolated_product_id
+            # 9100/9300 eval SKUs are excluded by prefix in catalog_gate.in_scope.
+            # Only keep the remaining non-store IDs so the exclude list stays ≤5000.
+            excluded = list(dict.fromkeys(
+                r['resource_id'] for r in rows
+                if r['execution_scope_id'] != 'store' and not is_isolated_product_id(r['resource_id'])))
+            if len(excluded) > 5000:
+                excluded = excluded[:5000]
+            return {'include': None, 'exclude': excluded}
         # A bounded include already fences a scoped actor; enumerating every other
         # scope's products would grow with each demo scenario and trip the scope cap.
         return {'include': [r['resource_id'] for r in rows if r['execution_scope_id'] == scope],
@@ -464,7 +471,7 @@ class AttributionStore(SessionStore):
         return result
 
     def summary(self, actor, pay_order_id=None):
-        actor.require('admin:legacy')
+        actor.require_any('admin:legacy', 'admin:trial')
         where, params = "e.status='APPLIED' AND p.execution_scope_id=%s", [actor.execution_scope_id]
         if pay_order_id is not None:
             where += ' AND e.pay_order_id=%s'
@@ -491,7 +498,7 @@ class AttributionStore(SessionStore):
         across the groups of that one grouping; consumers that need a single line per money
         figure (the growth report) read this instead of re-deriving it from the groups.
         """
-        actor.require('admin:legacy')
+        actor.require_any('admin:legacy', 'admin:trial')
         with self._transaction() as cursor:
             cursor.execute("""SELECT
                 COALESCE(SUM(CASE WHEN e.event_type='PAYMENT' THEN e.amount_cents ELSE 0 END),0) AS paid,

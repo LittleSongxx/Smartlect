@@ -11,7 +11,7 @@
       <nav class="auth-links">
         <RouterLink to="/">网站首页</RouterLink>
         <RouterLink v-if="!isLoginPage" to="/login">登录</RouterLink>
-        <RouterLink v-if="isLoginPage" to="/register">免费注册</RouterLink>
+        <RouterLink v-if="isLoginPage && PUBLIC_REGISTER_ENABLED" to="/register">免费注册</RouterLink>
       </nav>
     </header>
     <main class="pc-auth-main">
@@ -27,6 +27,7 @@
 import { computed } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import BrandMark from '@/components/common/BrandMark.vue';
+import { PUBLIC_REGISTER_ENABLED } from '@/constants/trial';
 
 const route = useRoute();
 const isLoginPage = computed(() => route.path === '/login');

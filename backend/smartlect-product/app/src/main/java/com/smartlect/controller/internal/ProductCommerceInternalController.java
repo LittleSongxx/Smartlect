@@ -18,6 +18,7 @@ import com.smartlect.mappers.ProductInfoMapper;
 import com.smartlect.mappers.ProductPropertyValueMapper;
 import com.smartlect.mappers.ProductSkuMapper;
 import com.smartlect.exception.BusinessException;
+import com.smartlect.utils.ProductContentJson;
 import com.smartlect.utils.ProductIndexTextSanitizer;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
@@ -92,6 +93,9 @@ public class ProductCommerceInternalController extends ABaseController {
             limit = 50;
         }
         query.setSimplePage(new SimplePage(0, limit));
+        if (query.getProductIdList() == null) {
+            query.setExcludeIsolatedCatalog(true);
+        }
         List<ProductInfo> list = productInfoMapper.selectList(query);
         Map<String, String> brandByProduct = new HashMap<>();
         Map<String, Integer> stockByProduct = Collections.emptyMap();
@@ -218,19 +222,25 @@ public class ProductCommerceInternalController extends ABaseController {
             String searchableDescription = ProductIndexTextSanitizer.sanitize(p.getProductDesc());
             m.put("description", searchableDescription);
             m.put("productDesc", searchableDescription);
+            m.put("content", ProductContentJson.toContentMap(p.getContentJson(), p.getProductDesc()));
             List<ProductSku> skus = skusByProduct.get(productId);
             m.put("skus", skus == null ? Collections.emptyList() : skus);
             List<ProductPropertyValue> pvs = propertiesByProduct.get(productId);
             m.put("propertyValues", pvs == null ? Collections.emptyList() : pvs);
+            String propertyBrand = null;
             if (pvs != null) {
                 for (ProductPropertyValue property : pvs) {
                     if (property.getPropertyName() != null
                             && property.getPropertyName().contains("品牌")
                             && !StringTools.isEmpty(property.getPropertyValue())) {
-                        m.put("brand", property.getPropertyValue());
+                        propertyBrand = property.getPropertyValue();
                         break;
                     }
                 }
+            }
+            String brand = ProductContentJson.firstBrand(p.getBrand(), propertyBrand);
+            if (!StringTools.isEmpty(brand)) {
+                m.put("brand", brand);
             }
             if (stockByProduct.containsKey(productId)) {
                 Integer totalStock = stockByProduct.get(productId);

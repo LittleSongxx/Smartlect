@@ -19,13 +19,13 @@ def build_router(*, actor_for, store, commerce, attribution, provider, settings,
     @router.get("/admin-api/assistant/reviewAnalysis")
     async def list_analyses(request: Request, response: Response):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         return {"items": await asyncio.to_thread(review_analysis.ReviewAnalysisStore(store.connect).list_, actor)}
 
     @router.get("/admin-api/assistant/reviewAnalysis/product/{product_id}")
     async def get_analysis(product_id: str, request: Request, response: Response):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         row = await asyncio.to_thread(review_analysis.ReviewAnalysisStore(store.connect).get, actor, product_id)
         if row is None:
             raise HTTPException(404, "analysis_not_found")
@@ -44,7 +44,7 @@ def build_router(*, actor_for, store, commerce, attribution, provider, settings,
     @router.get("/admin-api/assistant/growthReport")
     async def growth_report_view(request: Request, response: Response, limit: int = 10):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         return {"latest": await asyncio.to_thread(growth_report.GrowthReportStore(store.connect).get, actor),
                 "history": await asyncio.to_thread(growth_report.GrowthReportStore(store.connect).history, actor, limit)}
 

@@ -4,6 +4,8 @@ import { addressApi, couponApi, orderApi } from '@/api/modules';
 const PAY_METHOD_MOCK = 'mock';
 import { confirmAction } from '@/utils/confirm';
 import { toast } from '@/utils/toast';
+import { useAuthStore } from '@/stores/auth';
+import { TRIAL_USER_DENIED } from '@/constants/trial';
 import {
   capCouponDiscountForMinPay,
   calcPayableAfterCoupon,
@@ -307,7 +309,12 @@ export function useCheckoutPage(mode: CheckoutPageMode = 'mobile') {
     selectedUserCouponId.value = c?.userCouponId ? String(c.userCouponId) : '';
   };
 
+  const authStore = useAuthStore();
   const submit = async () => {
+    if (authStore.isTrial) {
+      toast.warning(TRIAL_USER_DENIED);
+      return;
+    }
     if (!items.value.length) {
       toast.warning('没有可结算的商品');
       return;

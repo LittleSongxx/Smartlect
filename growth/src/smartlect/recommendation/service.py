@@ -111,7 +111,9 @@ class RecommendationService:
                         semantic_rerank=None, product_scope=None):
         kind, _, _ = _actor(actor)
         if 'shopping:read' not in getattr(actor, 'permissions', ()) and not (
-                kind == 'merchant' and 'admin:legacy' in getattr(actor, 'permissions', ())):
+                kind == 'merchant' and (
+                    'admin:legacy' in getattr(actor, 'permissions', ())
+                    or 'admin:trial' in getattr(actor, 'permissions', ()))):
             raise StateError('permission_denied', 403)
         scope, request = scope_filter(product_scope), constraints(request, preferences)
         if request['product_id'] is not None:

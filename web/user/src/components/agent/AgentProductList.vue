@@ -13,6 +13,10 @@
         <span class="delivery-copy">查看规格与购买选项 →</span>
         </div>
       </button>
+      <div class="tile-actions">
+        <button type="button" class="tile-btn" @click="select(item)">详情</button>
+        <button type="button" class="tile-btn primary" @click="add(item)">选规格加购</button>
+      </div>
     </article>
     <p v-if="!list.length" class="empty">暂无可展示的商品</p>
   </div>
@@ -23,8 +27,10 @@ import ProductImage from '@/components/common/ProductImage.vue';
 import { money } from '@/utils/assistant';
 import { ownerKey, session } from '@/api/client';
 import { recommendationTouch, reportClick, reportExposure, type RecommendationTouch } from '@/api/traffic';
+import { useProductSkuSheet } from '@/composables/useProductSkuSheet';
 const props = defineProps<{ list: Record<string, any>[] }>();
 const emit = defineEmits<{ select: [item: Record<string, any>] }>();
+const { open: openSkuSheet } = useProductSkuSheet();
 const container = ref<HTMLElement>();
 const owner = computed(() => session.value ? ownerKey(session.value.actor) : '');
 const visible = new Map<Element, RecommendationTouch>();
@@ -82,6 +88,9 @@ async function select(item: Record<string, any>) {
     if (!clicked.has(key) && await reportClick(touch)) clicked.add(key);
     if (requestedOwner === owner.value) emit('select', item);
   } finally { clicking.delete(key); }
+}
+function add(item: Record<string, any>) {
+  if (item.productId) openSkuSheet(String(item.productId));
 }
 const reasons = (item: Record<string, any>) => Array.isArray(item.reasons) ? item.reasons.filter((reason: unknown) => typeof reason === 'string').join(' · ') : String(item.reason || '');
 watch(() => [props.list, owner.value], observeCards);
@@ -212,8 +221,29 @@ const stockText = (stock: unknown) => typeof stock !== 'number' ? '请选择规�
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
 
+.tile-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
 
+.tile-btn {
+  flex: 1;
+  min-height: 34px;
+  border: 1px solid $color-border;
+  border-radius: 999px;
+  background: $color-card;
+  color: $color-text-secondary;
+  font: inherit;
+  font-size: 12px;
+}
+
+.tile-btn.primary {
+  border-color: rgba($color-primary, .24);
+  background: $color-primary-soft;
+  color: $color-primary;
 }
 
 .empty {

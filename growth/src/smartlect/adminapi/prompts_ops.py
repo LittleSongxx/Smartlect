@@ -19,7 +19,7 @@ def build_router(*, actor_for, connect):
     @router.get("/admin-api/assistant/prompts")
     async def prompt_keys(request: Request, response: Response, domain: str = None):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         try:
             # Idempotent; also heals a startup whose seeding window hit a brief DB outage.
             await asyncio.to_thread(store.seed_defaults)
@@ -37,7 +37,7 @@ def build_router(*, actor_for, connect):
     @router.get("/admin-api/assistant/prompts/{domain}/{kind}/{key}/versions")
     async def prompt_versions(domain: str, kind: str, key: str, request: Request, response: Response):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         try:
             return {"items": await asyncio.to_thread(store.versions, domain, kind, key)}
         except StateError as error:
@@ -47,7 +47,7 @@ def build_router(*, actor_for, connect):
     async def prompt_body(domain: str, kind: str, key: str, version: int,
                           request: Request, response: Response):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         try:
             return await asyncio.to_thread(store.body_of, domain, kind, key, version)
         except StateError as error:

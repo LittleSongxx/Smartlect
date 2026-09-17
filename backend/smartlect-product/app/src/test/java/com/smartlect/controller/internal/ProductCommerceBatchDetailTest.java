@@ -89,6 +89,10 @@ class ProductCommerceBatchDetailTest {
         assertEquals("p1", first.get("productId"));
         assertFalse(String.valueOf(first.get("description")).contains("<script>"));
         assertEquals("Smartlect", first.get("brand"));
+        assertTrue(first.get("content") instanceof Map);
+        String extra = String.valueOf(((Map<?, ?>) first.get("content")).get("extra_markdown"));
+        assertFalse(extra.contains("<script>"));
+        assertTrue(extra.contains("官方描述"));
 
         ArgumentCaptor<ProductInfoQuery> captor = ArgumentCaptor.forClass(ProductInfoQuery.class);
         verify(productInfoMapper).selectList(captor.capture());
@@ -114,6 +118,7 @@ class ProductCommerceBatchDetailTest {
         Map<String, Object> detail = controller.getDetail(Map.of("productId", "p1")).getData();
         assertEquals("p1", detail.get("productId"));
         assertEquals("Smartlect", detail.get("brand"));
+        assertEquals("描述", ((Map<?, ?>) detail.get("content")).get("extra_markdown"));
         assertEquals(7, detail.get("totalStock"));
         assertEquals(true, detail.get("inStock"));
         assertEquals(List.of(), detail.get("skus"));

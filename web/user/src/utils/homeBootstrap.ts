@@ -53,8 +53,10 @@ export function prefetchHomeBootstrap(deep = true): Promise<HomeBootstrapData> {
     await loadFeedPage(state);
 
     if (deep) {
-      while (!state.feedFinished && state.products.length < MAX_PRODUCTS) {
+      let extra = 0;
+      while (!state.feedFinished && state.products.length < MAX_PRODUCTS && extra < 2) {
         await loadFeedPage(state);
+        extra += 1;
       }
     }
 

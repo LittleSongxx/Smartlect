@@ -4,12 +4,14 @@ import com.smartlect.component.AdminLoginLockService;
 import com.smartlect.component.RedisComponent;
 import com.smartlect.biz.AdminIdentityService;
 import com.smartlect.constants.AdminPermissions;
+import com.smartlect.constants.TrialIdentities;
 import com.smartlect.entity.dto.AdminPrincipalDTO;
 import com.smartlect.entity.vo.CheckCodeVO;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.security.AdminSecurityContext;
 import com.smartlect.security.RequireAdminPermission;
+import com.smartlect.security.TrialReadable;
 import com.smartlect.utils.AuthCookieHelper;
 import com.smartlect.utils.CheckCodeGenerator;
 import com.smartlect.utils.IpUtils;
@@ -54,13 +56,16 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
     @PostMapping("/login")
     public ResponseVO login(@NotEmpty String account,
                             @NotEmpty String password,
-                            @NotEmpty String checkCode,
-                            @NotEmpty String checkCodeKey){
+                            String checkCode,
+                            String checkCodeKey){
         HttpServletRequest request = currentRequest();
         String ip = IpUtils.resolveClientIp(request);
         adminLoginLockService.ensureNotLocked(ip);
         try {
-            if (!checkCode.equalsIgnoreCase(redisComponent.getCheckCode(checkCodeKey))){
+            if (!TrialIdentities.skipLoginCaptcha(account)
+                    && (StringTools.isEmpty(checkCode)
+                    || StringTools.isEmpty(checkCodeKey)
+                    || !checkCode.equalsIgnoreCase(redisComponent.getCheckCode(checkCodeKey)))) {
                 throw new BusinessException("验证码错误！");
             }
             AdminPrincipalDTO principal = adminIdentityService.authenticate(account, password);
@@ -73,11 +78,14 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
             adminLoginLockService.recordFailure(ip);
             throw e;
         } finally {
-            redisComponent.cleanCheckCode(checkCodeKey);
+            if (!StringTools.isEmpty(checkCodeKey)) {
+                redisComponent.cleanCheckCode(checkCodeKey);
+            }
         }
     }
 
     @PostMapping("/logout")
+    @TrialReadable
     public ResponseVO logout(){
         HttpServletRequest request = currentRequest();
         HttpServletResponse response = currentResponse();
@@ -90,6 +98,7 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
     }
 
     @GetMapping("/me")
+    @TrialReadable
     public ResponseVO me() {
         return getSuccessResponseVO(AdminSecurityContext.requirePrincipal());
     }

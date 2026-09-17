@@ -5,8 +5,10 @@ import com.smartlect.constants.AdminPermissions;
 import com.smartlect.entity.dto.AdminPrincipalDTO;
 import com.smartlect.entity.enums.ResponseCodeEnum;
 import com.smartlect.exception.HttpBusinessException;
+import com.smartlect.constants.TrialIdentities;
 import com.smartlect.security.AdminSecurityContext;
 import com.smartlect.security.RequireAdminPermission;
+import com.smartlect.security.TrialAdminAccess;
 import com.smartlect.utils.AuthCookieHelper;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
@@ -66,6 +68,12 @@ public class AppInterceptor implements HandlerInterceptor {
 
     private void enforcePermission(
             HandlerMethod handler, AdminPrincipalDTO principal, HttpServletRequest request) {
+        if (TrialIdentities.isTrialAdmin(principal)) {
+            if (TrialAdminAccess.allows(handler, request)) {
+                return;
+            }
+            throw new HttpBusinessException(403, TrialIdentities.ADMIN_DENIED);
+        }
         if (principal.hasRole(AdminPermissions.SUPER_ADMIN_ROLE)) {
             return;
         }

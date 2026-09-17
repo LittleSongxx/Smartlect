@@ -13,13 +13,13 @@ def build_router(*, actor_for, connect):
     @router.get("/admin-api/assistant/runs")
     async def list_runs(request: Request, response: Response, agent: str = None, state: str = None, limit: int = 50):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         return await asyncio.to_thread(admin_store.list_runs, actor, agent, state, limit)
 
     @router.get("/admin-api/assistant/runs/{run_id}")
     async def run_detail(run_id: str, request: Request, response: Response):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         try:
             return await asyncio.to_thread(admin_store.run_detail, actor, run_id)
         except Exception as error:

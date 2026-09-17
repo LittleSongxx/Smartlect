@@ -85,7 +85,7 @@
         <nav class="header-actions">
           <template v-if="!authStore.isLoggedIn">
             <RouterLink class="action-link" to="/login">请登录</RouterLink>
-            <RouterLink class="action-link highlight" to="/register">免费注册</RouterLink>
+            <RouterLink v-if="PUBLIC_REGISTER_ENABLED" class="action-link highlight" to="/register">免费注册</RouterLink>
           </template>
           <el-dropdown v-else trigger="click" popper-class="user-dropdown-popper">
             <button type="button" class="user-trigger">
@@ -137,7 +137,7 @@
       <div class="mobile-menu">
         <template v-if="!authStore.isLoggedIn">
           <el-button type="primary" class="menu-btn" @click="navAndClose('/login')">登录</el-button>
-          <el-button @click="navAndClose('/register')">注册</el-button>
+          <el-button v-if="PUBLIC_REGISTER_ENABLED" @click="navAndClose('/register')">注册</el-button>
         </template>
         <el-menu :default-active="route.path" @select="navAndClose">
           <el-menu-item index="/">首页</el-menu-item>
@@ -154,6 +154,7 @@
     </el-drawer>
 
     <main class="main-wrap">
+      <p v-if="authStore.isTrial" class="trial-banner">作品集试用：只能逛店和问导购，不能下单、加购或改资料。</p>
       <div class="page-container">
         <PullRefreshHost>
           <PageBackBar v-if="showPageBack" />
@@ -176,6 +177,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import { ArrowDown, Bell, ChatDotRound, Menu, Search, Setting, ShoppingCart } from '@element-plus/icons-vue';
 import { useAuthStore } from '@/stores/auth';
+import { PUBLIC_REGISTER_ENABLED } from '@/constants/trial';
 import { useCartStore } from '@/stores/cart';
 import { productApi } from '@/api/modules';
 import { useUnreadCount } from '@/composables/useUnreadCount';
@@ -700,6 +702,16 @@ onMounted(() => {
 .main-wrap {
   padding-top: 16px;
   min-height: calc(100vh - #{$footer-height});
+}
+
+.trial-banner {
+  margin: 0 auto 12px;
+  max-width: $content-width;
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: #fff7e6;
+  color: #8a5a00;
+  font-size: 13px;
 }
 
 .page-container {

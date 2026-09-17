@@ -28,6 +28,8 @@ export class ApiError extends Error {
 }
 const descriptions: Record<string, string> = {
   login_required: '请先登录后再操作。', invalid_session: '登录已失效，请重新登录。',
+  trial_read_only: '作品集试用账号只能浏览，不能下单、改密或改资料。',
+  trial_chat_limit: '试用账号今日咨询次数已用完，请明天再试。',
   permission_denied: '当前账号没有此操作权限。', RECONFIRM_REQUIRED: '商品、金额或地址已变化，请重新生成提案并确认。',
   proposal_expired: '提案已过期，请重新生成。', conversation_busy: '当前会话正在处理，请稍后刷新查看。',
   commerce_outcome_unknown: '交易结果暂未核实，请刷新原操作查询结果。',

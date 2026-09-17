@@ -3,7 +3,8 @@ from decimal import Decimal
 import unittest
 
 from smartlect import catalog_gate
-from smartlect.catalog_gate import RecommendationRequest, constraints, eligible_skus, scope_filter
+from smartlect.catalog_gate import (
+    RecommendationRequest, constraints, eligible_skus, in_scope, is_isolated_product_id, scope_filter)
 from smartlect.recommendation import service
 
 
@@ -35,6 +36,17 @@ class CatalogGateTests(unittest.TestCase):
         sold, stock_filtered = eligible_skus(snapshot, stocks, request, product_scope=scope)
         self.assertEqual(sold, [])
         self.assertEqual(stock_filtered['stock_unavailable'], 1)
+
+    def test_open_store_scope_rejects_isolated_prefixes(self):
+        scope = scope_filter({'include': None, 'exclude': []})
+        self.assertTrue(is_isolated_product_id('910000000000001'))
+        self.assertTrue(is_isolated_product_id('930000000081301'))
+        self.assertFalse(is_isolated_product_id('917186661226040'))
+        self.assertFalse(in_scope('910000000000001', scope))
+        self.assertFalse(in_scope('930000000081301', scope))
+        self.assertTrue(in_scope('917186661226040', scope))
+        scoped = scope_filter({'include': ['930000000081301'], 'exclude': []})
+        self.assertTrue(in_scope('930000000081301', scoped))
 
     def test_explicit_saved_avoid_still_becomes_homepage_hard_gate(self):
         request = RecommendationRequest(query='键盘')

@@ -72,8 +72,10 @@ describe('封面、库存与登录回跳', () => {
       { categoryId: '10001', categoryName: '数码' },
     ]).map((row) => row.categoryId)).toEqual(['10001']);
     expect(errorText(new Error('product_scope_denied'))).toBe('该商品不在当前店铺可售范围内，请换一件再下单。');
-    expect(inProductScope('910000000000000', { include: null, exclude: ['930000000081301'] })).toBe(true);
-    expect(inProductScope('930000000081301', { include: null, exclude: ['930000000081301'] })).toBe(false);
+    expect(inProductScope('910000000000000', { include: null, exclude: [] })).toBe(false);
+    expect(inProductScope('917186661226040', { include: null, exclude: [] })).toBe(true);
+    expect(inProductScope('930000000081301', { include: null, exclude: [] })).toBe(false);
+    expect(inProductScope('930000000081301', { include: ['930000000081301'], exclude: [] })).toBe(true);
   });
 
   it('同商品换规格只更新选中规格，不重拉详情', async () => {
@@ -134,6 +136,7 @@ describe('封面、库存与登录回跳', () => {
     }));
     const router = createRouter({ history: createMemoryHistory(), routes: [
       { path: '/login', component: LoginView }, { path: '/assistant', component: { template: '<div />' } },
+      { path: '/forgot-password', component: { template: '<div />' } },
       { path: '/catalog', component: { template: '<div />' } }] });
     await router.push('/login?next=/catalog?product=p1'); await router.isReady();
     wrapper = mount(LoginView, { global: { plugins: [router] } }); await flushPromises();
@@ -186,6 +189,6 @@ describe('地址、退款与助手入参', () => {
     wrapper = mount(AgentSendPanel, { global: { plugins: [router] } }); await flushPromises();
     await wrapper.get('form').trigger('submit'); await flushPromises();
     const message = calls.find(call => String(call.path).includes('/messages'));
-    expect(message?.body).toMatchObject({ text: '关于商品', product_id: 'p1', sku_key: 'sku1' });
+    expect(message?.body).toMatchObject({ text: '关于商品', product_id: 'p1', sku_key: 'sku1', focus_mode: 'PRODUCT' });
   });
 });

@@ -394,6 +394,23 @@ def main():
         merchant_id = auth['actor']['actor_id']
         merchant_headers = origin_headers(merchant, auth['csrf_token'])
 
+        stage('Seed default store shipping address')
+        logistics_payload = http(merchant, 'POST', '/admin-api/setting/getLogistics')
+        current_logistics = logistics_payload.get('data') if isinstance(logistics_payload, dict) else None
+        if not (current_logistics or {}).get('senderName'):
+            saved = merchant.post('/admin-api/setting/saveLogistics', data={
+                'senderName': '智选演示仓',
+                'senderPhone': '010-88880000',
+                'senderAddress': '北京市朝阳区智选路 1 号演示仓',
+            })
+            assert saved.status_code == 200 and saved.json().get('code') == 200, saved.text
+            current_logistics = (http(merchant, 'POST', '/admin-api/setting/getLogistics') or {}).get('data')
+        evidence['logistics'] = {
+            'senderName': (current_logistics or {}).get('senderName'),
+            'senderPhone': (current_logistics or {}).get('senderPhone'),
+        }
+        save_artifact(evidence)
+
         stage('Seed an in-window plaza rush coupon')
         evidence['coupon'] = seed_plaza_rush_coupon(merchant)
         save_artifact(evidence)

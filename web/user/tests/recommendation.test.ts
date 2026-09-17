@@ -92,7 +92,7 @@ describe('F3 浏览器触点合同（HTTP 与可见性模拟）', () => {
       if (url.endsWith('/conversations/current-visitor-conversation')) return Promise.resolve(json({ conversation_id: 'current-visitor-conversation', messages: [] }));
       return Promise.resolve(json([]));
     }); vi.stubGlobal('fetch', fetch);
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/login', component: LoginView }, { path: '/assistant', component: { template: '<div />' } }] });
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/login', component: LoginView }, { path: '/forgot-password', component: { template: '<div />' } }, { path: '/assistant', component: { template: '<div />' } }] });
     await router.push('/login'); await router.isReady();
     wrapper = mount(LoginView, { global: { plugins: [router] } }); await flushPromises();
     await wrapper.get('input[type=email]').setValue('synthetic@example.invalid'); await wrapper.get('input[type=password]').setValue('synthetic-only');

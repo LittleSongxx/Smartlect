@@ -243,8 +243,10 @@ const load = async (opts?: { prefetch?: boolean; fromPullRefresh?: boolean }) =>
     await loadFeed(true);
 
     if (opts?.prefetch) {
-      while (!feedFinished.value && products.value.length < MAX_PRODUCTS) {
+      let extra = 0;
+      while (!feedFinished.value && products.value.length < MAX_PRODUCTS && extra < 2) {
         await loadFeed();
+        extra += 1;
       }
     }
   } finally {
@@ -287,8 +289,10 @@ onMounted(async () => {
     loading.value = false;
     if (shouldPrefetch && !bootstrap.feedFinished) {
       void (async () => {
-        while (!feedFinished.value && products.value.length < MAX_PRODUCTS) {
+        let extra = 0;
+        while (!feedFinished.value && products.value.length < MAX_PRODUCTS && extra < 2) {
           await loadFeed();
+          extra += 1;
         }
       })();
     }

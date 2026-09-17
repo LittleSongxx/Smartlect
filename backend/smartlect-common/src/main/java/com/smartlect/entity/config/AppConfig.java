@@ -25,7 +25,18 @@ public class AppConfig {
     @Value("${admin.password:admin123456}")
     private String adminPassword;
 
+    @Value("${smartlect.trial.enabled:true}")
+    private boolean trialEnabled;
+
+    @Value("${smartlect.trial.password:Visit-Smartlect-2026}")
+    private String trialPassword;
+
+    @Value("${smartlect.trial.lock-public-register:true}")
+    private boolean trialLockPublicRegister;
+
     private String adminPasswordHash;
+
+    private String trialPasswordHash;
 
     @Resource
     private PasswordService passwordService;
@@ -36,6 +47,11 @@ public class AppConfig {
             adminPasswordHash = adminPassword;
         } else {
             adminPasswordHash = passwordService.encode(adminPassword);
+        }
+        if (trialPassword != null && trialPassword.startsWith("$2")) {
+            trialPasswordHash = trialPassword;
+        } else {
+            trialPasswordHash = passwordService.encode(trialPassword);
         }
     }
 
@@ -224,6 +240,22 @@ public class AppConfig {
 
     public String getAdminPasswordHash() {
         return adminPasswordHash;
+    }
+
+    public boolean isTrialEnabled() {
+        return trialEnabled;
+    }
+
+    public String getTrialPassword() {
+        return trialPassword;
+    }
+
+    public String getTrialPasswordHash() {
+        return trialPasswordHash;
+    }
+
+    public boolean isTrialLockPublicRegister() {
+        return trialLockPublicRegister;
     }
 
 

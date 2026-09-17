@@ -19,6 +19,7 @@ public class UserInfo implements Serializable {
 
 	private String email;
 
+	@JsonIgnore
 	private String password;
 
 	private Integer sex;
@@ -73,6 +74,7 @@ public class UserInfo implements Serializable {
 		this.password = password;
 	}
 
+	@JsonIgnore
 	public String getPassword(){
 		return this.password;
 	}

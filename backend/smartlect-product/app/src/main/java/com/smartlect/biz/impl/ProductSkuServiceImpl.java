@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import com.smartlect.catalog.IsolatedCatalog;
 import com.smartlect.api.dto.SkuStockDTO;
 import com.smartlect.api.support.StockFeignSupport;
 import com.smartlect.api.enums.ProductStatusEnum;
@@ -177,6 +178,7 @@ public class ProductSkuServiceImpl implements ProductSkuService {
 		List<ProductSkuListVO> all = new ArrayList<>();
 		int stockPageNo = 1;
 		final int batch = 100;
+		final int maxStockPages = 20;
 		while (true) {
 			PaginationResultVO<SkuStockDTO> stockPage = stockFeignSupport.listLessThan(stockPageNo, batch, threshold);
 			if (stockPage == null || stockPage.getList() == null || stockPage.getList().isEmpty()) {
@@ -193,7 +195,7 @@ public class ProductSkuServiceImpl implements ProductSkuService {
 				break;
 			}
 			stockPageNo++;
-			if (stockPageNo > 200) {
+			if (stockPageNo > maxStockPages) {
 				break;
 			}
 		}
@@ -208,7 +210,8 @@ public class ProductSkuServiceImpl implements ProductSkuService {
 
 	private ProductSkuListVO buildLessStockSkuVo(SkuStockDTO skuStock) {
 		if (skuStock == null || StringTools.isEmpty(skuStock.getProductId())
-				|| StringTools.isEmpty(skuStock.getPropertyValueIdHash())) {
+				|| StringTools.isEmpty(skuStock.getPropertyValueIdHash())
+				|| IsolatedCatalog.isIsolatedProductId(skuStock.getProductId())) {
 			return null;
 		}
 		ProductSku productSku = getProductSkuByProductIdAndPropertyValueIdHash(

@@ -27,6 +27,17 @@ class ActorContext(BaseModel):
         if permission not in self.permissions:
             raise HTTPException(403, "permission_denied")
 
+    def require_any(self, *permissions):
+        if not any(permission in self.permissions for permission in permissions):
+            raise HTTPException(403, "permission_denied")
+
+    def is_trial_user(self):
+        return self.subject_type == "user" and "account:trial" in self.permissions
+
+    def is_trial_merchant(self):
+        return self.subject_type == "merchant" and "admin:trial" in self.permissions \
+            and "admin:legacy" not in self.permissions
+
 
 class IdentityBridge:
     def __init__(self, config, *, transport=None):

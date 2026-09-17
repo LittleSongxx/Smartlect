@@ -67,12 +67,14 @@ create table if not exists admin_security_audit_log
 insert into admin_role (role_code, role_name, description) values
     ('SUPER_ADMIN', '超级管理员', '全权限及管理员治理'),
     ('DATA_ANALYST', '数据分析', '聚合指标和匿名报告'),
-    ('AUDITOR', '审计员', '只读审计') as incoming
+    ('AUDITOR', '审计员', '只读审计'),
+    ('TRIAL_OPERATOR', '作品集展厅', '对外只读展示，不能改数据或看隐私') as incoming
 on duplicate key update role_name = incoming.role_name, description = incoming.description;
 
 insert into admin_permission (permission_code, description) values
     ('admin:manage', '管理员、角色和会话治理'),
     ('admin:legacy', '未细分的既有管理功能'),
+    ('admin:trial', '作品集只读浏览'),
     ('analytics:read', '聚合指标读取'),
     ('analytics:export', '匿名指标导出'),
     ('audit:read', '只读审计') as incoming
@@ -91,6 +93,11 @@ insert ignore into admin_role_permission (role_id, permission_id)
 select r.role_id, p.permission_id from admin_role r join admin_permission p
   on p.permission_code = 'audit:read'
 where r.role_code = 'AUDITOR';
+
+insert ignore into admin_role_permission (role_id, permission_id)
+select r.role_id, p.permission_id from admin_role r join admin_permission p
+  on p.permission_code = 'admin:trial'
+where r.role_code = 'TRIAL_OPERATOR';
 
 create table if not exists user_info
 (

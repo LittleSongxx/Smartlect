@@ -36,8 +36,13 @@ public class HomeController extends com.smartlect.controller.admin.ABaseControll
     public ResponseVO loadLessStockProduct(Integer pageNo, Integer pageSize) {
         int no = pageNo == null ? 1 : pageNo;
         int size = pageSize == null ? 15 : pageSize;
-        PaginationResultVO<ProductSkuListVO> result = productFeignSupport.lessStockSkuPage(no, size, Constants.LENGTH_10);
-        return getSuccessResponseVO(result);
+        try {
+            PaginationResultVO<ProductSkuListVO> result = productFeignSupport.lessStockSkuPage(no, size, Constants.LENGTH_10);
+            return getSuccessResponseVO(result);
+        } catch (Exception e) {
+            log.warn("loadLessStockProduct degrade: {}", e.getMessage());
+            return getSuccessResponseVO(new PaginationResultVO<>(0, size, no, 0, Collections.emptyList()));
+        }
     }
 
     @PostMapping("/getTodayData")

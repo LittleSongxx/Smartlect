@@ -83,7 +83,11 @@ instance.interceptors.response.use(
                 status: error.response?.status,
             })
         }
-        return Promise.reject({ showError, msg: "网络异常" })
+        const status = error.response?.status
+        if (status === 404) {
+            return Promise.reject({ showError, msg: '资源不存在', status })
+        }
+        return Promise.reject({ showError, msg: "网络异常", status })
     }
 );
 

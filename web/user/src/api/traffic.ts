@@ -12,10 +12,24 @@ export interface Promotion {
 }
 const entryId = crypto.randomUUID();
 let landing: Promise<boolean> | undefined;
+if (typeof window !== 'undefined') {
+  window.addEventListener('smartlect:identity-changed', () => {
+    landing = undefined;
+  });
+}
 
 // A page reload is a new entry; component remounts, focus and account changes are not.
 export function recordLanding() {
-  return landing ??= aiPost('/traffic/landing', { entry_id: entryId }, AbortSignal.timeout(2000)).then(() => true, () => false);
+  return landing ??= aiPost('/traffic/landing', { entry_id: entryId }, AbortSignal.timeout(2000)).then(
+    () => true,
+    (error) => {
+      const denied = error instanceof Error && /csrf_denied|invalid_session/.test(error.message);
+      if (!denied) return false;
+      landing = undefined;
+      return aiPost('/traffic/landing', { entry_id: crypto.randomUUID() }, AbortSignal.timeout(2000))
+        .then(() => true, () => false);
+    }
+  );
 }
 export async function bindVisitor(): Promise<VisitorBinding | null> {
   try { return await aiPost<VisitorBinding>('/traffic/bind', {}, AbortSignal.timeout(2000)); }

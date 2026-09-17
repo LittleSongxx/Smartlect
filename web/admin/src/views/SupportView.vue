@@ -122,7 +122,7 @@
   </div>
 </template>
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { nextTick, onMounted, reactive, ref } from 'vue';
 import { session, aiGet, aiWrite, loadSession, errorText, timestamp, money } from '../api/client';
 import { hasAdminPermission } from '../utils/adminAccess';
 import { badgeTone, modeText, proposalStatusText, ticketReasonText, ticketStatusText } from '../utils/growthDisplay';
@@ -145,7 +145,11 @@ async function readDetail(item) {
 }
 async function view(item) {
   if (busy.value || !canManage(item)) return; busy.value = true; error.value = ''; detail.value = null;
-  try { await readDetail(item); } catch (reason) { error.value = errorText(reason); } finally { busy.value = false; }
+  try {
+    await readDetail(item);
+    await nextTick();
+    document.querySelector('.support-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (reason) { error.value = errorText(reason); } finally { busy.value = false; }
 }
 async function older() {
   if (busy.value || !detail.value?.next_before_sequence) return; busy.value = true; error.value = '';

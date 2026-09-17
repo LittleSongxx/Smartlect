@@ -51,6 +51,7 @@ function hasUserSession(data: Record<string, any> | null | undefined): data is R
 export const useAuthStore = defineStore('auth', () => {
   const userInfo = ref<Record<string, any> | null>(null);
   const isLoggedIn = computed(() => !!userInfo.value?.userId);
+  const isTrial = computed(() => !!userInfo.value?.trial);
 
   let sessionPromise: Promise<boolean> | null = null;
   let sessionReady = false;
@@ -251,6 +252,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     userInfo,
     isLoggedIn,
+    isTrial,
     loggingOut,
     memberLevelCode,
     memberLevelName,

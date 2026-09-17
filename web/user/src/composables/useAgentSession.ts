@@ -10,7 +10,7 @@ const handoff = ref<Record<string, any> | null>(null);
 const busy = ref(false);
 const error = ref('');
 const connection = ref('可以开始对话');
-const pending = ref<{ message_id: string; text: string; product_id?: string; sku_key?: string } | null>(null);
+const pending = ref<{ message_id: string; text: string; product_id?: string; sku_key?: string; focus_mode?: string } | null>(null);
 let generation = 0;
 let stream: AbortController | null = null;
 const cursors = new Map<string, number>();
@@ -167,12 +167,13 @@ async function newConversation() {
   } catch (reason) { if (epoch === generation) error.value = errorText(reason); }
   finally { if (epoch === generation) busy.value = false; }
 }
-async function send(text: string, retry = false, extra: { product_id?: string; sku_key?: string } = {}) {
+async function send(text: string, retry = false, extra: { product_id?: string; sku_key?: string; focus_mode?: string } = {}) {
   if (busy.value || handoff.value || !text.trim()) return false;
   if (!conversationId.value) await newConversation();
   if (!conversationId.value) return false;
   const payload = retry && pending.value ? pending.value : {
     message_id: crypto.randomUUID(), text: text.trim(),
+    ...(extra.focus_mode ? { focus_mode: extra.focus_mode } : {}),
     ...(extra.product_id ? { product_id: extra.product_id } : {}),
     ...(extra.sku_key ? { sku_key: extra.sku_key } : {}),
   };

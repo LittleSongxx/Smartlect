@@ -17,7 +17,7 @@
           </div>
           <span :class="['trend-pill', trendClass(item.dataValue.increase)]">
             <span :class="['iconfont', changeIcon(item.dataValue.increase)]"></span>
-            {{ formatTrend(item.dataValue.increase) }}
+            {{ formatTrend(item.dataValue.increase, item.dataValue.yesterdayValue) }}
           </span>
         </div>
         <p class="metric-label">{{ item.name }}</p>
@@ -55,9 +55,10 @@ const trendClass = (increase) => {
   return 'is-flat'
 }
 
-const formatTrend = (increase) => {
+const formatTrend = (increase, yesterday) => {
   const n = Number(increase)
   if (Number.isNaN(n)) return '—'
+  if (Number(yesterday) === 0 && n > 0) return '新增'
   if (n === 0) return '持平'
   const text = proxy.Utils.formatNumber(Math.abs(n), false)
   return n > 0 ? `+${text}%` : `-${text}%`

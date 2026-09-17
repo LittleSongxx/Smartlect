@@ -35,7 +35,7 @@
       </transition>
     </aside>
 
-    <div class="sl-stage">
+    <div class="sl-stage" @mouseenter="hoverCategory = null">
       <div class="sl-banner">
         <AdSlot
           v-if="bannerProduct?.promotion"
@@ -112,7 +112,7 @@
         <div class="sl-login-and-reg">
           <template v-if="!authStore.isLoggedIn">
             <RouterLink to="/login">登录</RouterLink>
-            <RouterLink to="/register">注册</RouterLink>
+            <RouterLink v-if="PUBLIC_REGISTER_ENABLED" to="/register">注册</RouterLink>
           </template>
           <template v-else>
             <RouterLink to="/account">个人中心</RouterLink>
@@ -165,6 +165,7 @@ import ProductImage from '@/components/common/ProductImage.vue';
 import { useOpenAgent } from '@/composables/useOpenAgent';
 import { promotionProductPath } from '@/composables/usePromotionCharge';
 import { useAuthStore } from '@/stores/auth';
+import { PUBLIC_REGISTER_ENABLED } from '@/constants/trial';
 import { mixHomeAds } from '@/utils/homeAds';
 import { resolveAvatarUrl } from '@/utils/image';
 import type { Promotion } from '@/api/traffic';

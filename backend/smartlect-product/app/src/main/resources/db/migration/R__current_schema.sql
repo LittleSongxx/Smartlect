@@ -13,7 +13,9 @@ create table if not exists product_info
     min_price     decimal(10, 2)       null comment '最低价格',
     max_price     decimal(10, 2)       null comment '最高价格',
     total_sale    int        default 0 null comment '销量',
-    commend_type  tinyint(1) default 0 null comment '0:未推荐 1:已经推荐'
+    commend_type  tinyint(1) default 0 null comment '0:未推荐 1:已经推荐',
+    brand         varchar(100)         null comment '品牌（内容轴，不参与 SKU hash）',
+    content_json  mediumtext           null comment '栏目化详情 JSON，旧 product_desc 仍作 extra_markdown'
 ) comment '商品信息' collate = utf8mb4_general_ci row_format = DYNAMIC;
 
 create table if not exists product_property_value
@@ -156,6 +158,36 @@ SET @sql = IF(
     ),
     'SELECT 1',
     'ALTER TABLE local_message_outbox ADD INDEX idx_outbox_dispatch (status, next_retry_time, lease_until, id)'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = IF(
+    EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'product_info'
+          AND column_name = 'brand'
+    ),
+    'SELECT 1',
+    'ALTER TABLE product_info ADD COLUMN brand varchar(100) NULL COMMENT ''brand on the fact axis'''
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = IF(
+    EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'product_info'
+          AND column_name = 'content_json'
+    ),
+    'SELECT 1',
+    'ALTER TABLE product_info ADD COLUMN content_json mediumtext NULL COMMENT ''structured detail sections'''
 );
 PREPARE stmt FROM @sql;
 EXECUTE stmt;

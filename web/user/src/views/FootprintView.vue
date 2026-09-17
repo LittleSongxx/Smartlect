@@ -44,6 +44,7 @@ import { useRouter } from 'vue-router';
 import SwipeDeleteRow from '@/components/business/SwipeDeleteRow.vue';
 import ProductImage from '@/components/common/ProductImage.vue';
 import { browseApi } from '@/api/modules';
+import { isShelfFillerProduct } from '@/utils/product';
 import { confirmAction } from '@/utils/confirm';
 import { toast } from '@/utils/toast';
 import { usePageRefresh } from '@/composables/pullRefresh';
@@ -86,7 +87,7 @@ const loadMore = async () => {
   try {
     const next = pageNo.value + 1;
     const r = await browseApi.loadBrowse({ pageNo: next });
-    const chunk = r?.list || [];
+    const chunk = (r?.list || []).filter((row: { productId?: string; productName?: string }) => !isShelfFillerProduct(row));
     if (next === 1) list.value = chunk;
     else list.value = list.value.concat(chunk);
     pageNo.value = r?.pageNo ?? next;

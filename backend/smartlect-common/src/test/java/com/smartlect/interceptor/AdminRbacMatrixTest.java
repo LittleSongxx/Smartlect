@@ -6,6 +6,7 @@ import com.smartlect.entity.dto.AdminPrincipalDTO;
 import com.smartlect.exception.HttpBusinessException;
 import com.smartlect.security.AdminSecurityContext;
 import com.smartlect.security.RequireAdminPermission;
+import com.smartlect.security.TrialReadable;
 import com.smartlect.utils.AuthCookieHelper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -165,6 +166,7 @@ class AdminRbacMatrixTest {
                 AdminPermissions.ANALYTICS_READ,
                 AdminPermissions.ANALYTICS_EXPORT));
         roles.put("AUDITOR", Set.of(AdminPermissions.AUDIT_READ));
+        roles.put(AdminPermissions.TRIAL_OPERATOR_ROLE, Set.of(AdminPermissions.ADMIN_TRIAL));
         return roles;
     }
 
@@ -196,5 +198,36 @@ class AdminRbacMatrixTest {
                 requireAll = false)
         void manageOrAudit() {
         }
+
+        @TrialReadable
+        void trialHome() {
+        }
+
+        void unlabeledWrite() {
+        }
+    }
+
+    @Test
+    void trialOperatorIsDenyByDefaultAndOnlyTrialReadablePasses() throws Exception {
+        assertPermission(
+                AdminPermissions.TRIAL_OPERATOR_ROLE,
+                ROLE_PERMISSIONS.get(AdminPermissions.TRIAL_OPERATOR_ROLE),
+                "trialHome",
+                true);
+        assertPermission(
+                AdminPermissions.TRIAL_OPERATOR_ROLE,
+                ROLE_PERMISSIONS.get(AdminPermissions.TRIAL_OPERATOR_ROLE),
+                "unlabeledWrite",
+                false);
+        assertPermission(
+                AdminPermissions.TRIAL_OPERATOR_ROLE,
+                ROLE_PERMISSIONS.get(AdminPermissions.TRIAL_OPERATOR_ROLE),
+                "manage",
+                false);
+        assertPermission(
+                AdminPermissions.TRIAL_OPERATOR_ROLE,
+                ROLE_PERMISSIONS.get(AdminPermissions.TRIAL_OPERATOR_ROLE),
+                "analyticsRead",
+                false);
     }
 }

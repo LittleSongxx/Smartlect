@@ -61,7 +61,7 @@ def build_router(*, actor_for, store, commerce, knowledge, shopping_retrieve, at
     @router.get("/admin-api/assistant/tools/catalog")
     async def tool_catalog(request: Request, response: Response):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         return catalog()
 
     async def embed_query(query):

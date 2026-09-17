@@ -129,7 +129,13 @@
     <section class="pc-detail-tabs card">
       <el-tabs v-model="detailTab" class="detail-tabs">
         <el-tab-pane label="图文详情" name="desc">
-          <MarkdownContent :content="productInfo.productDesc" class="desc-content" allow-images center-images />
+          <div v-if="productContent.sections.length" class="content-sections">
+            <article v-for="section in productContent.sections" :key="section.key">
+              <h4>{{ section.label }}</h4>
+              <MarkdownContent :content="section.text" class="desc-content" />
+            </article>
+          </div>
+          <MarkdownContent :content="productContent.extra || productInfo.productDesc" class="desc-content" allow-images center-images />
         </el-tab-pane>
         <el-tab-pane :label="`商品评价${commentTotal > 0 ? ` (${commentTotal})` : ''}`" name="comments">
           <div class="tab-comments">
@@ -237,6 +243,7 @@ const {
   loadError,
   load,
   productInfo,
+  productContent,
   productPropertyList,
   comments,
   commentTotal,
@@ -746,6 +753,18 @@ const openReport = (payload: { orderId: string; commentContent?: string }) => {
 .desc-content {
   padding: 16px 4px;
   min-height: 120px;
+}
+
+.content-sections {
+  display: grid;
+  gap: 16px;
+  padding: 8px 4px 0;
+
+  h4 {
+    margin: 0 0 6px;
+    font-size: 14px;
+    color: $color-text-title;
+  }
 }
 
 .pc-detail-loading,

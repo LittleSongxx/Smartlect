@@ -4,7 +4,7 @@
       <div class="order-base">
         <div class="order-time">{{ data.orderTime }}</div>
         <div class="order-id">订单号: {{ data.orderId }}</div>
-        <div class="buyer">买家信息:{{ data.userId }} / {{ data.nickName }}</div>
+        <div class="buyer">买家信息:{{ isTrial ? '已隐藏' : `${data.userId} / ${data.nickName}` }}</div>
       </div>
       <div class="order-status">{{ data.orderStatusName }}</div>
     </div>
@@ -41,8 +41,8 @@
         </div>
         <div class="order-op-panel">
           <template v-if="index == 0">
-            <el-button type="primary" v-if="data.orderStatus == 1" class="btn" @click="delivery">确认发货</el-button>
-            <el-button type="primary" v-if="data.commentStatus != 0" @click="comment">回复买家</el-button>
+            <el-button type="primary" v-if="!isTrial && data.orderStatus == 1" class="btn" @click="delivery">确认发货</el-button>
+            <el-button type="primary" v-if="!isTrial && data.commentStatus != 0" @click="comment">回复买家</el-button>
           </template>
         </div>
       </div>
@@ -51,12 +51,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, getCurrentInstance, nextTick, computed } from 'vue'
+import { ref, reactive, getCurrentInstance, nextTick, computed, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { isCouponOrder, isCouponOrderItem } from '@/utils/order.js'
 const { proxy } = getCurrentInstance()
 const router = useRouter()
 const route = useRoute()
+const isTrial = inject('isTrialAdmin', false)
 
 const props = defineProps({
   data: {

@@ -45,6 +45,7 @@ class PublicProductSearchTest {
         assertEquals(ProductStatusEnum.ON_SALE.getStatus(), query.getStatus());
         // A search must not stay inside the commended landing list, or most matches vanish.
         assertNull(query.getCommendType());
+        assertEquals(Boolean.TRUE, query.getExcludeIsolatedCatalog());
     }
 
     @Test

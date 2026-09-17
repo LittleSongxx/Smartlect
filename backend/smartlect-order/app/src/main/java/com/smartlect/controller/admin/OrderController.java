@@ -13,6 +13,7 @@ import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.biz.OrderCommentService;
 import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderLogisticsInfoService;
+import com.smartlect.security.TrialOrderPrivacy;
 import jakarta.annotation.Resource;
 import jakarta.validation.constraints.NotEmpty;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -52,7 +53,7 @@ public class OrderController extends com.smartlect.controller.admin.ABaseControl
             // 对resultVO中的items进行过滤
             resultVO = orderInfoService.findByProductNameFuzzy(resultVO, productNameFuzzy);
         }
-        return getSuccessResponseVO(resultVO);
+        return getSuccessResponseVO(TrialOrderPrivacy.redact(resultVO));
     }
 
     @PostMapping("/loadOrderStatus")
@@ -80,12 +81,12 @@ public class OrderController extends com.smartlect.controller.admin.ABaseControl
         if (productNameFuzzy != null){
             resultVO = orderCommentService.findByProductNameFuzzy(resultVO, productNameFuzzy);
         }
-        return getSuccessResponseVO(resultVO);
+        return getSuccessResponseVO(TrialOrderPrivacy.redact(resultVO));
     }
     // 获取相应orderId的评论
     @PostMapping("/getComment")
     public ResponseVO getComment(@NotEmpty String orderId){
-        return getSuccessResponseVO(orderCommentService.getComment(null,orderId));
+        return getSuccessResponseVO(TrialOrderPrivacy.redact(orderCommentService.getComment(null,orderId)));
     }
 
     // 商家评论

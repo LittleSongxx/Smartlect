@@ -20,6 +20,16 @@ describe('店面分类与假货过滤', () => {
     expect(tree[1].children.map((row: { categoryName: string }) => row.categoryName)).toEqual(['运动户外']);
   });
 
+  it('丢掉英文测试类目 desk/audio/acc/furniture', () => {
+    const tree = storefrontCategoryTree([
+      { categoryId: '10001', categoryName: '数码家电', pCategoryId: '0' },
+      { categoryId: 'desk', categoryName: 'desk', pCategoryId: '0' },
+      { categoryId: 'audio', categoryName: 'audio', pCategoryId: '0' },
+      { categoryId: 'furn', categoryName: 'furn', pCategoryId: '0' },
+    ]);
+    expect(tree.map((row) => row.categoryName)).toEqual(['数码家电']);
+  });
+
   it('同名根类优先真实 ID，并合并子类', () => {
     const tree = storefrontCategoryTree([
       { categoryId: '90', categoryName: '数码', pCategoryId: '0' },
@@ -32,8 +42,10 @@ describe('店面分类与假货过滤', () => {
     expect(tree[0].children.map((row: { categoryId: string }) => row.categoryId)).toEqual(['20003']);
   });
 
-  it('首页不展示 91 合成货和 Smartlect 占位标题', () => {
+  it('首页不展示 9100/9300 合成货和 Smartlect 占位标题，但保留 9171 演示货', () => {
     expect(isShelfFillerProduct({ productId: '910000000000001', productName: '席梦思床垫' })).toBe(true);
+    expect(isShelfFillerProduct({ productId: '930000000081301', productName: '轻便键盘' })).toBe(true);
+    expect(isShelfFillerProduct({ productId: '917186661226040', productName: '卡皮巴拉软握按动中性笔' })).toBe(false);
     expect(isShelfFillerProduct({ productId: '622491960431656', productName: '旺旺雪饼' })).toBe(false);
     expect(isShelfFillerProduct({ productId: '10001', productName: 'Smartlect家居1' })).toBe(true);
     expect(filterStorefrontProducts([

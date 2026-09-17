@@ -80,16 +80,16 @@ class AdminApiMySQLTests(unittest.TestCase):
 
             documents = (await client.get("/admin-api/assistant/knowledge")).json()
             row = next(item for item in documents if item["doc_id"] == "product-p-imp-" + suffix)
-            self.assertEqual(row["status"], "DRAFT")
+            self.assertEqual(row["status"], "PUBLISHED")
             self.assertEqual(row["source_type"], "PRODUCT_AUTO")
 
-            # Re-import is an overlay: the previous auto draft is replaced, doc_id stays stable.
             again = await client.post("/admin-api/assistant/knowledgeImport/products", headers=headers,
                                       json={"productIds": ["p-imp-" + suffix]})
             self.assertEqual(again.json()["imported"], ["p-imp-" + suffix])
             documents = (await client.get("/admin-api/assistant/knowledge")).json()
             versions = [item for item in documents if item["doc_id"] == "product-p-imp-" + suffix]
-            self.assertEqual(len(versions), 1)  # old DRAFT discarded, not stacked
+            published = [item for item in versions if item["status"] == "PUBLISHED"]
+            self.assertEqual(len(published), 1)
 
     async def exercise_indexing(self):
         suffix = uuid.uuid4().hex

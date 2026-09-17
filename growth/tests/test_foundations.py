@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 import smartlect
 from smartlect.ads.analytics import CampaignMetrics, detect_anomalies, optimize_budget_allocation, to_cents
+from smartlect.app import health
 from smartlect.config import Settings
 from smartlect.recommendation.ab_test import ABTestEngine, Experiment, ExperimentGroup
 
@@ -27,9 +28,15 @@ class FoundationTests(unittest.TestCase):
             result = subprocess.run([sys.executable, "-m", "smartlect.app", "--check"],
                                     capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout)["model_mode"], "mock")
+        self.assertTrue(json.loads(result.stdout)["model_ready"])
         with patch.dict(os.environ, {"SMARTLECT_MODEL_MODE": "llm"}):
             with self.assertRaises(ValueError):
                 Settings.from_env()
+        live = health(Settings(model_mode="live"), {})
+        self.assertEqual((live["status"], live["model_ready"]), ("misconfigured", False))
+        ready = health(Settings(model_mode="live"), {
+            "SMARTLECT_MODEL_API_KEY": "k", "SMARTLECT_MODEL_BASE_URL": "https://example"})
+        self.assertEqual((ready["status"], ready["model_ready"]), ("ok", True))
 
     def test_exact_amounts_and_absent_ratios(self):
         self.assertEqual(to_cents("90.00"), 9000)

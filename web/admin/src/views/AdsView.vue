@@ -44,7 +44,7 @@
             预算 <Price :price="item.budget_cents" /> · 已花 <Price :price="item.spent_cents" /> · CPC <Price :price="item.cpc_cents" />
           </div>
         </div>
-        <el-alert v-if="item.pause_reason" type="warning" :closable="false" show-icon :title="`暂停原因：${item.pause_reason}`" class="table-gap" />
+        <el-alert v-if="item.pause_reason" type="warning" :closable="false" show-icon :title="`暂停原因：${pauseReasonText(item.pause_reason)}`" class="table-gap" />
         <div class="button-row">
           <el-button v-for="type in campaignActions(item)" :key="type" :disabled="busy || !canWrite" @click="prepare(type, item)">{{ actionLabels[type] }}</el-button>
           <el-button :disabled="busy || !canWrite" @click="prepare('set_budget', item)">调整预算</el-button>
@@ -287,6 +287,13 @@ const emit = defineEmits(['grant-approved', 'close-plan']);
 const snapshot = ref({ campaigns: [], creatives: [], grants: [], account: null, actions: [], observations: [] });
 const busy = ref(false); const error = ref(''); const notice = ref(''); const refreshedAt = ref(''); const lastReceipt = ref(null);
 const canWrite = computed(() => hasAdminPermission(session.value?.actor, 'admin:legacy'));
+const pauseReasonText = (reason) => ({
+  grant_replaced: '授权已被新版本替换',
+  grant_expired: '授权已过期',
+  budget_exhausted: '累计预算已用尽',
+  stock_unavailable: '库存不足，已保护暂停',
+  policy_paused: '策略要求暂停',
+}[reason] || reason);
 const campaign = reactive({ campaign_id: crypto.randomUUID(), name: '', product_id: '', sku_key: '', budget_cents: '1000', cpc_cents: '10' });
 const catalog = ref([]); const catalogError = ref(''); const selectedSku = ref('');
 const skuKey = sku => JSON.stringify([sku.product_id, sku.sku_key]);

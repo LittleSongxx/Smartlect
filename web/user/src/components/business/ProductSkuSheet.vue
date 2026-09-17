@@ -91,6 +91,7 @@ import { useProductSkuSheet } from '@/composables/useProductSkuSheet';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 import { toast } from '@/utils/toast';
+import { TRIAL_USER_DENIED } from '@/constants/trial';
 import { useDevice } from '@/composables/useDevice';
 import {
   loadRecommendationAttribution,
@@ -135,6 +136,10 @@ const confirmAdd = async () => {
   if (!authStore.isLoggedIn) {
     close();
     router.push({ path: '/login', query: { redirect: route.fullPath } });
+    return;
+  }
+  if (authStore.isTrial) {
+    toast.warning(TRIAL_USER_DENIED);
     return;
   }
   if (!validateSku() || !productInfo.value) return;

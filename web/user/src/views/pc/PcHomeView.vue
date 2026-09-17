@@ -75,8 +75,10 @@ const formatPrice = (p: Record<string, any>) => {
   return val != null ? Number(val).toFixed(2) : '--';
 };
 
+let feedCancelled = false;
+
 const loadFeed = async (reset = false) => {
-  if (feedLoading.value) return;
+  if (feedCancelled || feedLoading.value) return;
 
   if (reset) {
     feedPageNo.value = 0;
@@ -93,6 +95,7 @@ const loadFeed = async (reset = false) => {
     const page = await productApi.loadProduct({ pageNo: next });
     const { visible, fetched } = splitStorefrontPage(page?.list);
 
+    if (feedCancelled) return;
     if (visible.length > 0) {
       const existingIds = new Set(products.value.map(p => p.productId));
       const filtered = visible.filter(p => !existingIds.has(p.productId));
@@ -125,10 +128,6 @@ const load = async () => {
     categories.value = Array.isArray(cats) ? cats : [];
     hotProductsList.value = filterStorefrontProducts(Array.isArray(commend) ? commend : commend?.list);
     await loadFeed(true);
-
-    while (!feedFinished.value && products.value.length < MAX_PRODUCTS) {
-      await loadFeed();
-    }
   } finally {
     loading.value = false;
   }
@@ -170,6 +169,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  feedCancelled = true;
   if (feedObserver) {
     feedObserver.disconnect();
     feedObserver = null;

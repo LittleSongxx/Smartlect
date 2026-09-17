@@ -10,7 +10,12 @@
         </div>
       </div>
 
-      <el-form class="auth-form" label-position="top" @submit.prevent="submit">
+      <div v-if="!PUBLIC_REGISTER_ENABLED" class="trial-lock">
+        <p>公开演示已关闭自行注册，避免试用用户另开可下单账号。</p>
+        <p>请用作品集试用账号登录：<strong>{{ TRIAL_VISITOR.email }}</strong> / <strong>{{ TRIAL_VISITOR.password }}</strong></p>
+        <RouterLink class="submit-btn" to="/login">去登录试用账号</RouterLink>
+      </div>
+      <el-form v-else class="auth-form" label-position="top" @submit.prevent="submit">
         <el-form-item label="邮箱">
           <el-input v-model="form.email" placeholder="请输入邮箱" size="large" maxlength="150" />
         </el-form-item>
@@ -85,6 +90,7 @@ import BrandMark from '@/components/common/BrandMark.vue';
 import SlideCaptchaDialog from '@/components/business/SlideCaptchaDialog.vue';
 import { accountApi } from '@/api/modules';
 import { isValidEmail, isValidPassword, PASSWORD_FORMAT_HINT } from '@/constants/validation';
+import { PUBLIC_REGISTER_ENABLED, TRIAL_VISITOR } from '@/constants/trial';
 import { useEmailCode, type SlideCaptchaDialogExpose } from '@/composables/useEmailCode';
 
 const router = useRouter();
@@ -201,6 +207,21 @@ const submit = async () => {
   align-items: flex-start;
   padding: 24px 16px 48px;
   background: $color-bg;
+}
+
+.trial-lock {
+  padding: 24px 28px 32px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #3d4a52;
+}
+
+.trial-lock .submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16px;
+  text-decoration: none;
 }
 
 .auth-card {

@@ -17,6 +17,7 @@ from smartlect.knowledge import compose_search_query
 from smartlect.provider import ProviderError
 from smartlect.state import StateError
 from smartlect.catalog_gate import RecommendationRequest, in_scope, scope_filter
+from smartlect.knowledge_scope import compile_search_filter
 
 
 class Arguments(BaseModel):
@@ -50,6 +51,7 @@ class CompareArgs(Arguments):
 
 class KnowledgeArgs(Arguments):
     query: str = Field(min_length=1, max_length=800)
+    product_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class HandoffArgs(Arguments):
@@ -130,7 +132,8 @@ class Tool:
 REGISTRY = {
     "load_skill": Tool(SkillArgs, "shopping:read", "按当前任务加载已审核的业务Skill；只能缩小现有权限"),
     "request_handoff": Tool(HandoffArgs, "shopping:read", "用户请求人工或当前问题需人工核实时创建本地工单并结束本轮；必须单独调用。不是退款或交易授权。", "handoff"),
-    "search_knowledge": Tool(KnowledgeArgs, "shopping:read", "检索已发布且有权限的政策/说明原文及引用"),
+    "search_knowledge": Tool(KnowledgeArgs, "shopping:read",
+                             "检索已发布且有权限的政策/说明原文及引用；商品页由服务端限定本商品+店规，模型不能换库"),
     "search_skus": Tool(SearchArgs, "shopping:read", "按关键字/预算从Java查询实际有货SKU；价格单位分"),
     "recommend_skus": Tool(SearchArgs, "shopping:read", "按用途/预算/硬约束推荐真实可售SKU，返回来源、策略和理由；价格单位分"),
     "compare_skus": Tool(CompareArgs, "shopping:read", "对照2–4个可售SKU或任务槽比较目标；缺目标只标不全，不用热销凑数"),
@@ -182,7 +185,7 @@ def schemas(actor, allowed=None):
 
 async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None, allowed=None,
                  knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, product_scope=None,
-                 observed_citations=None, user_utterance=None):
+                 observed_citations=None, user_utterance=None, focus=None):
     tool = REGISTRY.get(name)
     if tool is None or (allowed is not None and name not in allowed):
         raise ValueError("tool_not_allowed")
@@ -207,7 +210,7 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
     if prior["outcome"] != "started":
         return prior["receipt"]
     try:
-        result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, compare, observed_citations, user_utterance),
+        result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, compare, observed_citations, user_utterance, focus),
                                         timeout=30 if name in {"search_knowledge", "search_skus", "recommend_skus", "compare_skus"} else 15)
         status = "command_accepted"
         if name == "get_refund_status":
@@ -227,7 +230,7 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
         raise
 
 
-async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, observed_citations=None, user_utterance=None):
+async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, observed_citations=None, user_utterance=None, focus=None):
     if name == 'request_handoff':
         citations = [(observed_citations or {})[key] for key in params['citation_chunk_ids']]
         ticket = await asyncio.to_thread(memory.handoff, actor, lease['conversation_id'], 'model_requested_handoff',
@@ -280,9 +283,13 @@ async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, e
             vectors = await embed_query(submitted) if embed_query else {}
         except ProviderError as error:
             vectors, dense_error = {}, error.code
+        compiled = compile_search_filter(focus, params.get("product_id"))
         result = await asyncio.to_thread(knowledge.search, actor, submitted, utterance=user_utterance or "",
-                                         model_query=model_query, **vectors)
+                                         model_query=model_query, product_id=compiled["product_id"],
+                                         corpus=compiled["corpus"], **vectors)
         result.setdefault("retrieval", {})
+        result["retrieval"]["corpus"] = compiled["corpus"]
+        result["retrieval"]["product_id"] = compiled["product_id"]
         result["retrieval"]["submitted_query"] = submitted
         result["retrieval"]["model_query"] = model_query
         if dense_error:

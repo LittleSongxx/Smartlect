@@ -17,6 +17,7 @@ from prometheus_client import Counter as PrometheusCounter
 
 from smartlect.cache import TtlCache
 from smartlect.events import canonical
+from smartlect.knowledge_scope import parse_product_ids, search_document_clause
 from smartlect.state import SessionStore, StateError, _actor, _expiry, _integer, _json, _public, _text
 
 KNOWLEDGE_CACHE_REQUESTS = PrometheusCounter("growth_knowledge_cache_requests_total",
@@ -55,7 +56,14 @@ def _visibility(actor):
 
 
 def _merchant(actor, permission="admin:legacy"):
-    if _actor(actor)[0] != "merchant" or permission not in getattr(actor, "permissions", ()):
+    if _actor(actor)[0] != "merchant":
+        raise StateError("permission_denied", 403)
+    perms = getattr(actor, "permissions", ())
+    if permission == "admin:read":
+        if "admin:legacy" not in perms and "admin:trial" not in perms:
+            raise StateError("permission_denied", 403)
+        return
+    if permission not in perms:
         raise StateError("permission_denied", 403)
 
 
@@ -339,6 +347,8 @@ def evidence_result(rows, retrieval):
     warned = sum(bool(INSTRUCTION_PATTERN.search(row['content'])) for row in rows)
     citations = [{**{name: row[name] for name in ("doc_id", "version", "chunk_id", "title", "source_uri", "checksum",
                  "heading", "content", "start_offset", "end_offset", "start_line", "end_line")},
+                 "product_ids": parse_product_ids(row.get("product_ids_json")),
+                 "source_type": row.get("source_type") or "MANUAL",
                  "carries_untrusted_instructions": bool(INSTRUCTION_PATTERN.search(row['content']))}
                  for row in rows[:4]]
     facts, conflicts = {}, set()
@@ -404,6 +414,9 @@ class KnowledgeStore(SessionStore):
         if start >= end:
             raise StateError("invalid_validity_interval", 422)
         products = canonical(_ids(payload.get("product_ids", []), "product_ids"))
+        # PRODUCT_AUTO must pin a product; empty product_ids can only be store policy.
+        if source_type == "PRODUCT_AUTO" and not json.loads(products):
+            raise StateError("product_knowledge_requires_product_id", 422)
         categories = canonical(_ids(payload.get("category_ids", []), "category_ids"))
         facts = _json(payload.get("facts", {}))
         parsed_facts = json.loads(facts)
@@ -464,6 +477,15 @@ class KnowledgeStore(SessionStore):
                 cursor.execute("UPDATE knowledge_catalog SET revision=revision+1 WHERE execution_scope_id=%s", (scope,))
             return _public(self._document(cursor, scope, doc_id, version))
 
+    def latest_product_auto(self, actor, doc_id):
+        _merchant(actor, "admin:read")
+        with self._transaction() as cursor:
+            cursor.execute("""SELECT doc_id,version,status,checksum,source_type FROM knowledge_document
+                WHERE execution_scope_id=%s AND doc_id=%s AND source_type='PRODUCT_AUTO'
+                ORDER BY version DESC LIMIT 8""",
+                           (_actor(actor)[2], _text(doc_id, "doc_id", 128)))
+            return [_public(row) for row in cursor.fetchall()]
+
     def discard_auto_drafts(self, actor, doc_ids, *, source_type="PRODUCT_AUTO"):
         """Overlay semantics for auto imports: re-importing replaces the previous auto DRAFT
         (chunks included) and never touches MANUAL documents or anything already published."""
@@ -485,14 +507,14 @@ class KnowledgeStore(SessionStore):
         return {"discarded": len(rows)}
 
     def list_documents(self, actor):
-        _merchant(actor)
+        _merchant(actor, "admin:read")
         with self._transaction() as cursor:
             cursor.execute("SELECT doc_id,version,title,status,acl,valid_from,valid_until,checksum,published_at,source_type "
                            "FROM knowledge_document WHERE execution_scope_id=%s ORDER BY doc_id,version DESC LIMIT 1000", (_actor(actor)[2],))
             return [_public(row) for row in cursor.fetchall()]
 
     def document_versions(self, actor, doc_id):
-        _merchant(actor)
+        _merchant(actor, "admin:read")
         with self._transaction() as cursor:
             cursor.execute("SELECT doc_id,version,status,source_type,created_at FROM knowledge_document "
                 "WHERE execution_scope_id=%s AND doc_id=%s ORDER BY version DESC LIMIT 50",
@@ -500,7 +522,7 @@ class KnowledgeStore(SessionStore):
             return [_public(row) for row in cursor.fetchall()]
 
     def get_document(self, actor, doc_id, version):
-        _merchant(actor)
+        _merchant(actor, "admin:read")
         with self._transaction() as cursor:
             return _public(self._document(cursor, _actor(actor)[2], doc_id, version))
 
@@ -607,16 +629,12 @@ class KnowledgeStore(SessionStore):
             return {"total": row["total"], "embedded": row["embedded"]}
 
     def search(self, actor, query, *, query_vector=None, embedding_model=None, index_version=None,
-               product_id=None, category_id=None, utterance=None, model_query=None):
+               product_id=None, category_id=None, utterance=None, model_query=None, corpus=None):
         kind, actor_id, scope = _actor(actor)
         query = _text(query, "query", 1000)
         if "shopping:read" not in getattr(actor, "permissions", ()) and kind != "merchant":
             raise StateError("permission_denied", 403)
-        filters, values = [], []
-        for field, value in (("product_ids_json", product_id), ("category_ids_json", category_id)):
-            if value is not None:
-                filters.append(f"AND (JSON_LENGTH(d.{field})=0 OR JSON_CONTAINS(d.{field},%s))")
-                values.append(canonical(_text(value, field, 128)))
+        filters, values = search_document_clause(product_id=product_id, category_id=category_id, corpus=corpus)
         # Identical authorized searches repeat within a turn and across sessions. The exact
         # scan pair below is the measured hot path, so reuse its result for 5 minutes; a
         # publish bumps catalog revision (key part), while expiry/ACL shifts can lag by the TTL.
@@ -627,7 +645,7 @@ class KnowledgeStore(SessionStore):
         vector_key = (sha256(canonical(query_vector).encode()).hexdigest()
                       if isinstance(query_vector, list) else None)
         cache_key = (scope, kind, actor_id, query, vector_key, embedding_model, index_version,
-                     product_id, category_id, utterance, model_query, revision)
+                     product_id, category_id, corpus, utterance, model_query, revision)
         cached = self._search_cache.get(cache_key)
         if cached is not None:
             KNOWLEDGE_CACHE_REQUESTS.labels("hit").inc()
@@ -636,14 +654,15 @@ class KnowledgeStore(SessionStore):
         with self._transaction() as cursor:
             # ponytail: derive <=5000 authorized chunks per request; move to a versioned
             # numeric index only when this bounded exact scan is a measured bottleneck.
-            cursor.execute("""SELECT c.*,d.title,d.source_uri,d.checksum,d.facts_json FROM knowledge_document d
+            cursor.execute("""SELECT c.*,d.title,d.source_uri,d.checksum,d.facts_json,d.product_ids_json,d.source_type
+                FROM knowledge_document d
                 JOIN knowledge_chunk c USING(execution_scope_id,doc_id,version)
-                WHERE """ + VISIBLE_DOCUMENT + " " + " ".join(filters) +
+                WHERE """ + VISIBLE_DOCUMENT + " " + filters +
                 " ORDER BY d.doc_id,d.version,c.chunk_id LIMIT 5001", (*_visibility(actor), *values))
             rows = list(cursor.fetchall())
             cursor.execute("""SELECT c.content,c.heading,d.doc_id,d.title,d.acl FROM knowledge_document d
                 JOIN knowledge_chunk c USING(execution_scope_id,doc_id,version)
-                WHERE """ + HIDDEN_DOCUMENT + " " + " ".join(filters) +
+                WHERE """ + HIDDEN_DOCUMENT + " " + filters +
                 " ORDER BY d.doc_id,d.version,c.chunk_id LIMIT 5001", (*_visibility(actor), *values))
             hidden_rows = list(cursor.fetchall())
             cursor.execute("SELECT revision FROM knowledge_catalog WHERE execution_scope_id=%s", (scope,))

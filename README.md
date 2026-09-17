@@ -1,87 +1,171 @@
-# Smartlect
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Smartlect" width="120" />
+</p>
 
-[![ci](https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml/badge.svg)](https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml)
+<h1 align="center">Smartlect</h1>
 
-单店 AI 导购、RAG 客服与模拟经营闭环：**Java 微服务电商底座 + Python Agent 增长层 + 双前端**，已部署到阿里云生产环境三机集群运行。
+<p align="center">
+  <b>一家会按商品回答的店</b><br/>
+  C 端商城 + 商家后台，中间只放一个 Shopping Agent
+</p>
 
-**在线演示**：用户端 `http://39.107.102.244/` ｜ 管理端 `http://39.107.102.244/admin/`（域名 + HTTPS 等 ICP 备案通过后切换）
+<p align="center">
+  <img src="https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white" />
+  <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk&logoColor=white" />
+  <img src="https://img.shields.io/badge/Python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/LangGraph-bounded-1a1a2e?style=flat-square" />
+  <img src="https://img.shields.io/badge/Spring_Cloud-2025-6db33f?style=flat-square&logo=springboot&logoColor=white" />
+  <img src="https://img.shields.io/badge/MySQL-8-4479a1?style=flat-square&logo=mysql&logoColor=white" />
+  <a href="https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml"><img src="https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml/badge.svg" /></a>
+</p>
 
-## 生产级能力（全部有实测证据）
+<p align="center">
+  <img src="docs/assets/screenshots/product-guide.png" alt="商品页智能导购：正在问本商品，并对照两个规格" width="100%" />
+</p>
 
-部署形态：三机常驻集群——node1（8c16g）承载 9 个 Spring Cloud 服务 + Python Growth（API/worker）+ 2 前端 + MySQL + 监控栈，node2/3（2c8g×2）承载 RabbitMQ quorum/Nacos Raft/Redis 副本与哨兵；中间件全集群态、systemd 全链自启。生产化工程落在以下十项，每项都有命令、输出与截图留档（`docs/prod-hardening/`）：
+---
 
-| 能力 | 关键数字 |
+**Smartlect 是我做的一套可演示单店：前面是能逛的商城，后面是商家后台，中间只有一个 Shopping Agent。** 商品页默认「正在问本商品」，检索的是这件的资料和店规，不是整站闲聊。店规和商品说明可以在后台写成文档、发布后再被引用；价格和库存不进向量，下单、退款都要你点确认。Java 是交易权威，Python 只通过受控 API 说话。
+
+线上可以直接点：[用户端](http://39.107.102.244/) · [管理端](http://39.107.102.244/admin/)。支付和广告花费是模拟的，没有真实资金。
+
+**对外试用账号是公开的，权限在服务端按身份拒绝。** 不要用仓库或环境里的超管、也不要用 `9100000000` 那组内部演示买家。
+
+| 端 | 账号 | 密码 | 能做什么 | 不能做什么 |
+| --- | --- | --- | --- | --- |
+| 用户端 | `visitor@smartlect.demo` | `Visit-Smartlect-2026` | 逛店、看商品、问导购 | 下单、加购、改密、改地址、注册新号 |
+| 管理端 | `gallery` | `Visit-Smartlect-2026` | 看看板、商品、订单、知识库和经营数据 | 改库存、发知识、发券、发货、管账号、看用户隐私 |
+
+---
+
+## 它每天在做什么
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**① 逛店**
+
+首页、分类、搜索、商品详情都是一家真店的皮。货架、价格、库存来自 Java 目录，不是为聊天临时拼的卡片。
+
+</td>
+<td width="33%" valign="top">
+
+**② 问这件**
+
+在商品页打开导购，范围钉在「正在问本商品」。Shopping Agent 按这件检索已发布资料；答不上来就承认，而不是改口吹下一件。
+
+</td>
+<td width="33%" valign="top">
+
+**③ 管店**
+
+后台维护店规和商品资料，看经营助手给出的下一轮计划。授权范围里可以执行，越界要再批准一次。
+
+</td>
+</tr>
+</table>
+
+<p align="center">
+  <img src="docs/assets/screenshots/home.png" alt="智选商城首页" width="100%" />
+  <em>C 端先是一家店：分类、广告位、智选好物，导购是店里的入口，不是站外机器人。</em>
+</p>
+
+---
+
+## 它怎么分层
+
+```
+                 ┌────────────────── Vue 用户端 / 商家后台 ──────────────────┐
+                 │   逛店 · 商品 · 导购浮层          知识库 · 经营 · 商品编辑   │
+                 └────────────────────────────┬─────────────────────────────┘
+                                              │ 只展示，不写交易
+┌─────────────────────────────────────────────▼─────────────────────────────────────────────┐
+│                              Gateway · 鉴权，把登录态收成可信身份                              │
+└─────────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                              │
+┌─────────────────────────────────────────────▼─────────────────────────────────────────────┐
+│                         Python Growth · FastAPI + LangGraph                               │
+│     Shopping Agent（有界 ReAct）          Merchant Agent（计划 → 执行 → 再计划）            │
+│     RAG / 推荐 / 账本是确定性服务          价格、库存不进向量                                 │
+└─────────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                              │ 用户确认后的受控 API
+┌─────────────────────────────────────────────▼─────────────────────────────────────────────┐
+│                      Java · 9 个 Spring Cloud 服务，交易库只由这里写                         │
+│                         价格 / 库存 / 订单 / 支付 / 退款                                     │
+└───────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+浏览器只负责把状态画出来。Gateway 做身份。Python 负责「问什么、检索什么、下一步计划什么」。真正改价格、扣库存、落订单的，只有 Java。
+
+---
+
+## 能力地图
+
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/screenshots/home.png" alt="用户端首页" /><br/><b>逛店</b> — 首页就是货架，不是 Agent 控制台套了个商城皮</td>
+<td width="50%"><img src="docs/assets/screenshots/product-guide.png" alt="商品页导购" /><br/><b>问这件</b> — 浮层默认「正在问本商品」，规格对照来自这一次真实提问</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/assets/screenshots/assistant.png" alt="独立导购页" /><br/><b>独立导购</b> — 不在商品页时按全店政策聊运费、退换和选品</td>
+<td width="50%"><img src="docs/assets/screenshots/category.png" alt="分类页" /><br/><b>分类</b> — 49 个类目可以点进去逛，搜索走同一套在售目录</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/assets/screenshots/admin-knowledge.png" alt="管理端知识库" /><br/><b>知识库</b> — 店规写成可发布的文档；撤回后不再被新的客服引用</td>
+<td width="50%"><img src="docs/assets/screenshots/admin-merchant.png" alt="经营助手" /><br/><b>经营助手</b> — 先看点击、费用和净成交，再决定下一轮做不做</td>
+</tr>
+</table>
+
+---
+
+## 技术栈
+
+| | |
 |---|---|
-| [监控告警](docs/prod-hardening/monitoring.md) | 15 个采集目标、10 条告警规则、邮件闭环（docker pause 注入→收到告警→自动恢复全程实测） |
-| [备份与 PITR](docs/prod-hardening/backup-restore-drill.md) | 恢复演练在相隔 12 秒的两个写入间精确切割，11 库金额 checksum 全对齐，RTO≈30s |
-| [CI/CD](docs/prod-hardening/cicd.md) | 测试流水线 + 一键部署/回滚；deploy key 锁死为四动词网关拿不到 shell |
-| [压测与优化](docs/prod-hardening/loadtest-report.md) | 四场景基线；去掉生产链路里的开发态代理后 **p95 127→51ms（-60%）**、CPU 负载 -43% |
-| [全链路追踪](docs/prod-hardening/tracing.md) | OTel 全栈 10 服务入图；3.1s 对话 trace 一眼定位 **2.5s 花在 LLM 出站**而非应用链路 |
-| [对账自动化](docs/prod-hardening/recon-deadletter.md) | Java 支付权威 vs 事件账本每日对账；1 分钱注入演练 25 秒闭环 |
-| [LLM 成本/质量看板](docs/prod-hardening/llm-dashboard.md) | 零业务代码改动聚合模型调用画像；上线即暴露转人工率 61.5% 真实信号，成本 ¥0.85/88 次调用 |
-| [HA 演练](docs/prod-hardening/ha-design.md) | 四组件真实 kill：自愈 10-43s、Seata 宕机下单 1.6s 快速失败无半提交；抓出「整库宕机不告警」盲区并修复 |
-| [跨机集群](docs/prod-hardening/ha-cluster.md) | 3 台 ECS 常驻集群（RMQ 3 节点 quorum/Redis 哨兵/Nacos Raft），leader 击杀 11s 重选举、**2430 发=2430 收零丢失**、sentinel 1.06s 切主；node1 升配（8c32g 时期实测，现规格 8c16g 回调后 400VU=495 req/s/p95 23ms 依然成立）后同场景 **400 VU QPS 109→349（+220%）、p95 8.64s→40ms**；Micrometer 取证揪出 Hikari 池(4)假墙，一行 env 调到 12 后**真极限 ~815 req/s（node1 CPU 90% 打满）**，生产限流定格 400；并揪出 Jaeger 无上界内存（19.4GB OOM 致宿主假死）完成加固 |
-| [AI 层高可用](docs/prod-hardening/ai-agent-ha.md) | Agent 层补齐熔断（连续失败 30s 快速失败喂给既有降级链）、对话并发闸（每 actor/全局 429）、embedding+检索双层缓存（同问 22s→6.2s）；首次并发压测 py-spy 抓出 **pymysql/httpx 每连接重建 TLS 上下文把并发钉死在 3 req/s**，修复后控制面 30 req/s、对话吞吐 12 轮/分钟零失败（信号量 2 刻意的成本闸） |
+| **前端** | Vue 3 · Vite · Element Plus · 用户端 + 管理端 |
+| **交易** | Java 17 · Spring Boot 3.5 · Spring Cloud · 9 个服务 |
+| **增长** | Python 3.11 · FastAPI · LangGraph |
+| **存储** | MySQL · Redis · RabbitMQ · Nacos |
+| **模型** | 独立配置；演示走 live，缺配置时明确失败 |
 
-## 架构与边界
+```
+backend/   gateway · user · product · stock · cart · order · pay · coupon · admin
+growth/    Shopping / Merchant Agent · RAG · 推荐 · 知识库 · 经营
+web/       用户端与管理端（Vue 3）
+evals/     quality-v2（导购 / 客服 / 投放）
+docs/      设计说明与合同，给想往下翻的人
+```
 
-Java 是价格、库存、订单、支付和退款的**唯一权威**；Python Growth 通过受控 API 与业务事件接入，不直改交易表。用户确认具体交易后才落单；商家首次批准稳定授权范围，后续经营计划在范围内执行，越界重新批准。
+---
 
-- **Java 电商底座**：价格、库存、订单、支付、退款与归因在交易侧落库；幂等与金额以 Java 为准。
-- **Python Growth**：两个领域 Agent——Shopping 是有界 ReAct，Merchant 是观察→计划→授权内执行→等待新观测后再规划。没有总 Supervisor，也没有意图分类器把控制权交给模型。
-- **确定性服务**：推荐、RAG 检索、投放保护、归因和确认执行不额外包装成 Agent。只读 MCP 复用同一套工具与权限，不暴露写工具。
-- **两端界面**：用户端是商城首页、浏览、导购/客服、商品与订单；管理端是**经营**（活动授权、经营助手、知识库、人工客服、评价分析、增长报告）与 **AI 资产**（模型配置、提示词与技能、知识索引、运行浏览器、工具调试台）两组，外加商品/订单/营销等运营页。管理端只提供桌面形态（手机端管理台已下线）；两端共用同一套设计 token（`web/shared/design-tokens.scss`）。刷新不重放写操作。终答与经营 run 附带只读决策快照。
+## 快速开始
 
-![架构总览](figures/smartlect-final-architecture.png)
-
-支付与广告费用均为本地模拟，没有接入真实资金或对外投放。
-
-## 本地运行
-
-需要 JDK 17+、Maven、Python 3.11+、Node/npm 和 Docker Compose。默认 loopback 端口避让其他项目：用户端 `18180`，管理端 `18181/admin/`，网关以 `./scripts/dev.sh status` 为准。
+本地看演示：
 
 ```bash
 ./scripts/dev.sh bootstrap
 ./scripts/dev.sh build
 ./scripts/dev.sh infra-up
 ./scripts/dev.sh up
-./scripts/dev.sh status
-./scripts/dev.sh apps-check
 ```
 
-`bootstrap` 保留已有配置，只在 Git 忽略的 `run/runtime.env` 生成本项目业务凭证。模型白名单放在权限 600、同样被忽略的 `run/model.env`；默认 `qwen3.7-plus`。启用 live 会产生供应商费用，字段与模式见 [模型说明](docs/model-provider.md)。缺配置时 live 明确失败；mock、live 和规则回退分别标记。
+用户端 [http://127.0.0.1:18180/](http://127.0.0.1:18180/) ，管理端 [http://127.0.0.1:18181/admin/](http://127.0.0.1:18181/admin/) 。需要一套示例货架时再执行 `./scripts/dev.sh seed-store`。
+
+已经部署的副本：[用户端](http://39.107.102.244/) · [管理端](http://39.107.102.244/admin/)。试用账密见上文，超管密码不在此公开。
+
+边界、评测和运行细节在 [docs/](docs/)： [Agent 设计](docs/agent-design.md) · [quality-v2](docs/quality-eval-v2.md) · [本地运行](docs/runtime.md)。
+
+## 质量
+
+仓库带 [CI](https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml)。公开评测是 [quality-v2](docs/quality-eval-v2.md) 三条线（导购 / 客服 / 投放），每条自己的指标和分母，不合成总分。
 
 ```bash
-./scripts/dev.sh seed-store
-./scripts/dev.sh demo --seed 42
+./scripts/dev.sh check
 ```
 
-`seed-store` 准备默认门店（知识、广场券与导购剧本）。`demo` 跑交易回归：合成用户/商品/SKU 初始化后覆盖下单、幂等重放、支付、退款、售罄与取消对账。
+---
 
-```bash
-./scripts/dev.sh reset-demo --run-id <owned-demo-run>
-./scripts/dev.sh check          # 独立性核验 + 自测 + Java/growth/前端全量测试
-./scripts/dev.sh down           # 只停自有资源，不动数据卷与其他项目
-```
+## 许可
 
-## 质量评测
-
-唯一评测体系是 [quality-v2](docs/quality-eval-v2.md)：导购选品、政策客服、广告投放三条线。公开指标为导购 `Pass@1` 与 `Precision@4/ceiling`、客服 `Recall@8` 与 judge 判分的 `Faithfulness`、广告 `Attribution_integrity`，每指标印分母与 Wilson 95% CI，不合成总分。`--trials N` 支持逐题多次试验与 `pass^k` 方差；LLM judge 与主模型不同源，并经已知判定校准集与双 judge 交叉验证。开发集为导购 65 例、客服 63 例、广告 12 剧本；合同测试 68 项。禁句/禁文档走确定性规则门，不交给 judge。密封 holdout 采用独立出题、独立审核、终测即烧毁制，流程与记录见 `evals/`。
-
-## 合同与设计
-
-[架构与 Agent 边界](docs/agent-design.md) · [交易/身份/归因](docs/contracts.md) · [投放](docs/ads-contract.md) · [经营](docs/merchant-contract.md) · [人工客服](docs/support-contract.md) · [安全重置](docs/reset-contract.md)
-
-[运行与资源归属](docs/runtime.md) · [控制面 ADR](docs/adr/0003-agent-control-plane.md) · [决策编译 ADR](docs/adr/0002-decision-compile.md)
-
-## 目录结构
-
-```
-backend/   9 个 Spring Cloud 服务（gateway/user/product/stock/cart/order/pay/coupon/admin）
-growth/    Python 增长层（导购/客服/经营 Agent、推荐、广告、账本消费、知识库）
-web/       用户端与管理端（Vue 3 + Vite）
-evals/     quality-v2 评测体系与密封 holdout 记录
-docs/      合同、ADR、生产化证据（prod-hardening/）
-deploy/    中间件 compose 与初始化
-scripts/   开发/部署/评测驱动（dev.sh、runtime.py）
-```
+仓库根目录**没有** `LICENSE` 文件。`backend/`、`web/user/`、`web/admin/` 以及 `growth/licenses/` 下的子模块各自为 **MIT**。

@@ -12,7 +12,7 @@ from smartlect.tools import tool_schema, SearchArgs, CreateOrderArgs, Preference
 
 class ShoppingBoundaryTests(unittest.TestCase):
     def test_final_answer_declares_request_kind_instead_of_status(self):
-        self.assertEqual(PROMPT_VERSION, 'shopping-react-v24')
+        self.assertEqual(PROMPT_VERSION, 'shopping-react-v25')
         self.assertEqual(SCHEMA_VERSION, 'shopping-answer-v5')
         advice = load_skill('shopping_advice')
         self.assertEqual(advice['version'], '1.13.0')
@@ -50,17 +50,32 @@ class ShoppingBoundaryTests(unittest.TestCase):
         with self.assertRaises(BudgetExceeded):
             bounded_messages([messages[0], *current], [], question)
 
+    def test_bounded_messages_finds_user_turn_when_focus_annotation_is_appended(self):
+        question = '成分有哪些'
+        annotated = question + '\n\n[本轮焦点=PRODUCT：商品编号 9]'
+        selected, _ = bounded_messages(
+            [{'role': 'system', 'content': 'rules'}, {'role': 'user', 'content': annotated}],
+            [], question)
+        self.assertEqual(selected[-1]['content'], annotated)
+
     def test_product_projection_does_not_present_totals_or_unknown_sku_stock_as_sellable(self):
         data = {'productId': 'p', 'productName': 'product', 'description': 'real description',
                 'categoryId': 'category', 'status': 1, 'minPrice': '10.00', 'maxPrice': '11.00',
-                'totalStock': 10, 'skus': [{'stock': None}], 'productDesc': 'duplicate description'}
+                'brand': 'Smartlect', 'propertyValues': [{'propertyName': '容量', 'propertyValue': '500ml'}],
+                'totalStock': 10,
+                'skus': [{'productId': 'p', 'propertyValueIdHash': 'h1', 'propertyValueIds': 'v1', 'stock': None}],
+                'productDesc': 'duplicate description'}
         observed = product_observation(data)
         self.assertEqual(observed['description'], data['description'])
         self.assertEqual(observed['minPrice'], '10.00')
+        self.assertEqual(observed['brand'], 'Smartlect')
+        self.assertEqual(observed['propertyValues'], [{'propertyName': '容量', 'propertyValue': '500ml'}])
+        self.assertEqual(observed['sku_identities'][0]['sku_key'], 'p:h1')
+        self.assertNotIn('stock', observed['sku_identities'][0])
         self.assertNotIn('totalStock', observed)
         self.assertNotIn('skus', observed)
         self.assertIn('not_observed', observed['sku_stock'])
-        self.assertEqual(data['skus'], [{'stock': None}])
+        self.assertEqual(data['skus'][0]['stock'], None)
 
     def test_sku_observation_keeps_comparison_contract_without_inventing_cards(self):
         data = {'items': [{'sku_key': 'p:h', 'productId': 'p', 'propertyValueIds': 'v',

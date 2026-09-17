@@ -70,7 +70,9 @@ class StrategyStore(SessionStore):
     def assign(self, actor, *, subject_key=None, experiment_id=EXPERIMENT_ID):
         kind, identifier, scope = _actor(actor)
         if 'shopping:read' not in getattr(actor, 'permissions', ()) and not (
-                kind == 'merchant' and 'admin:legacy' in getattr(actor, 'permissions', ())):
+                kind == 'merchant' and (
+                    'admin:legacy' in getattr(actor, 'permissions', ())
+                    or 'admin:trial' in getattr(actor, 'permissions', ()))):
             raise StateError('permission_denied', 403)
         subject_key = _text(subject_key if subject_key is not None else kind + ':' + identifier, 'subject_key', 128)
         experiment_id = _text(experiment_id, 'experiment_id', 128)

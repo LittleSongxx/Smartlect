@@ -99,7 +99,7 @@ class MerchantStore(AdsStore):
             )
 
     def scopes(self, actor):
-        _merchant(actor)
+        _merchant(actor, write=False)
         with self._transaction() as cursor:
             cursor.execute(
                 "SELECT execution_scope_id,label FROM merchant_scope_access WHERE actor_id=%s ORDER BY execution_scope_id",
@@ -157,7 +157,7 @@ class MerchantStore(AdsStore):
 
     def observation(self, actor):
         """Called after current Java stock reads have committed their protection."""
-        _merchant(actor)
+        _merchant(actor, write=False)
         with self._transaction() as cursor:
             self._lock(cursor, actor)
             cursor.execute(
@@ -499,7 +499,7 @@ class MerchantStore(AdsStore):
             return result
 
     def merchant_snapshot(self, actor):
-        _merchant(actor)
+        _merchant(actor, write=False)
         ads = self.snapshot(actor)
         with self._transaction() as cursor:
             result = {}

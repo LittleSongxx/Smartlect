@@ -110,7 +110,7 @@
         <el-radio-group v-model="payMethod" class="pay-methods">
           <div class="pay-option" :class="{ active: payMethod === PAY_METHOD_ALIPAY_WAP }">
             <el-radio :value="PAY_METHOD_ALIPAY_WAP">支付宝</el-radio>
-            <p class="pay-desc">提交后将跳转支付宝完成手机支付</p>
+            <p class="pay-desc">本环境为模拟付款，提交后在支付页确认即可</p>
           </div>
         </el-radio-group>
       </section>

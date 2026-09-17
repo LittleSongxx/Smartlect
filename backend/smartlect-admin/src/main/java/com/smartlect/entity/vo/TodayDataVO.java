@@ -43,8 +43,14 @@ public class TodayDataVO {
     }
 
     public BigDecimal getIncrease() {
+        if (todayValue == null) {
+            todayValue = BigDecimal.ZERO;
+        }
+        if (yesterdayValue == null) {
+            yesterdayValue = BigDecimal.ZERO;
+        }
         if (yesterdayValue.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO;
+            return todayValue.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO : new BigDecimal("100.00");
         }
         increase = todayValue.subtract(yesterdayValue)
                 .divide(yesterdayValue, 2, RoundingMode.HALF_UP)

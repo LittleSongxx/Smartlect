@@ -188,9 +188,15 @@ const nextMonth = () => {
 
 const doSign = async () => {
   if (todaySigned.value) return;
-  await signApi.sign();
-  toast.success('签到成功');
-  await loadSignCalendar();
+  try {
+    await signApi.sign();
+    toast.success('签到成功');
+    await loadSignCalendar();
+  } catch (reason: any) {
+    toast.error(reason?.info || reason?.message || '签到失败，请稍后重试');
+    await loadSignCalendar();
+    return;
+  }
   const days = signData.continuousDays;
   if (days > 0 && days % 7 === 0) {
     ElMessageBox.alert(

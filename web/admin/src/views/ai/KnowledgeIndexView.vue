@@ -40,7 +40,7 @@
           <template #default="{ row }">{{ timestamp(row.created_at) }}</template>
         </el-table-column>
         <template #empty>
-          <el-empty description="还没有索引任务；在知识库页发布文档后这里会出现任务" />
+          <el-empty description="本页只列出保存后的投影/重建任务。已发布店规可直接在下方检索，不一定会留下任务记录。" />
         </template>
       </el-table>
     </div>

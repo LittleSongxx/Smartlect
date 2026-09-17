@@ -1,5 +1,13 @@
 <template>
   <div class="form-style">
+    <div v-if="route.params.productId" class="ai-status-bar" :class="aiStatus">
+      <span class="ai-label">导购可见性</span>
+      <strong>{{ aiStatusText }}</strong>
+      <span v-if="aiDetail" class="ai-detail">{{ aiDetail }}</span>
+      <el-button v-if="aiStatus === 'failed'" size="small" type="primary" :loading="aiBusy" @click="retryProjection">
+        重新投影
+      </el-button>
+    </div>
     <el-tabs v-model="activeName" @tab-click="tabClick">
       <el-tab-pane label="基础信息" name="base">
         <ProductBase :productInfo="productInfo"></ProductBase>
@@ -22,7 +30,8 @@
 import ProductSkuList from './ProductSkuList.vue'
 import ProductSkuProperty from './ProductSkuProperty.vue'
 import ProductBase from './ProductBase.vue'
-import { ref, getCurrentInstance, computed, onMounted } from 'vue'
+import { ref, getCurrentInstance, computed, onMounted, onUnmounted, watch } from 'vue'
+import { aiGet, aiWrite } from '@/api/client'
 const { proxy } = getCurrentInstance()
 import { useRouter, useRoute } from 'vue-router'
 const router = useRouter()
@@ -41,18 +50,98 @@ const tabClick = async (e) => {
   }
 }
 
-const switchToSku = () => {
-  if (!productInfo.value.categoryId) {
-    proxy.Message.warning('请先选择分类')
-    activeName.value = 'base'
-    return
+const CONTENT_KEYS = ['selling_points', 'usage', 'ingredients', 'packaging', 'contraindications', 'after_sale_note']
+
+const emptyProduct = () => ({
+  cover: Array(proxy.productMainImageCount).fill(''),
+  brand: '',
+  selling_points: '',
+  usage: '',
+  ingredients: '',
+  packaging: '',
+  contraindications: '',
+  after_sale_note: '',
+})
+
+const productInfo = ref(emptyProduct())
+const aiStatus = ref('idle')
+const aiDetail = ref('')
+const aiBusy = ref(false)
+let aiTimer
+
+const aiStatusText = computed(() => ({
+  visible: 'AI 已可见',
+  indexing: '索引中',
+  failed: '投影失败',
+  idle: '尚未投影',
+}[aiStatus.value] || '尚未投影'))
+
+const applyContent = (info) => {
+  let parsed = {}
+  try {
+    parsed = info.contentJson ? JSON.parse(info.contentJson) : {}
+  } catch {
+    parsed = {}
   }
-  activeName.value = 'sku'
+  for (const key of CONTENT_KEYS) {
+    info[key] = parsed[key] || ''
+  }
+  if (!info.productDesc && parsed.extra_markdown) {
+    info.productDesc = parsed.extra_markdown
+  }
+  if (info.productDesc) {
+    info.productDesc = String(info.productDesc).replaceAll('/api/file/getResource', '/admin-api/file/getResource')
+  }
+  info.brand = info.brand || ''
+  return info
 }
 
-const productInfo = ref({
-  cover: Array(proxy.productMainImageCount).fill(''),
-})
+const buildContentJson = (info) => {
+  const content = {
+    extra_markdown: String(info.productDesc || '').replaceAll('/admin-api/file/getResource', '/api/file/getResource'),
+  }
+  for (const key of CONTENT_KEYS) {
+    if (info[key]?.trim()) content[key] = info[key].trim()
+  }
+  return JSON.stringify(content)
+}
+
+const loadAiStatus = async () => {
+  const productId = route.params.productId
+  if (!productId) return
+  if (aiTimer) {
+    window.clearTimeout(aiTimer)
+    aiTimer = undefined
+  }
+  try {
+    const data = await aiGet(`/productProjection/${encodeURIComponent(productId)}`)
+    aiStatus.value = data.ai_status || 'idle'
+    const job = data.job || {}
+    const indexJob = data.index_job || {}
+    aiDetail.value = job.message || indexJob.state || ''
+    if (aiStatus.value === 'indexing') {
+      aiTimer = window.setTimeout(loadAiStatus, 4000)
+    }
+  } catch {
+    aiStatus.value = 'idle'
+    aiDetail.value = ''
+  }
+}
+
+const retryProjection = async () => {
+  const productId = route.params.productId
+  if (!productId) return
+  aiBusy.value = true
+  try {
+    await aiWrite(`/productProjection/${encodeURIComponent(productId)}/retry`, {})
+    aiStatus.value = 'indexing'
+    await loadAiStatus()
+  } catch (error) {
+    proxy.Message.error(error.message || '重投影失败')
+  } finally {
+    aiBusy.value = false
+  }
+}
 
 const getProductInfo = async () => {
   if (!route.params.productId) {
@@ -67,10 +156,12 @@ const getProductInfo = async () => {
   if (!result) {
     return
   }
-  productInfo.value = {
+  productInfo.value = applyContent({
+    ...emptyProduct(),
     ...result.data.productInfo,
     cover: (result.data.productInfo.cover || '').split(',').filter(Boolean),
-  }
+  })
+  loadAiStatus()
   productEditStore.productPropertyList = result.data.productPropertyList
   productEditStore.skuData = new Map(
     result.data.skuList.map((sku) => [sku.propertyValueIdHash, sku])
@@ -133,6 +224,12 @@ const submitProduct = async (sensitiveConfirmPwd) => {
   productInfoResultData.cover = productInfoResultData.cover.join(',')
   productInfoResultData.pCategoryId = productInfoResultData.categoryId[0]
   productInfoResultData.categoryId = productInfoResultData.categoryId[1]
+  productInfoResultData.brand = (productInfoResultData.brand || '').trim()
+  productInfoResultData.productDesc = String(productInfoResultData.productDesc || '').replaceAll('/admin-api/file/getResource', '/api/file/getResource')
+  productInfoResultData.contentJson = buildContentJson(productInfoResultData)
+  for (const key of CONTENT_KEYS) {
+    delete productInfoResultData[key]
+  }
 
   const productPropertyListResultData = []
   for (let property of productEditStore.productPropertyList) {
@@ -174,13 +271,22 @@ const submitProduct = async (sensitiveConfirmPwd) => {
     if (!result) {
       return
     }
-    proxy.Message.success('保存成功')
+    proxy.Message.success('保存成功，正在投影给导购')
+    const savedId = result.data || route.params.productId || productInfoResultData.productId
+    if (savedId && !route.params.productId) {
+      await router.replace({ name: 'updateProduct', params: { productId: savedId } })
+    }
+    if (savedId) {
+      aiStatus.value = 'indexing'
+      await loadAiStatus()
+      return
+    }
     router.push(productListPath())
   }
 
   if (route.params.productId && !confirmPwd) {
     proxy.ConfirmSensitive({
-      message: '保存将更新商品价格与库存等信息，是否继续？',
+      message: '保存将更新价格、库存，并投影给导购知识库。是否继续？',
       okfun: doSave,
     })
     return
@@ -190,7 +296,7 @@ const submitProduct = async (sensitiveConfirmPwd) => {
 }
 
 const reset = () => {
-  productInfo.value = { cover: Array(proxy.productMainImageCount).fill('') }
+  productInfo.value = emptyProduct()
   productEditStore.resetSkuState()
 }
 
@@ -198,11 +304,61 @@ onMounted(() => {
   reset()
   getProductInfo()
 })
+
+watch(() => route.params.productId, (id, prev) => {
+  if (id && id !== prev) {
+    getProductInfo()
+  }
+})
+
+onUnmounted(() => {
+  if (aiTimer) window.clearTimeout(aiTimer)
+})
 </script>
 
 <style lang="scss" scoped>
 .form-style {
   position: relative;
+
+  .ai-status-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #e8e4dc;
+    background: #faf8f4;
+    font-size: 13px;
+    color: #5c574e;
+  }
+
+  .ai-label {
+    color: #8a8478;
+  }
+
+  .ai-detail {
+    color: #8a8478;
+  }
+
+  .ai-status-bar.visible {
+    border-color: #c9e6d3;
+    background: #f3faf5;
+    color: #24553a;
+  }
+
+  .ai-status-bar.indexing {
+    border-color: #ead9a8;
+    background: #fff8e8;
+    color: #7a4b00;
+  }
+
+  .ai-status-bar.failed {
+    border-color: #f0c6c2;
+    background: #fff5f4;
+    color: #8a1c14;
+  }
 
   .post-panel {
     position: absolute;

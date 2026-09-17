@@ -99,6 +99,24 @@ class IdentityInternalControllerTest {
     }
 
     @Test
+    void trialVisitorLosesOrderWriteAndGainsAccountTrial() throws Exception {
+        TokenUserInfoDTO session = new TokenUserInfoDTO();
+        session.setUserId("8800000001");
+        session.setEmail("visitor@smartlect.demo");
+        UserInfo user = new UserInfo();
+        user.setUserId("8800000001");
+        user.setEmail("visitor@smartlect.demo");
+        user.setStatus(1);
+        when(sessions.getTokenUserInfo("user-session")).thenReturn(session);
+        when(users.getUserInfoByUserId("8800000001")).thenReturn(user);
+
+        mvc.perform(request("{\"realm\":\"user\"}").cookie(new Cookie("token", "user-session")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.permissions").value(contains("shopping:read", "orders:read", "account:trial")));
+        verifyNoInteractions(administrators);
+    }
+
+    @Test
     void expiredMissingAndDisabledUsersCannotBeDowngradedIntoValidActors() throws Exception {
         mvc.perform(request("{\"realm\":\"user\"}").cookie(new Cookie("token", "expired")))
                 .andExpect(status().isUnauthorized());

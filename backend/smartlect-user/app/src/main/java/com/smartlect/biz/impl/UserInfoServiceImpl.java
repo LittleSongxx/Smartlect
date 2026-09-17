@@ -5,6 +5,8 @@ import java.util.List;
 import com.smartlect.component.RedisComponent;
 import com.smartlect.api.enums.UserSexEnum;
 import com.smartlect.api.enums.UserStatusEnum;
+import com.smartlect.constants.TrialIdentities;
+import com.smartlect.entity.config.AppConfig;
 import com.smartlect.exception.BusinessException;
 import jakarta.annotation.Resource;
 
@@ -33,6 +35,9 @@ public class UserInfoServiceImpl implements UserInfoService {
 
 	@Resource
 	private PasswordService passwordService;
+
+	@Resource
+	private AppConfig appConfig;
 
 	@Override
 	public List<UserInfo> findListByParam(UserInfoQuery param) {
@@ -154,6 +159,12 @@ public class UserInfoServiceImpl implements UserInfoService {
 	}
 
 	private void createEnabledUser(String email, String nickName, String registerPassword) {
+		if (appConfig.isTrialLockPublicRegister()) {
+			throw new BusinessException(TrialIdentities.REGISTER_LOCKED);
+		}
+		if (TrialIdentities.isTrialEmail(email) || TrialIdentities.USER_NICK.equals(nickName)) {
+			throw new BusinessException(TrialIdentities.REGISTER_LOCKED);
+		}
 		UserInfo userInfo = this.getUserInfoByEmail(email);
 		if (userInfo != null) {
 			throw new BusinessException("该用户已经存在");
@@ -171,6 +182,10 @@ public class UserInfoServiceImpl implements UserInfoService {
 
 	@Override
     public void updateUserInfo(String userId, String avatar, @NotEmpty String nickName, @NotNull Integer sex) {
+		UserInfo current = this.getUserInfoByUserId(userId);
+		if (current != null && TrialIdentities.isTrialUser(current.getUserId(), current.getEmail())) {
+			throw new BusinessException(TrialIdentities.USER_DENIED);
+		}
 		UserInfo userInfo = new UserInfo();
 		userInfo.setAvatar(avatar);
 		userInfo.setNickName(nickName);
@@ -183,6 +198,9 @@ public class UserInfoServiceImpl implements UserInfoService {
 	@Override
 	public void updatePassword(String userId, String oldPassword, String password) {
 		UserInfo userInfo = this.getUserInfoByUserId(userId);
+		if (userInfo != null && TrialIdentities.isTrialUser(userInfo.getUserId(), userInfo.getEmail())) {
+			throw new BusinessException(TrialIdentities.USER_DENIED);
+		}
 		if (!passwordService.matches(oldPassword, userInfo.getPassword())) {
 			throw new BusinessException("旧密码输入错误");
 		}
@@ -198,6 +216,9 @@ public class UserInfoServiceImpl implements UserInfoService {
 	// 找回密码
 	@Override
 	public void forgetPassword(String email, String newPassword, String checkCode) {
+		if (TrialIdentities.isTrialEmail(email)) {
+			throw new BusinessException(TrialIdentities.USER_DENIED);
+		}
 		// 判断当前用户是否已注册
 		if (this.getUserInfoByEmail(email) == null) {
 			throw new BusinessException("该用户未注册");

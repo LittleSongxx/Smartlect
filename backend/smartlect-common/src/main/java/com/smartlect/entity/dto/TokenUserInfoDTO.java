@@ -8,6 +8,8 @@ public class TokenUserInfoDTO {
     private String avatar;
     private String token;
 
+    private Boolean trial;
+
     public String getEmail() {
         return email;
     }
@@ -46,5 +48,13 @@ public class TokenUserInfoDTO {
 
     public void setToken(String token) {
         this.token = token;
+    }
+
+    public Boolean getTrial() {
+        return trial;
+    }
+
+    public void setTrial(Boolean trial) {
+        this.trial = trial;
     }
 }

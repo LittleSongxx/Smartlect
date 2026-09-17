@@ -8,6 +8,8 @@ public class UserVO {
     private String nickName;
     private Integer sex;
 
+    private Boolean trial;
+
     public String getUserId() {
         return userId;
     }
@@ -46,5 +48,13 @@ public class UserVO {
 
     public void setSex(Integer sex) {
         this.sex = sex;
+    }
+
+    public Boolean getTrial() {
+        return trial;
+    }
+
+    public void setTrial(Boolean trial) {
+        this.trial = trial;
     }
 }

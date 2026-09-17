@@ -176,6 +176,7 @@ import { cartApi, productApi } from '@/api/modules';
 import { filterStorefrontProducts } from '@/utils/product';
 import { useCartStore } from '@/stores/cart';
 import { useAuthStore } from '@/stores/auth';
+import { TRIAL_USER_DENIED } from '@/constants/trial';
 import { usePageRefresh } from '@/composables/pullRefresh';
 
 const router = useRouter();
@@ -401,6 +402,11 @@ const changeQty = async (
     return;
   }
 
+  if (authStore.isTrial) {
+    toast.warning(TRIAL_USER_DENIED);
+    row.buyCount = prev;
+    return;
+  }
   const delta = count - prev;
   if (delta === 0) return;
 
@@ -447,6 +453,10 @@ const del = async (cartId: unknown) => {
 };
 
 const checkout = () => {
+  if (authStore.isTrial) {
+    toast.warning(TRIAL_USER_DENIED);
+    return;
+  }
   const rows = selectableItems.value.filter((row) => selectedIds.value.has(row.cartId));
   if (!rows.length) {
     toast.warning('请先勾选要结算的商品');

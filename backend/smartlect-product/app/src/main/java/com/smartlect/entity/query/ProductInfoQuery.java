@@ -76,12 +76,22 @@ public class ProductInfoQuery extends BaseParam {
 
 	private List<String> excludeProductIdList;
 
+	private Boolean excludeIsolatedCatalog;
+
 	public List<String> getExcludeProductIdList() {
 		return excludeProductIdList;
 	}
 
 	public void setExcludeProductIdList(List<String> excludeProductIdList) {
 		this.excludeProductIdList = excludeProductIdList;
+	}
+
+	public Boolean getExcludeIsolatedCatalog() {
+		return excludeIsolatedCatalog;
+	}
+
+	public void setExcludeIsolatedCatalog(Boolean excludeIsolatedCatalog) {
+		this.excludeIsolatedCatalog = excludeIsolatedCatalog;
 	}
 
 	public String getCategoryIdOrPCategoryId() {

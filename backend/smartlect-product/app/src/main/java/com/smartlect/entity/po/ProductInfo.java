@@ -46,6 +46,12 @@ public class ProductInfo implements Serializable {
 
 	private Integer commendType;
 
+	/** Optional brand on the fact axis. SKU hash still uses property values only. */
+	private String brand;
+
+	/** Structured detail JSON. Old productDesc remains the extra_markdown fallback. */
+	private String contentJson;
+
 	public void setProductId(String productId){
 		this.productId = productId;
 	}
@@ -140,6 +146,22 @@ public class ProductInfo implements Serializable {
 
 	public Integer getCommendType(){
 		return this.commendType;
+	}
+
+	public void setBrand(String brand){
+		this.brand = brand;
+	}
+
+	public String getBrand(){
+		return this.brand;
+	}
+
+	public void setContentJson(String contentJson){
+		this.contentJson = contentJson;
+	}
+
+	public String getContentJson(){
+		return this.contentJson;
 	}
 
 	@Override

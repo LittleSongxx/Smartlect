@@ -29,6 +29,8 @@
 		<result column="total_sale" property="totalSale"  />
 		<!--0:未推荐 1:已经推荐-->
 		<result column="commend_type" property="commendType"  />
+		<result column="brand" property="brand"  />
+		<result column="content_json" property="contentJson"  />
 	</resultMap>
 
 
@@ -36,7 +38,7 @@
 	<sql id="base_column_list">
 		 p.product_id,p.product_name,p.cover,p.create_time,
 		 p.category_id,p.p_category_id,p.status,p.min_price,p.max_price,
-		 p.total_sale,p.commend_type,p.product_desc
+		 p.total_sale,p.commend_type,p.product_desc,p.brand,p.content_json
 	</sql>
 
 	<sql id="base_condition_filed">
@@ -131,6 +133,10 @@
 				<foreach item="item" collection="query.excludeProductIdList" separator="," open="(" close=")">
 					#{item}
 				</foreach>
+			</if>
+			<if test="query.excludeIsolatedCatalog != null and query.excludeIsolatedCatalog">
+				and p.product_id not like '9100%'
+				and p.product_id not like '9300%'
 			</if>
 	</sql>
 
@@ -251,6 +257,12 @@
 			<if test="bean.commendType != null">
 				 commend_type,
 			</if>
+			<if test="bean.brand != null">
+				 brand,
+			</if>
+			<if test="bean.contentJson != null">
+				 content_json,
+			</if>
 		 </trim>
 		 <trim prefix="values (" suffix=")" suffixOverrides="," >
 			<if test="bean.productId!=null">
@@ -288,6 +300,12 @@
 			</if>
 			<if test="bean.commendType!=null">
 				 #{bean.commendType},
+			</if>
+			<if test="bean.brand!=null">
+				 #{bean.brand},
+			</if>
+			<if test="bean.contentJson!=null">
+				 #{bean.contentJson},
 			</if>
 		 </trim>
 	</insert>
@@ -332,6 +350,12 @@
 			<if test="bean.commendType != null">
 				 commend_type,
 			</if>
+			<if test="bean.brand != null">
+				 brand,
+			</if>
+			<if test="bean.contentJson != null">
+				 content_json,
+			</if>
 		 </trim>
 		 <trim prefix="values (" suffix=")" suffixOverrides=",">
 			<if test="bean.productId!=null">
@@ -369,6 +393,12 @@
 			</if>
 			<if test="bean.commendType!=null">
 				 #{bean.commendType},
+			</if>
+			<if test="bean.brand!=null">
+				 #{bean.brand},
+			</if>
+			<if test="bean.contentJson!=null">
+				 #{bean.contentJson},
 			</if>
 		 </trim>
 		 on DUPLICATE key update 
@@ -408,6 +438,12 @@
 			</if>
 			<if test="bean.commendType!=null">
 				 commend_type = VALUES(commend_type),
+			</if>
+			<if test="bean.brand!=null">
+				 brand = VALUES(brand),
+			</if>
+			<if test="bean.contentJson!=null">
+				 content_json = VALUES(content_json),
 			</if>
 		 </trim>
 	</insert>
@@ -533,6 +569,12 @@
 			<if test="bean.commendType != null">
 				 commend_type = #{bean.commendType},
 			</if>
+			<if test="bean.brand != null">
+				 brand = #{bean.brand},
+			</if>
+			<if test="bean.contentJson != null">
+				 content_json = #{bean.contentJson},
+			</if>
  		 </set>
  		 <include refid="query_condition" />
 	</update>
@@ -579,6 +621,12 @@
 			</if>
 			<if test="bean.commendType != null">
 				 commend_type = #{bean.commendType},
+			</if>
+			<if test="bean.brand != null">
+				 brand = #{bean.brand},
+			</if>
+			<if test="bean.contentJson != null">
+				 content_json = #{bean.contentJson},
 			</if>
  		 </set>
  		 where product_id=#{productId}

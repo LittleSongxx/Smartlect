@@ -9,7 +9,7 @@
           </template>
           <template v-else>
             <RouterLink class="topbar-link" to="/login">你好，请登录</RouterLink>
-            <RouterLink class="topbar-link" to="/register">免费注册</RouterLink>
+            <RouterLink v-if="PUBLIC_REGISTER_ENABLED" class="topbar-link" to="/register">免费注册</RouterLink>
           </template>
         </div>
         <nav class="topbar-right" aria-label="顶部快捷入口">
@@ -25,6 +25,7 @@
         </nav>
       </div>
     </div>
+    <p v-if="authStore.isTrial" class="trial-banner">作品集试用：只能逛店和问导购，不能下单、加购或改资料。</p>
 
     <div class="site-search-row">
       <div class="search-row-inner">
@@ -156,6 +157,7 @@ import { productApi, searchApi } from '@/api/modules';
 import { DEFAULT_HOT_SEARCH_WORDS } from '@/constants/searchHotWords';
 import { confirmAction } from '@/utils/confirm';
 import { useAuthStore } from '@/stores/auth';
+import { PUBLIC_REGISTER_ENABLED } from '@/constants/trial';
 import { useCartStore } from '@/stores/cart';
 import { useSearchStore } from '@/stores/search';
 import { flattenCategoryOptions, storefrontCategoryTree } from '@/utils/category';
@@ -297,6 +299,16 @@ onMounted(async () => {
     background: rgba(245, 245, 247, 0.55);
     border-bottom: none;
     font-size: 12px;
+  }
+
+  .trial-banner {
+    margin: 0;
+    padding: 6px 16px;
+    text-align: center;
+    background: #fff7e6;
+    color: #8a5a00;
+    font-size: 12px;
+    border-bottom: 1px solid #f0d9a6;
   }
 
   .topbar-inner {

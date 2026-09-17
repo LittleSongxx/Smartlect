@@ -7,10 +7,12 @@ import { openImagePreview } from '@/composables/imagePreview';
 import { useProductSkuSheet } from '@/composables/useProductSkuSheet';
 import { useAuthStore } from '@/stores/auth';
 import { isProductOnSale, pickDefaultSku } from '@/utils/product';
+import { parseProductContent } from '@/utils/productContent';
 import { normalizeProductDesc } from '@/utils/productDesc';
 import { resolveImageUrl } from '@/utils/image';
 import { saveCheckoutSession } from '@/utils/checkout';
 import { toast } from '@/utils/toast';
+import { TRIAL_USER_DENIED } from '@/constants/trial';
 import { MAX_CART_QTY } from '@/constants/validation';
 import {
   loadRecommendationAttribution,
@@ -46,6 +48,7 @@ export function useProductDetailPage() {
 
   const PREVIEW_COMMENT_COUNT = 2;
   const productId = computed(() => String(route.params.productId || ''));
+  const productContent = computed(() => parseProductContent(productInfo.value));
 
   const thumbList = computed(() => {
     const cover = productInfo.value?.cover;
@@ -266,6 +269,10 @@ export function useProductDetailPage() {
   };
 
   const openAddCartSheet = () => {
+    if (authStore.isTrial) {
+      toast.warning(TRIAL_USER_DENIED);
+      return;
+    }
     if (scopeDenied.value) {
       ElMessage.error('该商品不在当前店铺可售范围内，请换一件再下单。');
       return;
@@ -285,6 +292,10 @@ export function useProductDetailPage() {
       .filter(Boolean) as { propertyName: string; propertyValue: string }[];
 
   const buyNow = () => {
+    if (authStore.isTrial) {
+      toast.warning(TRIAL_USER_DENIED);
+      return;
+    }
     if (scopeDenied.value) {
       ElMessage.error('该商品不在当前店铺可售范围内，请换一件再下单。');
       return;
@@ -344,6 +355,7 @@ export function useProductDetailPage() {
     scopeDenied,
     load,
     productInfo,
+    productContent,
     productPropertyList,
     comments,
     commentTotal,

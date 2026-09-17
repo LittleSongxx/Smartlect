@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 import uuid
 
@@ -35,6 +35,7 @@ from smartlect.state import SessionStore, StateError
 from smartlect.tools import Arguments, invoke
 from smartlect.worker import worker_health
 from smartlect.agents.shopping import run_shopping
+from smartlect.session_focus import compile_focus
 from smartlect.provider import IndexModelAudit, Provider, ProviderError, bounded
 from smartlect.knowledge import KnowledgeStore
 from smartlect.memory import MemoryStore
@@ -64,6 +65,12 @@ class MessageRequest(Arguments):
     text: str = Field(min_length=1, max_length=8000)
     product_id: str | None = Field(default=None, max_length=64)
     sku_key: str | None = Field(default=None, max_length=256)
+    focus_mode: Literal["GLOBAL", "PRODUCT", "GUIDE"] | None = None
+
+
+class ProjectionEnqueueRequest(Arguments):
+    product_id: str = Field(min_length=1, max_length=64)
+    execution_scope_id: str = Field(default="store", max_length=128)
 
 
 class ProposalRequest(Arguments):
@@ -130,9 +137,14 @@ class KnowledgeRequest(Arguments):
     facts: dict[str, str] = Field(default_factory=dict)
 
 
-def health(settings):
-    return {"service": "smartlect-growth", "version": __version__, "status": "ok",
-            "phase": "F3" if settings.events_enabled else "P0", "model_mode": settings.model_mode}
+def health(settings, config=None):
+    config = os.environ if config is None else config
+    model_ready = settings.model_mode != "live" or bool(
+        config.get("SMARTLECT_MODEL_API_KEY") and config.get("SMARTLECT_MODEL_BASE_URL"))
+    status = "ok" if model_ready else "misconfigured"
+    return {"service": "smartlect-growth", "version": __version__, "status": status,
+            "phase": "F3" if settings.events_enabled else "P0", "model_mode": settings.model_mode,
+            "model_ready": model_ready}
 
 
 async def execute_proposal(proposal, actor, commerce, attribution=None):
@@ -206,6 +218,8 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     merchant = merchant or (MerchantService(MerchantStore(store.connect),ads,provider,config) if store else None)
     tasks = {}
     task_owners = {}  # run_id -> (subject_type, actor_id); admission counts live executors, not stale DB rows
+    indexing = None
+    projection = None
     actor_run_limit = bounded(config.get("SMARTLECT_GROWTH_RUNS_PER_ACTOR"), 3, 1, 64)
     global_run_limit = bounded(config.get("SMARTLECT_GROWTH_RUNS_GLOBAL"), 24, 1, 512)
 
@@ -231,12 +245,16 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
             prompt_registry.seed(store.connect)
         if indexing is not None:
             await indexing.resume_stale()
+        if projection is not None:
+            await projection.resume_stale()
         yield
         for task in tasks.values():
             task.cancel()
         await asyncio.gather(*tasks.values(), return_exceptions=True)
         if indexing is not None:
             indexing.shutdown()
+        if projection is not None:
+            projection.shutdown()
 
     app = FastAPI(title="Smartlect AI API", version=__version__, lifespan=lifespan)
 
@@ -319,16 +337,29 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         if user:
             if actor.subject_type != "user":
                 raise HTTPException(401, "login_required")
-            actor.require("orders:write")
         if write:
             identity.require_csrf(request, actor)
             if attribution is not None and actor.execution_scope_id!='store':
                 await db(attribution.assert_scope_writable,actor)
         return actor
 
+    def assert_not_trial_user(actor):
+        if actor.is_trial_user():
+            raise HTTPException(403, "trial_read_only")
+
+    trial_turns = {}
+
+    def assert_trial_chat_budget(actor):
+        if not actor.is_trial_user():
+            return
+        key = (date.today().isoformat(), actor.actor_id)
+        trial_turns[key] = trial_turns.get(key, 0) + 1
+        if trial_turns[key] > 30:
+            raise HTTPException(429, "trial_chat_limit")
+
     @app.get("/health")
     def get_health():
-        result = health(settings)
+        result = health(settings, config)
         if settings.events_enabled:
             result["consumer"] = worker_health()
             if not result["consumer"]["connected"]:
@@ -358,6 +389,18 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         result = await db(attribution.validate_batch, payload.userId, [item.model_dump() for item in payload.items])
         return {'status': 'success', 'code': 200, 'data': result}
 
+    @app.post('/internal/product-projection/enqueue')
+    async def enqueue_product_projection(payload: ProjectionEnqueueRequest, request: Request):
+        expected = config.get('SMARTLECT_INTERNAL_TOKEN', '')
+        if not expected or not hmac.compare_digest(expected.encode(), request.headers.get('x-internal-token', '').encode()):
+            raise HTTPException(401, 'invalid_internal_token')
+        if projection is None:
+            raise HTTPException(503, 'product_projection_unavailable')
+        from smartlect.product_projection import projection_actor
+        actor = projection_actor(payload.execution_scope_id)
+        job = await db(projection.enqueue, actor, payload.product_id)
+        return {'status': 'success', 'code': 200, 'data': job}
+
     @app.get('/admin-api/assistant/attribution')
     async def attribution_report(request: Request, response: Response, payOrderId: str | None = None):
         return await db(attribution.summary, await actor_for(request, response, realm='merchant'), payOrderId)
@@ -381,7 +424,10 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
 
     async def ads_merchant(request, response, *, write=False):
         actor = await actor_for(request, response, realm='merchant', write=write)
-        actor.require('admin:legacy')
+        if write:
+            actor.require('admin:legacy')
+        else:
+            actor.require_any('admin:legacy', 'admin:trial')
         if ads is None:
             raise HTTPException(503, 'ads_not_configured')
         return actor
@@ -398,8 +444,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
 
     @app.post('/admin-api/assistant/scopes/select')
     async def merchant_select_scope(payload: ScopeSelectRequest,request: Request,response: Response):
-        actor=await ads_merchant(request,response)
-        identity.require_csrf(request,actor)
+        actor=await ads_merchant(request,response,write=True)
         selected=await db(merchant.store.select_scope,actor,payload.execution_scope_id)
         return {'actor':selected.model_dump(),'csrf_token':identity.csrf_token(selected)}
 
@@ -501,6 +546,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.post("/api/assistant/conversations")
     async def create_conversation(request: Request, response: Response, payload: Arguments):
         actor = await actor_for(request, response, write=True)
+        assert_trial_chat_budget(actor)
         return await db(store.create_conversation, actor)
 
     @app.post('/api/assistant/traffic/landing')
@@ -561,6 +607,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.post("/api/assistant/conversations/{conversation_id}/messages")
     async def message(conversation_id: str, payload: MessageRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True)
+        assert_trial_chat_budget(actor)
         text = redact_text(payload.text, request.cookies.values())
         run = await db(store.create_run, actor, conversation_id, payload.message_id, text, model_mode=settings.model_mode)
         # create_run checks exact idempotency before rejecting new messages under human control.
@@ -574,18 +621,12 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
                     return await db(store.get_run, actor, run['agent_run_id'])
                 raise
             run = await db(store.get_run, actor, run['agent_run_id'])
-            focus = {}
-            product_id = (payload.product_id or '').strip()
-            sku_key = (payload.sku_key or '').strip()
-            if product_id:
-                focus['focus_product_id'] = product_id
-            if sku_key:
-                focus['focus_sku_key'] = sku_key
-            if focus:
-                context = dict(run.get('context') or {})
-                context.update(focus)
-                await db(store.save_context, lease, context)
-                run = {**run, 'context': context}
+            focus = compile_focus(product_id=payload.product_id, sku_key=payload.sku_key,
+                                  focus_mode=payload.focus_mode)
+            context = dict(run.get('context') or {})
+            context.update(focus)
+            await db(store.save_context, lease, context)
+            run = {**run, 'context': context}
 
             async def execute():
                 try:
@@ -595,10 +636,16 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
+                    log.exception("shopping_run_failed run=%s focus_product_id=%s",
+                                  run.get("agent_run_id"), (run.get("context") or {}).get("focus_product_id"))
                     try:
-                        await db(store.append_event, lease, 'error', {'error_type': type(error).__name__})
+                        await db(store.append_event, lease, 'error', {
+                            'error_type': type(error).__name__,
+                            'error': getattr(error, 'code', None) or str(error)[:240],
+                        })
                         await db(store.finish_run, lease, state='FAILED', result={'error_type': type(error).__name__,
-                                 'error': getattr(error, 'code', 'assistant_failed'), 'model_mode': settings.model_mode})
+                                 'error': getattr(error, 'code', None) or 'assistant_failed',
+                                 'model_mode': settings.model_mode})
                     except StateError:
                         pass  # A handoff/clear already fenced and cancelled this run.
             task = asyncio.create_task(execute())
@@ -654,6 +701,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.post("/api/assistant/conversations/{conversation_id}/proposals")
     async def propose(conversation_id: str, payload: ProposalRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True, user=True)
+        actor.require("orders:write")
         if memory and await db(memory.handoff_state, actor, conversation_id):
             raise StateError('human_control_active', 409)
         run = await db(store.create_run, actor, conversation_id, payload.message_id,
@@ -681,6 +729,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.get('/api/assistant/proposals/{proposal_id}/display')
     async def proposal_display(proposal_id: str, request: Request, response: Response):
         actor = await actor_for(request, response, user=True)
+        actor.require("orders:write")
         current = await db(store.get_proposal, actor, proposal_id)
         params = current['parameters']
         if current['action_type'] == 'refund':
@@ -700,6 +749,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.post("/api/assistant/proposals/{proposal_id}/confirm")
     async def confirm(proposal_id: str, payload: ConfirmRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True, user=True)
+        actor.require("orders:write")
         return await confirm_owned(actor, proposal_id, payload)
 
     async def confirm_owned(actor, proposal_id, payload):
@@ -737,6 +787,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.get('/api/assistant/payments/{pay_id}')
     async def payment_status(pay_id: str, request: Request, response: Response):
         actor = await actor_for(request, response, user=True)
+        actor.require("orders:write")
         result = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor,
                                         data={'actionType': 'PAYMENT', 'params': {'payOrderId': pay_id}})
         return {**result, 'amount_cents': result.get('amountCents')}
@@ -744,6 +795,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.post('/api/assistant/payments/{pay_id}/complete')
     async def complete_payment(pay_id: str, payload: PaymentRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True, user=True)
+        actor.require("orders:write")
         current = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor,
                                          data={'actionType': 'PAYMENT', 'params': {'payOrderId': pay_id}})
         if current.get('amountCents') != payload.expected_amount_cents:
@@ -776,6 +828,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.put('/api/assistant/preferences/{key}')
     async def preference_update(key: str, payload: ValueRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True, user=True)
+        actor.require("orders:write")
         values = payload.value if isinstance(payload.value, list) else [payload.value]
         if any(isinstance(value, str) and redact_text(value, request.cookies.values()) != value for value in values):
             raise HTTPException(422, 'preference_contains_credentials')
@@ -783,15 +836,20 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
 
     @app.delete('/api/assistant/preferences/{key}')
     async def preference_delete(key: str, request: Request, response: Response):
-        return await db(memory.delete_preference, await actor_for(request, response, write=True, user=True), key)
+        actor = await actor_for(request, response, write=True, user=True)
+        actor.require("orders:write")
+        return await db(memory.delete_preference, actor, key)
 
     @app.delete('/api/assistant/memory')
     async def clear_memory(request: Request, response: Response):
-        return await db(memory.clear, await actor_for(request, response, write=True))
+        actor = await actor_for(request, response, write=True)
+        assert_not_trial_user(actor)
+        return await db(memory.clear, actor)
 
     @app.post('/api/assistant/conversations/{conversation_id}/handoff')
     async def handoff(conversation_id: str, request: Request, response: Response, payload: Arguments):
         actor = await actor_for(request, response, write=True)
+        assert_not_trial_user(actor)
         return await db(memory.handoff, actor, conversation_id, 'user_requested')
 
     @app.get('/api/assistant/knowledge/{doc_id}/{version}')
@@ -800,11 +858,15 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
 
     @app.get('/admin-api/assistant/knowledge')
     async def documents(request: Request, response: Response):
-        return await db(knowledge.list_documents, await actor_for(request, response, realm='merchant'))
+        actor = await actor_for(request, response, realm='merchant')
+        actor.require_any('admin:legacy', 'admin:trial')
+        return await db(knowledge.list_documents, actor)
 
     @app.get('/admin-api/assistant/knowledge/{doc_id}/{version}')
     async def knowledge_document(doc_id: str, version: int, request: Request, response: Response):
-        return await db(knowledge.get_document, await actor_for(request, response, realm='merchant'), doc_id, version)
+        actor = await actor_for(request, response, realm='merchant')
+        actor.require_any('admin:legacy', 'admin:trial')
+        return await db(knowledge.get_document, actor, doc_id, version)
 
     @app.get('/admin-api/assistant/support')
     async def tickets(request: Request, response: Response):
@@ -823,6 +885,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.post('/admin-api/assistant/knowledge')
     async def draft(payload: KnowledgeRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True, realm='merchant')
+        actor.require('admin:legacy')
         if redact_text(payload.body, request.cookies.values()) != payload.body:
             raise HTTPException(422, 'document_contains_credentials')
         return await db(knowledge.create_draft, actor, payload.model_dump(exclude_none=True))
@@ -844,6 +907,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     @app.post('/admin-api/assistant/knowledge/{doc_id}/{version}/publish')
     async def publish(doc_id: str, version: int, request: Request, response: Response, payload: Arguments):
         actor = await actor_for(request, response, write=True, realm='merchant')
+        actor.require('admin:legacy')
         document = await db(knowledge.get_document, actor, doc_id, version)
         if document['status'] == 'PUBLISHED':
             return await db(knowledge.publish, actor, doc_id, version)
@@ -859,7 +923,9 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
 
     @app.post('/admin-api/assistant/knowledge/{doc_id}/{version}/withdraw')
     async def withdraw(doc_id: str, version: int, request: Request, response: Response, payload: Arguments):
-        return await db(knowledge.withdraw, await actor_for(request, response, write=True, realm='merchant'), doc_id, version)
+        actor = await actor_for(request, response, write=True, realm='merchant')
+        actor.require('admin:legacy')
+        return await db(knowledge.withdraw, actor, doc_id, version)
 
     @app.get("/api/assistant/runs/{run_id}")
     async def run_status(run_id: str, request: Request, response: Response):
@@ -892,16 +958,20 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
             await asyncio.sleep(0.5)
 
     indexing = None
+    projection = None
     if store is not None:
         # Admin ops surface (runs browser, tool debug, index ops) lives in its own package;
         # app.py stays the composition root and only wires dependencies here.
         from smartlect import adminapi
         from smartlect.indexing import IndexingService
+        from smartlect.product_projection import ProductProjectionService
         from smartlect.shopping_retrieve import ShoppingRetrieve
         indexing = IndexingService(store.connect, knowledge, provider, settings=settings, config=config)
+        projection = ProductProjectionService(store.connect, knowledge, commerce, indexing=indexing)
         adminapi.register(app, actor_for=actor_for, store=store, commerce=commerce, knowledge=knowledge,
                           attribution=attribution, provider=provider, config=config, settings=settings,
-                          shopping_retrieve=ShoppingRetrieve(commerce), indexing=indexing, ads=ads)
+                          shopping_retrieve=ShoppingRetrieve(commerce), indexing=indexing, ads=ads,
+                          projection=projection)
 
     return app
 

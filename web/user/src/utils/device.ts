@@ -52,5 +52,5 @@ export const detectDevicePlatform = (): DevicePlatform => {
   if (typeof window !== 'undefined' && window.innerWidth > MOBILE_MAX_WIDTH) {
     return 'desktop';
   }
-  return 'desktop';
+  return 'mobile';
 };

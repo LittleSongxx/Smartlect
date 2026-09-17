@@ -90,7 +90,7 @@ public class StatisticsInfoServiceImpl implements StatisticsInfoService {
 
 		List<String> last7Days = new ArrayList<>();
 		java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd");
-		for (int i = 7; i >= 1; i--) {
+		for (int i = 6; i >= 0; i--) {
 			last7Days.add(java.time.LocalDate.now().minusDays(i).format(fmt));
 		}
 
@@ -105,13 +105,28 @@ public class StatisticsInfoServiceImpl implements StatisticsInfoService {
 		List<BigDecimal> refundAmount = new ArrayList<>();
 		List<BigDecimal> refundCount = new ArrayList<>();
 		List<String> dateList = new ArrayList<>();
+		String today = java.time.LocalDate.now().format(fmt);
+		String nowEnd = DateUtil.getTimeOnParttern(0, DateTimePatternEnum.YYYY_MM_DD_HH_MM_SS.getPattern());
+		OrderRangeStatsVO liveToday = orderFeignSupport.aggregateRange(today + " 00:00:00", nowEnd);
+		if (liveToday == null) {
+			liveToday = new OrderRangeStatsVO();
+		}
 		for (String day : last7Days) {
 			dateList.add(day);
 			java.util.Map<Integer, BigDecimal> typeMap = map.get(day);
-			orderAmount.add(typeMap != null ? typeMap.getOrDefault(StatisticsDataTypeEnum.SALE_AMOUNT.getType(), BigDecimal.ZERO) : BigDecimal.ZERO);
-			orderCount.add(typeMap != null ? typeMap.getOrDefault(StatisticsDataTypeEnum.SALE_COUNT.getType(), BigDecimal.ZERO) : BigDecimal.ZERO);
-			refundAmount.add(typeMap != null ? typeMap.getOrDefault(StatisticsDataTypeEnum.REFUND_AMOUNT.getType(), BigDecimal.ZERO) : BigDecimal.ZERO);
-			refundCount.add(typeMap != null ? typeMap.getOrDefault(StatisticsDataTypeEnum.REFUND_COUNT.getType(), BigDecimal.ZERO) : BigDecimal.ZERO);
+			BigDecimal amount = typeMap != null ? typeMap.getOrDefault(StatisticsDataTypeEnum.SALE_AMOUNT.getType(), BigDecimal.ZERO) : BigDecimal.ZERO;
+			BigDecimal count = typeMap != null ? typeMap.getOrDefault(StatisticsDataTypeEnum.SALE_COUNT.getType(), BigDecimal.ZERO) : BigDecimal.ZERO;
+			BigDecimal refund = typeMap != null ? typeMap.getOrDefault(StatisticsDataTypeEnum.REFUND_AMOUNT.getType(), BigDecimal.ZERO) : BigDecimal.ZERO;
+			BigDecimal refunds = typeMap != null ? typeMap.getOrDefault(StatisticsDataTypeEnum.REFUND_COUNT.getType(), BigDecimal.ZERO) : BigDecimal.ZERO;
+			if (today.equals(day)) {
+				amount = nz(liveToday.getSaleAmount());
+				count = nz(liveToday.getSaleOrderCount());
+				refund = nz(liveToday.getRefundAmount());
+			}
+			orderAmount.add(amount);
+			orderCount.add(count);
+			refundAmount.add(refund);
+			refundCount.add(refunds);
 		}
 
 		StatisticsDataVO orderAmountVO = new StatisticsDataVO();

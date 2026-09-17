@@ -12,6 +12,21 @@ from smartlect.tools import CreateOrderArgs, RefundArgs, ToolReceipt, invoke, sc
 
 
 class AuthToolTests(unittest.IsolatedAsyncioTestCase):
+    def test_trial_identities_can_read_but_cannot_take_write_permissions(self):
+        trial = ActorContext(subject_type='user', actor_id='8800000001', session_id='s',
+                             permissions=('shopping:read', 'orders:read', 'account:trial'))
+        self.assertTrue(trial.is_trial_user())
+        with self.assertRaises(HTTPException) as denied:
+            trial.require('orders:write')
+        self.assertEqual(denied.exception.status_code, 403)
+        trial.require_any('shopping:read', 'orders:write')
+        gallery = ActorContext(subject_type='merchant', actor_id='2', session_id='s',
+                               permissions=('admin:trial',))
+        self.assertTrue(gallery.is_trial_merchant())
+        gallery.require_any('admin:legacy', 'admin:trial')
+        with self.assertRaises(HTTPException):
+            gallery.require('admin:legacy')
+
     def test_merchant_csrf_cannot_be_reused_after_scope_selection(self):
         bridge = IdentityBridge({'SMARTLECT_USER_PORT':'18105','SMARTLECT_INTERNAL_TOKEN':'synthetic',
             'SMARTLECT_VISITOR_SECRET':'s'*48,'SMARTLECT_ALLOWED_ORIGINS':'http://smartlect.test'})

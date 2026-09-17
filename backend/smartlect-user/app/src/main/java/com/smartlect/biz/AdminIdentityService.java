@@ -2,6 +2,7 @@ package com.smartlect.biz;
 
 import com.smartlect.component.RedisComponent;
 import com.smartlect.constants.AdminPermissions;
+import com.smartlect.constants.TrialIdentities;
 import com.smartlect.entity.config.AppConfig;
 import com.smartlect.entity.dto.AdminPrincipalDTO;
 import com.smartlect.exception.BusinessException;
@@ -50,6 +51,7 @@ public class AdminIdentityService {
 
     @PostConstruct
     public void migrateConfiguredAdministrator() {
+        migrateTrialGallery();
         String account = appConfig.getAdminAccount();
         if (StringTools.isEmpty(account)) {
             return;
@@ -79,6 +81,43 @@ public class AdminIdentityService {
                     admin_id = admin_account_role.admin_id
                 """,
                 adminId, AdminPermissions.SUPER_ADMIN_ROLE);
+    }
+
+    public void migrateTrialGallery() {
+        if (!appConfig.isTrialEnabled() || StringTools.isEmpty(appConfig.getTrialPasswordHash())) {
+            return;
+        }
+        Integer roleCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM admin_role WHERE role_code = ?",
+                Integer.class, AdminPermissions.TRIAL_OPERATOR_ROLE);
+        if (roleCount == null || roleCount == 0) {
+            return;
+        }
+        String account = TrialIdentities.ADMIN_ACCOUNT;
+        jdbcTemplate.update(
+                """
+                INSERT INTO admin_account
+                    (account, password_hash, display_name, status, session_version,
+                     migrated_from_config, created_at, updated_at)
+                VALUES (?, ?, ?, 1, 1, 1, NOW(3), NOW(3)) AS incoming
+                ON DUPLICATE KEY UPDATE
+                    password_hash = incoming.password_hash,
+                    display_name = incoming.display_name,
+                    status = 1,
+                    migrated_from_config = 1
+                """,
+                account, appConfig.getTrialPasswordHash(), TrialIdentities.ADMIN_DISPLAY_NAME);
+        Long adminId = jdbcTemplate.queryForObject(
+                "SELECT admin_id FROM admin_account WHERE account = ?", Long.class, account);
+        jdbcTemplate.update("DELETE FROM admin_account_role WHERE admin_id = ?", adminId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO admin_account_role (admin_id, role_id)
+                SELECT ?, role_id FROM admin_role WHERE role_code = ?
+                ON DUPLICATE KEY UPDATE
+                    admin_id = admin_account_role.admin_id
+                """,
+                adminId, AdminPermissions.TRIAL_OPERATOR_ROLE);
     }
 
     public AdminPrincipalDTO authenticate(String account, String rawPassword) {
@@ -177,10 +216,15 @@ public class AdminIdentityService {
             String displayName,
             Set<String> roleCodes) {
         String normalizedAccount = requireAccount(account);
+        if (TrialIdentities.isTrialAdminAccount(normalizedAccount)
+                || TrialIdentities.sameAccount(normalizedAccount, appConfig.getAdminAccount())) {
+            throw new BusinessException("不能通过接口创建展厅或超管账号");
+        }
         if (rawPassword == null || rawPassword.length() < 10 || rawPassword.length() > 100) {
             throw new BusinessException("管理员密码长度必须为10到100位");
         }
         Set<String> normalizedRoles = validateRoles(roleCodes);
+        rejectTrialRoleAssignment(normalizedRoles);
         KeyHolder keyHolder = new GeneratedKeyHolder();
         try {
             jdbcTemplate.update(connection -> {
@@ -214,6 +258,10 @@ public class AdminIdentityService {
     public AdminPrincipalDTO updateRoles(long actorAdminId, long targetAdminId, Set<String> roleCodes) {
         Set<String> normalizedRoles = validateRoles(roleCodes);
         ensureAdministratorExists(targetAdminId);
+        if (isTrialGalleryAdministrator(targetAdminId)) {
+            throw new BusinessException("不能调整作品集展厅账号的角色");
+        }
+        rejectTrialRoleAssignment(normalizedRoles);
         if (actorAdminId == targetAdminId
                 && !normalizedRoles.contains(AdminPermissions.SUPER_ADMIN_ROLE)
                 && countActiveSuperAdministrators() <= 1) {
@@ -268,6 +316,26 @@ public class AdminIdentityService {
                     SELECT ?, role_id FROM admin_role WHERE role_code = ?
                     """,
                     adminId, role);
+        }
+    }
+
+    private void rejectTrialRoleAssignment(Set<String> roles) {
+        if (roles.contains(AdminPermissions.TRIAL_OPERATOR_ROLE)) {
+            throw new BusinessException("展厅角色只能由系统种子创建");
+        }
+        if (roles.contains(AdminPermissions.TRIAL_OPERATOR_ROLE)
+                && roles.contains(AdminPermissions.SUPER_ADMIN_ROLE)) {
+            throw new BusinessException("展厅角色不能与超级管理员同时存在");
+        }
+    }
+
+    private boolean isTrialGalleryAdministrator(long adminId) {
+        try {
+            String account = jdbcTemplate.queryForObject(
+                    "SELECT account FROM admin_account WHERE admin_id = ?", String.class, adminId);
+            return TrialIdentities.isTrialAdminAccount(account);
+        } catch (EmptyResultDataAccessException e) {
+            return false;
         }
     }
 

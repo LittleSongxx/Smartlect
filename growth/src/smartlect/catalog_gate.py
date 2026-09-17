@@ -54,6 +54,14 @@ def constraints(request, preferences=()):
     return result
 
 
+ISOLATED_PRODUCT_PREFIXES = ('9100', '9300')
+
+
+def is_isolated_product_id(product_id):
+    text = '' if product_id is None else str(product_id)
+    return text.startswith(ISOLATED_PRODUCT_PREFIXES)
+
+
 def scope_filter(product_scope):
     if not isinstance(product_scope, dict) or set(product_scope) != {'include', 'exclude'}:
         raise StateError('product_scope_required', 403)
@@ -69,7 +77,11 @@ def scope_filter(product_scope):
 
 def in_scope(product_id, product_scope):
     included, excluded = product_scope
-    return product_id not in excluded and (included is None or product_id in included)
+    if product_id in excluded:
+        return False
+    if included is None:
+        return not is_isolated_product_id(product_id)
+    return product_id in included
 
 
 def eligible_skus(snapshot, stocks, request, *, product_scope, allowed_sku_keys=None):

@@ -22,7 +22,7 @@
         <div class="form-wrap">
           <header class="form-header">
             <h2>管理员登录</h2>
-            <p>使用管理员账号进入系统</p>
+            <p>展厅账密已填好，点登录即可浏览</p>
           </header>
 
           <el-form
@@ -60,7 +60,7 @@
               </el-input>
             </el-form-item>
 
-            <el-form-item label="验证码" prop="checkCode">
+            <el-form-item v-if="!usingTrial" label="验证码" prop="checkCode">
               <div class="check-code-row">
                 <el-input
                   size="large"
@@ -93,6 +93,12 @@
               登录
             </el-button>
           </el-form>
+          <div class="trial-box">
+            <p class="trial-title">作品集展厅（只读）</p>
+            <p>账号 <code>{{ TRIAL_GALLERY.account }}</code></p>
+            <p>密码 <code>{{ TRIAL_GALLERY.password }}</code></p>
+            <p class="trial-note">账密已填好，点登录即可。只能看经营数据，不能改库存、发知识、发券或查看用户隐私。</p>
+          </div>
 
           <p class="form-footer">
             <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">闽ICP备2026020850号</a>
@@ -104,9 +110,10 @@
 </template>
 
 <script setup>
-import { ref, getCurrentInstance } from 'vue'
+import { ref, computed, watch, getCurrentInstance } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandMark from '@/components/BrandMark.vue'
+import { TRIAL_GALLERY } from '@/constants/trial'
 
 const { proxy } = getCurrentInstance()
 const router = useRouter()
@@ -121,15 +128,25 @@ const changeCheckCode = async () => {
   }
   checkCodeInfo.value = result.data
 }
-changeCheckCode()
 
-const formData = ref({})
+const formData = ref({
+  account: TRIAL_GALLERY.account,
+  password: TRIAL_GALLERY.password,
+  checkCode: '',
+})
 const formDataRef = ref()
-const rules = {
+const usingTrial = computed(() =>
+  formData.value.account === TRIAL_GALLERY.account &&
+  formData.value.password === TRIAL_GALLERY.password
+)
+const rules = computed(() => ({
   account: [{ required: true, message: '请输入账号' }],
   password: [{ required: true, message: '请输入密码' }],
-  checkCode: [{ required: true, message: '请输入图片验证码' }],
-}
+  ...(usingTrial.value ? {} : { checkCode: [{ required: true, message: '请输入图片验证码' }] }),
+}))
+watch(usingTrial, (trial) => {
+  if (!trial && !checkCodeInfo.value.checkCodeKey) changeCheckCode()
+})
 
 const doSubmit = () => {
   formDataRef.value.validate(async (valid) => {
@@ -137,7 +154,8 @@ const doSubmit = () => {
       return
     }
     const params = { ...formData.value }
-    params.checkCodeKey = checkCodeInfo.value.checkCodeKey
+    params.checkCodeKey = usingTrial.value ? '' : checkCodeInfo.value.checkCodeKey
+    if (usingTrial.value) params.checkCode = ''
     const result = await proxy.Request({
       url: proxy.Api.login,
       params,
@@ -380,6 +398,31 @@ const doSubmit = () => {
   --el-button-hover-border-color: var(--accent-hover);
   --el-button-active-bg-color: var(--accent-hover);
   --el-button-active-border-color: var(--accent-hover);
+}
+
+.trial-box {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px dashed var(--line);
+  background: #f7fafb;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.trial-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.trial-box p {
+  margin: 0 0 4px;
+}
+
+.trial-note {
+  color: #7b8790;
 }
 
 .form-footer {

@@ -1,6 +1,7 @@
 package com.smartlect.controller.admin;
 
 import com.smartlect.annotation.AdminSensitiveConfirm;
+import com.smartlect.catalog.IsolatedCatalog;
 import com.smartlect.entity.dto.ProductSaveDTO;
 import com.smartlect.entity.query.ProductInfoQuery;
 import com.smartlect.entity.vo.PaginationResultVO;
@@ -37,14 +38,14 @@ public class ProductInfoController extends com.smartlect.controller.admin.ABaseC
 	@PostMapping("/addProduct")
 	public ResponseVO addProduct(@RequestBody @Validated(Create.class) ProductSaveDTO productSaveDTO) {
 		productInfoService.saveProduct(productSaveDTO);
-		return getSuccessResponseVO(null);
+		return getSuccessResponseVO(productSaveDTO.getProductInfo().getProductId());
 	}
 
 	@PostMapping("/updateProduct")
 	@AdminSensitiveConfirm
 	public ResponseVO updateProduct(@RequestBody @Validated(Update.class) ProductSaveDTO productSaveDTO) {
 		productInfoService.saveProduct(productSaveDTO);
-		return getSuccessResponseVO(null);
+		return getSuccessResponseVO(productSaveDTO.getProductInfo().getProductId());
 	}
 
 	@PostMapping("/loadProduct")
@@ -62,6 +63,7 @@ public class ProductInfoController extends com.smartlect.controller.admin.ABaseC
 		query.setStatus(status);
 		query.setCommendType(commendType);
 		query.setOrderBy(com.smartlect.entity.query.SafeSort.of("create_time desc"));
+		query.setExcludeIsolatedCatalog(!IsolatedCatalog.looksLikeIsolatedSearch(productNameFuzzy));
 		PaginationResultVO resultVO = productInfoService.findListByPage4ListVO(query);
 		return getSuccessResponseVO(resultVO);
 	}

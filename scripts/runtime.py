@@ -56,6 +56,14 @@ def model_env(path=None):
     return values
 
 
+def service_env(service, env):
+    """Growth processes must receive model.env; app_launch used to merge it locally
+    and then throw the copy away, so live mode started with no keys."""
+    if service in {"growth", "growth-worker"}:
+        return {**env, **model_env()}
+    return dict(env)
+
+
 def free_ports(start, offsets=(0,), occupied=None, host="127.0.0.1"):
     occupied = occupied or set()
     for port in range(start, 64000):
@@ -293,6 +301,13 @@ def save_processes(records):
 
 
 def signal_process(record, signum):
+    if not hasattr(os, "pidfd_open"):
+        try:
+            if owned_process(record):
+                os.kill(record["pid"], signum)
+        except ProcessLookupError:
+            pass
+        return
     try:
         pidfd = os.pidfd_open(record["pid"])
     except ProcessLookupError:
@@ -438,7 +453,7 @@ def java_launch_args(service, env):
 
 
 def launch_env_for(service, env):
-    launch_env = {**os.environ, **env}
+    launch_env = {**os.environ, **service_env(service, env)}
     for variable in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "PYTHONPATH"):
         launch_env.pop(variable, None)
     launch_env["SMARTLECT_PROJECT_FOLDER"] = str(ROOT / "run/uploads") + "/"
@@ -528,7 +543,6 @@ def app_launch(service, env):
     启动计划"变成可独立验证的一步，才能在下线重启前发现。
     """
     if service in {"growth", "growth-worker"}:
-        env = {**env, **model_env()}
         executable = ROOT / "growth/.venv/bin/python"
         command = [str(executable), "-I", "-m", "smartlect.worker" if service == "growth-worker" else "smartlect.app"]
         artifact = Path(run(str(executable), "-I", "-c",
@@ -563,7 +577,7 @@ def check_apps(env):
 
 def start_app(service, env, records):
     executable, command, source_sha, stamp, artifact = app_launch(service, env)
-    env_stamp = hashlib.sha256(json.dumps(env, sort_keys=True).encode()).hexdigest()
+    env_stamp = hashlib.sha256(json.dumps(service_env(service, env), sort_keys=True).encode()).hexdigest()
     if service in records and owned_process(records[service]):
         if (records[service].get("source_sha256") == source_sha and records[service].get("env_stamp") == env_stamp
                 and records[service]["cmdline"] == command):
@@ -695,6 +709,15 @@ def self_test():
         provider.write_text("SMARTLECT_MODEL_API_KEY=literal-$(false)\nSMARTLECT_MODEL_ID=qwen3.7-plus\n")
         provider.chmod(0o600)
         assert model_env(provider)["SMARTLECT_MODEL_API_KEY"] == "literal-$(false)"
+        saved_model_env = model_env
+        try:
+            globals()["model_env"] = lambda path=None: {"SMARTLECT_MODEL_API_KEY": "injected-from-model-env"}
+            injected = launch_env_for("growth", {"SMARTLECT_MODEL_MODE": "live"})
+            java = launch_env_for("user", {"SMARTLECT_MODEL_MODE": "live"})
+        finally:
+            globals()["model_env"] = saved_model_env
+        assert injected["SMARTLECT_MODEL_API_KEY"] == "injected-from-model-env"
+        assert java.get("SMARTLECT_MODEL_API_KEY") != "injected-from-model-env"
         provider.write_text("SMARTLECT_INTERNAL_TOKEN=forbidden\n")
         try:
             model_env(provider)

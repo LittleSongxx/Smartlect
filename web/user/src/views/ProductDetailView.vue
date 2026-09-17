@@ -33,7 +33,7 @@
         <span class="currency">¥</span>
         <span class="amount">{{ displayPrice }}</span>
       </div>
-      <p class="sales-line">销量 {{ productInfo.totalSale ?? 0 }}</p>
+      <p class="sales-line">销量 {{ productInfo.totalSale ?? 0 }}<template v-if="productContent.brand"> · {{ productContent.brand }}</template></p>
       <AgentServiceEntry
         class="info-agent-btn"
         :compact="false"
@@ -160,9 +160,17 @@
       <p v-else class="empty-tip">暂无评价，快来抢沙发吧</p>
     </section>
 
+    <section v-if="productContent.sections.length" class="block desc-block">
+      <h3 class="block-title">商品资料</h3>
+      <div v-for="section in productContent.sections" :key="section.key" class="content-section">
+        <h4>{{ section.label }}</h4>
+        <MarkdownContent :content="section.text" class="desc-body" />
+      </div>
+    </section>
+
     <section class="block desc-block">
       <h3 class="block-title">图文详情</h3>
-      <MarkdownContent :content="productInfo.productDesc" class="desc-body" allow-images />
+      <MarkdownContent :content="productContent.extra || productInfo.productDesc" class="desc-body" allow-images />
     </section>
 
     <section class="block similar-block">
@@ -249,6 +257,7 @@ const {
   scopeDenied,
   load,
   productInfo,
+  productContent,
   productPropertyList,
   quantity,
   selectedSku,
@@ -887,6 +896,17 @@ const openReport = (payload: { orderId: string; commentContent?: string }) => {
     font-size: 15px;
     font-weight: 600;
     color: $color-text-title !important;
+  }
+
+  .content-section {
+    margin-bottom: 16px;
+
+    h4 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: $color-text-secondary;
+    }
   }
 
   .desc-body {

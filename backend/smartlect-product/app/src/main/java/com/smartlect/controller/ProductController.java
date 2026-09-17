@@ -58,6 +58,7 @@ public class ProductController extends ABaseController {
         query.setStatus(1);
         query.setOrderBy(com.smartlect.entity.query.SafeSort.of("create_time desc"));
         query.setSimplePage(new SimplePage(0, 11));
+        query.setExcludeIsolatedCatalog(true);
         return getSuccessResponseVO(productInfoService.findListByPage(query).getList());
     }
 
@@ -77,6 +78,7 @@ public class ProductController extends ABaseController {
         query.setPriceTo(priceTo);
         query.setOrderBy(com.smartlect.entity.query.SafeSort.of(buildProductOrderBy(sortKey, sortDirection)));
         query.setExcludeProductIdList(parseExcludeProductIds(excludeProductIds));
+        query.setExcludeIsolatedCatalog(true);
         String trimmed = keyword == null ? null : keyword.trim();
         if (trimmed != null && !trimmed.isEmpty()) {
             query.setProductNameFuzzy(trimmed);

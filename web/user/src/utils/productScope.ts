@@ -1,4 +1,5 @@
 import { aiGet } from '@/api/client';
+import { isIsolatedProductId } from '@/utils/product';
 
 export type ProductScope = { include: string[] | null; exclude: string[] };
 
@@ -12,7 +13,8 @@ export function clearProductScopeCache() {
 export function inProductScope(productId: string, scope: ProductScope | null | undefined): boolean {
   if (!productId || !scope) return true;
   if (scope.exclude.includes(productId)) return false;
-  return scope.include == null || scope.include.includes(productId);
+  if (scope.include == null) return !isIsolatedProductId(productId);
+  return scope.include.includes(productId);
 }
 
 export function excludeProductIds(scope: ProductScope | null | undefined): string {

@@ -3,8 +3,15 @@
     <div class="ai-avatar-mini"><el-icon :size="16"><Service /></el-icon></div>
     <div class="bubble ai-bubble is-wide">
       <p v-if="waiting && !data.result?.answer" class="typing">正在查询并整理回复…</p>
-      <MarkdownContent v-if="citedAnswer" :content="citedAnswer" cite-marks />
-      <p v-if="data.result?.answer_status === 'insufficient'" class="empty-hint">当前信息不足，请补充需求或等待人工核实。</p>
+      <div v-if="uncovered" class="refuse-card" role="status">
+        <p>资料未覆盖这一件。可以改问全店运费或退换，也可以转人工核实。</p>
+        <div class="refuse-actions">
+          <button type="button" @click="setGlobal">改问全店</button>
+          <button type="button" :disabled="busy || Boolean(handoff)" @click="requestHandoff">转人工</button>
+        </div>
+      </div>
+      <MarkdownContent v-else-if="citedAnswer" :content="citedAnswer" cite-marks />
+      <p v-if="data.result?.answer_status === 'insufficient' && !uncovered" class="empty-hint">当前信息不足，请补充需求或等待人工核实。</p>
       <p v-if="['conflicting', 'needs_human'].includes(data.result?.answer_status)" class="empty-hint">该问题需要人工核实，当前不会继续自动执行。</p>
       <p v-if="data.result?.ticket" class="muted">已为您提交人工核实，可刷新会话查看客服回复。</p>
       <AgentCompareTable v-if="data.result?.comparison" :comparison="data.result.comparison" :complete="data.result.comparison_complete !== false" />
@@ -33,13 +40,23 @@ import AgentOrderList from '@/components/agent/AgentOrderList.vue';
 import AgentConfirmCard from '@/components/agent/AgentConfirmCard.vue';
 import AgentDecisionCard from '@/components/agent/AgentDecisionCard.vue';
 import { errorText, type Proposal, type Run } from '@/api/client';
+import { useAgentFocus } from '@/composables/useAgentFocus';
+import { useAgentSession } from '@/composables/useAgentSession';
 import { annotateAnswerWithCitations, displayCitations } from '@/utils/citations';
 const props = defineProps<{ data: Run; waiting?: boolean }>();
 const emit = defineEmits<{ 'proposal-updated': [proposal: Proposal] }>();
 const router = useRouter();
+const { setGlobal } = useAgentFocus();
+const { busy, handoff, requestHandoff } = useAgentSession();
 const sources = computed(() => displayCitations(props.data.result?.citations || []));
 const citedAnswer = computed(() => annotateAnswerWithCitations(props.data.result?.answer || '', sources.value));
-const selectProduct = (item: Record<string, any>) => router.push({ path: '/catalog', query: { product: String(item.productId), sku: String(item.propertyValueIds || '') } });
+const uncovered = computed(() => props.data.result?.refuse_reason === 'product_uncovered'
+  || (props.data.result?.answer_status === 'insufficient' && String(props.data.result?.answer || '').includes('资料未覆盖这一件')));
+const selectProduct = (item: Record<string, any>) => {
+  const query: Record<string, string> = {};
+  if (item.propertyValueIds) query.sku = String(item.propertyValueIds);
+  router.push({ path: `/product/${item.productId}`, query });
+};
 </script>
 
 <style scoped lang="scss">
@@ -110,6 +127,38 @@ const selectProduct = (item: Record<string, any>) => router.push({ path: '/catal
 
 .empty-hint {
   line-height: 1.55;
+}
+
+.refuse-card {
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid $color-warning-border;
+  background: $color-warning-soft;
+  color: #7a4b00;
+}
+
+.refuse-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.refuse-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.refuse-actions button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(122, 75, 0, 0.1);
+  color: #7a4b00;
+  font: inherit;
+  font-size: 12px;
 }
 
 .cite-list {

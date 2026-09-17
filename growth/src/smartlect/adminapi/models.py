@@ -19,7 +19,7 @@ def build_router(*, actor_for, connect, provider, config):
     @router.get("/admin-api/assistant/models")
     async def models(request: Request, response: Response):
         actor = await actor_for(request, response, realm="merchant")
-        actor.require("admin:legacy")
+        actor.require_any("admin:legacy", "admin:trial")
         selected = await asyncio.to_thread(store.chat_config)
         return {
             "chat": {

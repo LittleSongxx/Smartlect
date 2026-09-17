@@ -31,8 +31,14 @@ def _money(value, name='budget_cents', minimum=0):
     return _integer(value, name, minimum, MAX_MONEY)
 
 
-def _merchant(actor):
-    if _actor(actor)[0] != 'merchant' or 'admin:legacy' not in actor.permissions:
+def _merchant(actor, write=True):
+    if _actor(actor)[0] != 'merchant':
+        raise StateError('merchant_permission_required', 403)
+    perms = getattr(actor, 'permissions', ())
+    if write:
+        if 'admin:legacy' not in perms:
+            raise StateError('merchant_permission_required', 403)
+    elif 'admin:legacy' not in perms and 'admin:trial' not in perms:
         raise StateError('merchant_permission_required', 403)
 
 
@@ -355,7 +361,7 @@ class AdsStore(AttributionStore):
         return _public(row)
 
     def snapshot(self, actor):
-        _merchant(actor)
+        _merchant(actor, write=False)
         with self._transaction() as cursor:
             result = {'model_mode':'deterministic','ad_mode':'simulated_cpc'}
             for key,table in (('campaigns','ads_campaign'),('creatives','ads_creative'),('grants','ads_grant'),('actions','growth_action'),('observations','ads_inventory')):
@@ -372,7 +378,7 @@ class AdsStore(AttributionStore):
             return result
 
     def get_action(self, actor, action_id):
-        _merchant(actor)
+        _merchant(actor, write=False)
         with self._transaction() as cursor:
             row = self._row(cursor,actor,'growth_action','action_id',action_id)
             if row['actor_id'] != actor.actor_id:

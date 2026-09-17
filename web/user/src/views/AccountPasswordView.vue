@@ -35,6 +35,7 @@ import { ElMessage } from 'element-plus';
 import { accountApi } from '@/api/modules';
 import { useAuthStore } from '@/stores/auth';
 import { isValidPassword, PASSWORD_FORMAT_HINT } from '@/constants/validation';
+import { TRIAL_USER_DENIED } from '@/constants/trial';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -44,6 +45,10 @@ const submitting = ref(false);
 
 const savePwd = async () => {
   error.value = '';
+  if (authStore.isTrial) {
+    error.value = TRIAL_USER_DENIED;
+    return;
+  }
   if (!pwd.oldPassword?.trim()) {
     ElMessage.warning('请输入旧密码');
     return;
