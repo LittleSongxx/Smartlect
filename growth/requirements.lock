@@ -2,6 +2,7 @@
 # Exact runtime + transitive pins; setuptools is the pyproject build dependency.
 # Install this file first, then install ./growth with --no-deps --no-build-isolation.
 # Origin and update/verification procedure: docs/adr/0001-final-integration.md.
+PyJWT==2.10.1
 PyMySQL==1.2.0
 PyYAML==6.0.3
 annotated-doc==0.0.5

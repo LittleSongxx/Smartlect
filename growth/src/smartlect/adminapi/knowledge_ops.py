@@ -63,6 +63,7 @@ def build_router(*, actor_for, indexing, knowledge, provider, config, settings, 
 
     @router.post("/admin-api/assistant/knowledgeIndex/searchProbe")
     async def search_probe(payload: dict, request: Request, response: Response):
+        """Admin index probe (merchant realm). Not the user-visible storefront search."""
         actor = await actor_for(request, response, realm="merchant")
         actor.require("admin:legacy")
         query = payload.get("query") if isinstance(payload, dict) else None

@@ -47,6 +47,8 @@ class CatalogGateTests(unittest.TestCase):
         self.assertTrue(in_scope('917186661226040', scope))
         scoped = scope_filter({'include': ['930000000081301'], 'exclude': []})
         self.assertTrue(in_scope('930000000081301', scoped))
+        self.assertFalse(in_scope('unprefixed-eval', scope, 'eval'))
+        self.assertTrue(in_scope('910000000000001', scope, 'store'))
 
     def test_explicit_saved_avoid_still_becomes_homepage_hard_gate(self):
         request = RecommendationRequest(query='键盘')

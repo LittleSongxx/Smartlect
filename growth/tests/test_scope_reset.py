@@ -108,9 +108,11 @@ class ScopeResetHttpTests(unittest.IsolatedAsyncioTestCase):
             recommendations.recommend.assert_not_awaited()
             self.assertEqual((await client.post('/admin-api/assistant/scopes/select',json={'execution_scope_id':'store'})).status_code,403)
             merchant.store.select_scope.assert_not_called()
+            fresh=(await client.get('/admin-api/assistant/session')).json()
+            headers={'Origin':origin,'X-CSRF-Token':fresh['csrf_token']}
             switched=await client.post('/admin-api/assistant/scopes/select',json={'execution_scope_id':'store'},headers=headers)
             self.assertEqual(switched.status_code,200);self.assertEqual(switched.json()['actor']['execution_scope_id'],'store')
-            self.assertNotEqual(switched.json()['csrf_token'],session['csrf_token'])
+            self.assertNotEqual(switched.json()['csrf_token'],fresh['csrf_token'])
 
 
 if __name__=='__main__':unittest.main()

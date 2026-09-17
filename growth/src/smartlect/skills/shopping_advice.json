@@ -9,6 +9,7 @@
   ],
   "knowledge": "政策由已加载的support_policy流程处理；实时商品事实来自Java。",
   "tools": [
+    "search_skus",
     "recommend_skus",
     "compare_skus",
     "get_product_offer",

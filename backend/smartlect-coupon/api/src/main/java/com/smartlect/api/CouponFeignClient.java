@@ -22,7 +22,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 public interface CouponFeignClient {
 
     @PostMapping("/validateAndLock")
-    ResponseVO<CouponLockResultVO> validateAndLock(@RequestBody CouponValidateAndLockDTO dto);
+    ResponseVO<CouponLockResultVO> validateAndLock(@RequestBody CouponValidateAndLockDTO dto,
+            @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
 
     @PostMapping("/preview")
     ResponseVO<CouponLockResultVO> preview(@RequestBody CouponValidateAndLockDTO dto,
@@ -38,16 +39,20 @@ public interface CouponFeignClient {
     ResponseVO<UserCouponVO> getUserCoupon(@RequestBody UserCouponIdDTO dto);
 
     @PostMapping("/changeUserCouponStatus")
-    ResponseVO<Void> changeUserCouponStatus(@RequestBody UserCouponStatusChangeDTO dto);
+    ResponseVO<Void> changeUserCouponStatus(@RequestBody UserCouponStatusChangeDTO dto,
+            @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
 
     @PostMapping("/createUserCoupon")
-    ResponseVO<Void> createUserCoupon(@RequestBody UserCouponCreateDTO dto);
+    ResponseVO<Void> createUserCoupon(@RequestBody UserCouponCreateDTO dto,
+            @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
 
     @PostMapping("/grantCoupon")
-    ResponseVO<CouponGrantResultVO> grantCoupon(@RequestBody UserCouponCreateDTO dto);
+    ResponseVO<CouponGrantResultVO> grantCoupon(@RequestBody UserCouponCreateDTO dto,
+            @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
 
     @PostMapping("/deductStock")
-    ResponseVO<StockChangeResultVO> deductStock(@RequestBody CouponIdDTO dto);
+    ResponseVO<StockChangeResultVO> deductStock(@RequestBody CouponIdDTO dto,
+            @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
 
     @PostMapping("/rush/assertNotBlocked")
     ResponseVO<Void> assertRushNotBlocked(@RequestBody com.smartlect.api.dto.CouponRushOpsDTO dto);

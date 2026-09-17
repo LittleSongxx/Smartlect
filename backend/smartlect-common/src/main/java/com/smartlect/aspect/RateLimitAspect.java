@@ -10,6 +10,7 @@ import com.smartlect.constants.Constants;
 import com.smartlect.entity.enums.ResponseCodeEnum;
 // 导入业务异常类，用于抛出限流异常
 import com.smartlect.exception.BusinessException;
+import com.smartlect.exception.HttpBusinessException;
 // 导入字符串工具类，用于空值判断
 import com.smartlect.utils.AuthCookieHelper;
 import com.smartlect.utils.StringTools;
@@ -71,8 +72,7 @@ public class RateLimitAspect {
         // 调用限流服务检查是否允许访问
         // 参数：限流键、时间窗口（秒）、最大请求数
         if (!rateLimitService.tryAcquire(key, limit.windowSeconds(), limit.maxCount())) {
-            // 如果限流检查失败，抛出业务异常
-            throw new BusinessException(limit.message());
+            throw new HttpBusinessException(429, limit.message());
         }
     }
 

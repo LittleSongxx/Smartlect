@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -184,9 +185,10 @@ class AuthGlobalFilterTest {
                 assertNull(forwarded.get());
                 assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
             } else {
-                assertEquals(token, forwarded.get().getRequest().getHeaders().getFirst("X-Internal-Token"));
-                assertEquals("trusted-user", forwarded.get().getRequest().getHeaders().getFirst("X-Smartlect-User-Id"));
-                assertEquals("service-signature", forwarded.get().getRequest().getHeaders().getFirst("X-Admin-Signature"));
+                assertNotNull(forwarded.get());
+                assertNull(forwarded.get().getRequest().getHeaders().getFirst("X-Internal-Token"));
+                assertNull(forwarded.get().getRequest().getHeaders().getFirst("X-Smartlect-User-Id"));
+                assertNull(forwarded.get().getRequest().getHeaders().getFirst("X-Admin-Signature"));
             }
         }
     }

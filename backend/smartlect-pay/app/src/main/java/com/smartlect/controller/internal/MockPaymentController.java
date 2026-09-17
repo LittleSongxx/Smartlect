@@ -16,7 +16,7 @@ import jakarta.annotation.Resource;
 /** Covered by the common InternalApiAuthFilter; no public mock callback is registered. */
 @RestController
 @RequestMapping("/internal/pay/mock")
-@ConditionalOnProperty(name = "smartlect.payment.mode", havingValue = "mock", matchIfMissing = true)
+@ConditionalOnProperty(name = "smartlect.payment.mode", havingValue = "mock", matchIfMissing = false)
 public class MockPaymentController extends ABaseController {
     private final PayChannel4Mock channel;
     @Resource
@@ -28,7 +28,9 @@ public class MockPaymentController extends ABaseController {
 
     @PostMapping("/complete")
     public ResponseVO<PayChannel4Mock.PaymentResult> complete(@RequestBody CompletePayment request) {
-        return getSuccessResponseVO(channel.completePayment(request.payOrderId()));
+        String userId = DelegatedUserIdentity.require();
+        return getSuccessResponseVO(channel.completePayment(
+                userId, request.payOrderId(), request.expectedAmountCents()));
     }
 
     @PostMapping("/decline")
@@ -41,5 +43,5 @@ public class MockPaymentController extends ABaseController {
         return getSuccessResponseVO(attempts.get(DelegatedUserIdentity.require(), PayAttemptService.parse(body)));
     }
 
-    public record CompletePayment(String payOrderId) { }
+    public record CompletePayment(String payOrderId, Long expectedAmountCents) { }
 }

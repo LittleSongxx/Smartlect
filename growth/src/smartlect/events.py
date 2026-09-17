@@ -39,7 +39,7 @@ def _new_connection():
                            # MySQL is loopback-only for growth. pymysql's PREFERRED mode would
                            # build a fresh TLS context (full system CA load) per connection —
                            # hundreds of ms CPU each — which flattened concurrency to ~3 rps.
-                           ssl_disabled=True,
+                           ssl_disabled=os.getenv("SMARTLECT_GROWTH_MYSQL_SSL", "0") != "1",
                            init_command="SET time_zone = '+00:00'")
 
 
@@ -156,6 +156,33 @@ def parse_event(event, schema_version=1):
     return result
 
 
+def _lock_ledger(cursor, *, body=None, fact=None):
+    """Lock by pay_order_id when known; otherwise a batch/global key. Never one row for the whole table."""
+    keys = []
+    if fact and fact.get("pay_order_id"):
+        keys.append("pay:" + str(fact["pay_order_id"]))
+    elif body:
+        try:
+            batch = json.loads(body)
+            for event in (batch.get("events") or []):
+                payload = event.get("payload") or {}
+                pay = payload.get("payOrderId") or payload.get("pay_order_id")
+                if pay:
+                    keys.append("pay:" + str(pay))
+        except Exception:
+            keys = []
+    if not keys:
+        keys = ["ledger:global"]
+    for key in sorted(set(keys)):
+        cursor.execute(
+            """INSERT INTO commerce_ledger_lock_key (lock_key, touched_at)
+               VALUES (%s, UTC_TIMESTAMP(6))
+               ON DUPLICATE KEY UPDATE touched_at=UTC_TIMESTAMP(6)""",
+            (key[:64],),
+        )
+        cursor.execute("SELECT lock_key FROM commerce_ledger_lock_key WHERE lock_key=%s FOR UPDATE", (key[:64],))
+
+
 class Ledger:
     def __init__(self, connect=connect_from_env):
         self.connect = connect
@@ -169,8 +196,7 @@ class Ledger:
         """Return only after facts, exceptions and their accounting state commit together."""
         with self.connect() as connection, connection.cursor() as cursor:
             try:
-                # ponytail: one ledger lock serializes the demo; use per-payment locks when throughput requires it.
-                cursor.execute("SELECT id FROM commerce_ledger_lock WHERE id=1 FOR UPDATE")
+                _lock_ledger(cursor, body=body)
                 try:
                     batch = json.loads(body, parse_float=Decimal,
                                        parse_constant=lambda value: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
@@ -193,6 +219,10 @@ class Ledger:
                         if prior:
                             if len(prior) != 1 or any(prior[0][key] != fact[key] for key in ("event_id", "idempotency_key", "fingerprint")):
                                 self._exception(cursor, canonical({"schema_version": batch['schema_version'], "events": [event]}).encode(), "event/idempotency identity conflict")
+                            continue
+                        if fact["status"] == "UNKNOWN":
+                            self._exception(cursor, canonical({"schema_version": batch['schema_version'], "events": [event]}).encode(),
+                                            fact.get("reason") or "unsupported event type")
                             continue
                         names = list(fact)
                         cursor.execute("INSERT INTO commerce_event (" + ",".join(names) + ") VALUES (" + ",".join(["%s"] * len(names)) + ")",
@@ -255,7 +285,7 @@ class Ledger:
 
     def replay_pending(self):
         with self.connect() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT id FROM commerce_ledger_lock WHERE id=1 FOR UPDATE")
+            _lock_ledger(cursor)
             self._reconcile(cursor)
             connection.commit()
 

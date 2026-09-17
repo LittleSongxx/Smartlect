@@ -7,10 +7,19 @@ import json
 import re
 import uuid
 
+import os
+
+from smartlect.algo_version import content_hash
 from smartlect.events import canonical
 from smartlect.state import SessionStore, StateError, _actor, _expiry, _integer, _public, _text
 
-RULE_VERSION = 'last_valid_ad_click_v1+sku_click_24h_v1'
+AD_CLICK_WINDOW_DAYS = max(1, int(os.environ.get('SMARTLECT_AD_CLICK_WINDOW_DAYS') or 7))
+REC_CLICK_WINDOW_HOURS = max(1, int(os.environ.get('SMARTLECT_REC_CLICK_WINDOW_HOURS') or 24))
+RULE_VERSION = content_hash({
+    'ad_window_days': AD_CLICK_WINDOW_DAYS,
+    'rec_window_hours': REC_CLICK_WINDOW_HOURS,
+    'ad_requires_product_or_sku': True,
+})
 
 
 def utc_now():
@@ -531,13 +540,25 @@ def event_metadata(event):
         return {'contextStatus': 'UNKNOWN_CONTEXT', 'reason': 'invalid_optional_context'}
 
 
+def _ad_matches_order(touch, product_id, sku_key):
+    return touch.get('product_id') == product_id or (
+        sku_key and touch.get('sku_key') == sku_key)
+
+
 def select_attribution(touches, order_time, product_id, sku_key):
-    """Only already-frozen references enter here; inclusive business-time windows."""
+    """Only already-frozen references enter here; inclusive business-time windows.
+
+    Ad last-click must match the ordered product or SKU. Recommendation clicks stay
+    SKU-matched inside the shorter window. Both windows are configuration, not
+    hardcoded version names.
+    """
     ordered = sorted(touches, key=lambda t: (t['occurred_at'], t['touch_id']))
-    recent = [t for t in ordered if order_time - timedelta(days=7) <= t['occurred_at'] <= order_time]
+    ad_start = order_time - timedelta(days=AD_CLICK_WINDOW_DAYS)
+    rec_start = order_time - timedelta(hours=REC_CLICK_WINDOW_HOURS)
+    recent = [t for t in ordered if ad_start <= t['occurred_at'] <= order_time]
     visits = [t for t in recent if t['kind'] in {'NATURAL_VISIT', 'AD_CLICK'}]
-    ads = [t for t in recent if t['kind'] == 'AD_CLICK']
-    matched = [t for t in recent if order_time - timedelta(hours=24) <= t['occurred_at']
+    ads = [t for t in recent if t['kind'] == 'AD_CLICK' and _ad_matches_order(t, product_id, sku_key)]
+    matched = [t for t in recent if rec_start <= t['occurred_at']
                and t['product_id'] == product_id and t['sku_key'] == sku_key]
     clicks = [t for t in matched if t['kind'] == 'REC_CLICK']
     impressions = [t for t in matched if t['kind'] == 'REC_IMPRESSION']

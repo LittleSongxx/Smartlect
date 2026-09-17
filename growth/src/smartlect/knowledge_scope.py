@@ -10,12 +10,15 @@ CORPORA = (STORE, PRODUCT, PRODUCT_AND_STORE)
 
 
 def compile_search_filter(focus, requested_product_id=None):
-    """Ignore the model's product_id. PRODUCT focus is filled by the server."""
+    """PRODUCT focus is pinned. GLOBAL may honor a model-requested product_id."""
     focus = focus if isinstance(focus, dict) else {}
     mode = focus.get("focus_mode") or "GLOBAL"
     focus_pid = focus.get("focus_product_id")
+    requested = str(requested_product_id).strip() if requested_product_id else ""
     if mode == "PRODUCT" and focus_pid:
         return {"product_id": str(focus_pid), "corpus": PRODUCT_AND_STORE}
+    if requested:
+        return {"product_id": requested, "corpus": PRODUCT_AND_STORE}
     return {"product_id": None, "corpus": STORE}
 
 

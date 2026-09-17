@@ -7,6 +7,7 @@ import json
 import math
 import random
 import re
+import threading
 import time
 import uuid
 from urllib.parse import urlsplit
@@ -42,24 +43,37 @@ def bounded(raw, default, low, high):
 
 
 class _Breaker:
-    """Consecutive-failure circuit: while open every call fails fast with
-    model_circuit_open instead of waiting out a full 25s timeout; one probe
-    request after the cooldown closes (or re-opens) the circuit."""
+    """Consecutive-failure circuit. While open, every call fails fast with
+    model_circuit_open. After cooldown, exactly one probe is admitted (half-open);
+    other callers stay rejected until that probe succeeds (close) or fails (re-open)."""
 
     def __init__(self, failures, cooldown_s, endpoint):
         self.failures, self.cooldown_s = failures, cooldown_s
         self.endpoint = endpoint
         self._consecutive, self._opened_until = 0, 0.0
+        self._half_open_inflight = False
+        self._lock = threading.Lock()
 
     def check(self):
-        if self._consecutive >= self.failures and time.monotonic() < self._opened_until:
-            MODEL_BREAKER_REJECTIONS.labels(self.endpoint).inc()
-            raise ProviderError("model_circuit_open", retryable=False)
+        with self._lock:
+            if self._consecutive < self.failures:
+                return
+            if time.monotonic() < self._opened_until or self._half_open_inflight:
+                MODEL_BREAKER_REJECTIONS.labels(self.endpoint).inc()
+                raise ProviderError("model_circuit_open", retryable=False)
+            self._half_open_inflight = True
 
     def record(self, succeeded):
-        self._consecutive = 0 if succeeded else self._consecutive + 1
-        if self._consecutive >= self.failures:
-            self._opened_until = time.monotonic() + self.cooldown_s
+        with self._lock:
+            if succeeded:
+                self._consecutive = 0
+                self._opened_until = 0.0
+                self._half_open_inflight = False
+                return
+            self._consecutive += 1
+            self._half_open_inflight = False
+            if self._consecutive >= self.failures:
+                self._opened_until = time.monotonic() + self.cooldown_s
 
 
 async def _callback(callback, *args):
@@ -286,9 +300,18 @@ class Provider:
                 raise ValueError("only_registered_function_tools_allowed")
             body["tools"] = tools
         if tool_choice is not None:
-            if tool_choice != 'required' or not tools:
+            if isinstance(tool_choice, str) and tool_choice in {'auto', 'none', 'required'}:
+                if tool_choice != 'none' and not tools:
+                    raise ValueError('tool_choice_requires_registered_tools')
+                body['tool_choice'] = tool_choice
+            elif (isinstance(tool_choice, dict) and tool_choice.get('type') == 'function'
+                  and isinstance((tool_choice.get('function') or {}).get('name'), str) and tools):
+                name = tool_choice['function']['name']
+                if not any((item.get('function') or {}).get('name') == name for item in tools):
+                    raise ValueError('tool_choice_requires_registered_tools')
+                body['tool_choice'] = tool_choice
+            else:
                 raise ValueError('tool_choice_requires_registered_tools')
-            body['tool_choice'] = tool_choice
         if response_format is not None:
             if not isinstance(response_format, dict) or response_format.get("type") not in {"json_object", "json_schema"}:
                 raise ValueError("invalid_response_format")
@@ -331,6 +354,34 @@ class Provider:
 
     async def _request(self, prefix, path, body, *, stream=False, on_delta=None, on_trace=None,
                        before_attempt=None, max_attempts=2, prompt_version, skill_versions, schema_version):
+        from smartlect.observability import gen_ai_span
+        operation = "chat" if prefix == "MODEL" else "embeddings"
+        span_cm = gen_ai_span(
+            f"{operation} {body.get('model')}",
+            kind=operation,
+            attributes={
+                "gen_ai.operation.name": operation,
+                "gen_ai.provider.name": "alibaba.cloud.bailian",
+                "gen_ai.request.model": body.get("model"),
+            },
+        )
+        span = span_cm.__enter__()
+        try:
+            result = await self._complete_request(
+                prefix, path, body, stream=stream, on_delta=on_delta, on_trace=on_trace,
+                before_attempt=before_attempt, max_attempts=max_attempts,
+                prompt_version=prompt_version, skill_versions=skill_versions,
+                schema_version=schema_version, span=span)
+        except BaseException as error:
+            span_cm.__exit__(type(error), error, error.__traceback__)
+            raise
+        else:
+            span_cm.__exit__(None, None, None)
+            return result
+
+    async def _complete_request(self, prefix, path, body, *, stream, on_delta, on_trace,
+                                before_attempt, max_attempts, prompt_version, skill_versions,
+                                schema_version, span):
         if type(max_attempts) is not int or not 1 <= max_attempts <= 2:
             raise ValueError("model_attempt_limit_must_be_1_or_2")
         base, key, region = self._endpoint(prefix)
@@ -396,7 +447,10 @@ class Provider:
                                 choices = result.get("choices")
                                 if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
                                     raise ProviderError("model_invalid_response")
-                                if choices[0].get("finish_reason") not in {"stop", "tool_calls"}:
+                                finish_reason = choices[0].get("finish_reason")
+                                if finish_reason == "length":
+                                    raise ProviderError("model_output_truncated", retryable=True)
+                                if finish_reason not in {"stop", "tool_calls"}:
                                     raise ProviderError("model_incomplete_response")
                                 output = {"message": _message(choices[0].get("message"))}
                             else:
@@ -436,6 +490,9 @@ class Provider:
                 if not error.retryable or emitted or attempt == max_attempts:
                     self._breakers[prefix].record(False)
                     raise error from None
+                if error.code == "model_output_truncated":
+                    key = "max_completion_tokens" if "max_completion_tokens" in body else "max_tokens"
+                    body[key] = min(4096, max(int(body.get(key) or 1024) * 2, 1))
                 await asyncio.sleep(min(0.2 * (2 ** (attempt - 1)), 2.0) + random.uniform(0, 0.1))
                 continue
             self._breakers[prefix].record(True)
@@ -443,6 +500,17 @@ class Provider:
                         "latency_ms": round((time.monotonic() - overall_start) * 1000, 2)}
             if prefix == "EMBEDDING":
                 metadata["dimensions"] = body["dimensions"]
+            from smartlect.observability import prompt_hash, record_generation
+            record_generation(
+                name=prefix.lower(), model=body.get("model"),
+                prompt_hash=prompt_hash(prompt_version, schema_version, body.get("model")),
+                usage=trace.get("usage"), metadata={"prompt_version": prompt_version})
+            if span is not None:
+                usage = trace.get("usage") or {}
+                if usage.get("input_tokens") is not None:
+                    span.set_attribute("gen_ai.usage.input_tokens", usage["input_tokens"])
+                if usage.get("output_tokens") is not None:
+                    span.set_attribute("gen_ai.usage.output_tokens", usage["output_tokens"])
             return {**output, "usage": trace["usage"], "metadata": metadata, "attempts": attempts}
 
     @staticmethod

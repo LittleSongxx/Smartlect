@@ -644,7 +644,8 @@ class AdsStore(AttributionStore):
                 cr.creative_id,cr.version AS creative_version,cr.copy_text,
                 ca.budget_cents,ca.spent_cents,ca.cpc_cents,
                 (SELECT COUNT(*) FROM ad_interaction i WHERE i.execution_scope_id=ca.execution_scope_id
-                    AND i.creative_id=cr.creative_id AND i.subject_type=%s AND i.actor_id=%s) AS viewer_impressions,
+                    AND i.creative_id=cr.creative_id AND i.subject_type=%s AND i.actor_id=%s
+                    AND i.created_at >= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 24 HOUR)) AS viewer_impressions,
                 (SELECT COUNT(*) FROM ad_spend s WHERE s.execution_scope_id=ca.execution_scope_id
                     AND s.creative_id=cr.creative_id AND s.subject_type=%s AND s.actor_id=%s) AS viewer_clicks
                 FROM ads_campaign ca JOIN ads_creative cr ON cr.campaign_id=ca.campaign_id

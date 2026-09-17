@@ -5,6 +5,7 @@
 F4/F5功能证据已有记录；F6完整评测和F7交付仍在进行，本文描述实现，不代替通过证明。
 
 开发集用于定位共享职责和数据边界问题，不按失败问题的措辞添加专用路由或答案规则。
+现有 answer 编译表（混合工具批次、商品焦点、试用只读）是共享控制面，不是按题加规则；新失败仍应并入这张表，而不是再开一条题面闸门。
 先验证同类输入、相反意图及状态边界，再冻结协议做真实模型复验；历史失败不覆盖，留出集不参与修复。
 服务器绑定事实与模型理解分开评分，工具合同通过不等于语义正确，也不要求模型每轮采取经营动作。
 
@@ -12,7 +13,7 @@ F4/F5功能证据已有记录；F6完整评测和F7交付仍在进行，本文�
 
 [Shopping 图](../growth/src/smartlect/agents/shopping.py) 在 `model → tools → model` 间依据观测继续，
 用 `answer` 校验终答。图节点不是不同 Agent。先读取可信主体、本人的最近8轮与有来源范围的摘要。
-Shopping 启动即预装 `shopping_advice` / `support_policy` / `order_service` 三套并集，`load_skill` 只刷新说明，不按任务收窄工具（混合意图需要同时可用）；Merchant 仍按阶段加载所需 Skill。可用工具始终与该主体权限取交集。
+Shopping 开场只有目录工具（`load_skill` / `search_knowledge` / 记忆 / `request_handoff`）。业务工具由 `load_skill` 按已审核 Skill 并入本轮；管理端热改只能再缩小已加载 Skill 的 `tools`。Merchant 仍按阶段加载所需 Skill。可用工具始终与该主体权限取交集。
 访客只能读可见资料及转交本人会话，不能操作交易；历史答复、偏好和检索内容都不能替代新的Java价格、库存与交易状态。
 
 ```mermaid
@@ -107,7 +108,7 @@ SSE回放已落库事件与最终正文；当前没有把供应商逐token流直
 ## 推荐与交易：确定性服务
 
 首页 [`GET /recommendations`](../growth/src/smartlect/app.py) 仍走 [RecommendationService](../growth/src/smartlect/recommendation/service.py)
-五路召回（内容/类目/已付款共购/付款热门/新品），算法版本 `sku-rank-paid-units-v1`。
+五路召回（内容/类目/已付款共购/付款热门/新品），`algorithm_version` 为排序器内容哈希。
 可售门 [`eligible_skus`](../growth/src/smartlect/catalog_gate.py) 与广告投放共用；`rank_skus` 权重和广告相关性不变。
 这不是第三个 Agent。每路 SQL 在 LIMIT 前应用服务端 scope 及请求的缩小筛选。Java 快照和逐 SKU 库存决定可售、价格与硬约束。
 规则贡献和理由可检查；付款热度是已确认付款件数，包含后续退款，不称净销量，未知值保持 null。

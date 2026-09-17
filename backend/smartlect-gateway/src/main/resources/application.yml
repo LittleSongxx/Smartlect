@@ -86,26 +86,8 @@ spring:
                   factor: 2
                   basedOnPreviousValue: false
           routes:
-            - id: internal-identity
-              uri: lb://smartlect-user
-              predicates:
-                - Path=/internal/identity/**
-            - id: internal-order
-              uri: lb://smartlect-order
-              predicates:
-                - Path=/internal/order/**
-            - id: internal-product
-              uri: lb://smartlect-product
-              predicates:
-                - Path=/internal/product/**
-            - id: internal-coupon
-              uri: lb://smartlect-coupon
-              predicates:
-                - Path=/internal/coupon/**
-            - id: internal-user
-              uri: lb://smartlect-user
-              predicates:
-                - Path=/internal/user/**
+            # Growth and Java Feign call 127.0.0.1 / lb:// directly.
+            # Public /internal/** used to let a leaked token impersonate any user.
             - id: admin-user
               uri: lb://smartlect-user
               predicates:

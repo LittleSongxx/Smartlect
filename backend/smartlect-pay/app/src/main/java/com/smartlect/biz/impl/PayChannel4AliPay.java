@@ -56,6 +56,9 @@ public class PayChannel4AliPay implements PayChannel {
     @Override
     public PayInfoDTO getPayUrl(PayChannelEnum payChannelEnum, String payOrderId, String subject, BigDecimal amount) {
         requireConfigured();
+        if (OrderPayAmountUtil.isFreeOrder(amount)) {
+            throw new BusinessException("zero_amount_skips_alipay");
+        }
         try {
             BigDecimal payAmount = OrderPayAmountUtil.normalizeChannelPayAmount(amount);
             String payAmountText = OrderPayAmountUtil.formatChannelPayAmount(amount);
@@ -188,7 +191,8 @@ public class PayChannel4AliPay implements PayChannel {
                         payOrderId, subCode, response.getSubMsg());
                 return null;
             }
-            if (!TRADE_STATE_SUCCESS.equals(response.getTradeStatus())) {
+            if (!TRADE_STATE_SUCCESS.equals(response.getTradeStatus())
+                    && !TRADE_STATE_FINISHED.equals(response.getTradeStatus())) {
                 return null;
             }
             log.info("查询支付宝订单已支付 payOrderId={}, tradeNo={}", payOrderId, response.getTradeNo());

@@ -112,6 +112,16 @@ class IndexingService:
     def embedding_enabled(self):
         return self.settings.model_mode == "live" and bool(self.config.get("SMARTLECT_EMBEDDING_API_KEY"))
 
+    def record_sync_publish(self, actor, doc_id, version):
+        """BM25-only publish still leaves an ops-visible DONE job."""
+        job = self.jobs.create(actor, doc_id, version, 1)
+        self.jobs.claim(job["job_id"])
+        self.jobs.progress(job["job_id"], processed=1, failed=0)
+        self.jobs.finish(job["job_id"], "DONE", message="published_without_embedding",
+                         index_version="bm25")
+        return {**job, "state": "DONE", "processed_chunks": 1, "failed_chunks": 0,
+                "message": "published_without_embedding", "index_version": "bm25"}
+
     async def submit(self, actor, doc_id, version):
         chunks = await asyncio.to_thread(self.knowledge.draft_chunks_with_status, actor, doc_id, version)
         job = await asyncio.to_thread(self.jobs.create, actor, doc_id, version, len(chunks))

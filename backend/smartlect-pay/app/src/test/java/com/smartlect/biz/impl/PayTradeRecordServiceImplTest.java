@@ -33,9 +33,29 @@ class PayTradeRecordServiceImplTest {
     void duplicatePayOrderIdIsTreatedAsIdempotentCreate() {
         doThrow(new DuplicateKeyException("duplicate pay_order_id"))
                 .when(mapper).insert(any(PayTradeRecord.class));
+        PayTradeRecord existing = new PayTradeRecord();
+        existing.setUserId("u1");
+        existing.setOrderId("order-1");
+        existing.setPayAmount(new BigDecimal("99.00"));
+        when(mapper.selectByPayOrderId("pay-1")).thenReturn(existing);
 
         assertDoesNotThrow(() -> service.createPending(
                 "u1", "pay-1", "order-1", new BigDecimal("99.00"), "ALI_PAY"));
+    }
+
+    @Test
+    void missingAmountIsRejectedAndDuplicateDifferentAmountConflicts() {
+        org.junit.jupiter.api.Assertions.assertThrows(com.smartlect.exception.BusinessException.class,
+                () -> service.createPending("u1", "pay-1", "order-1", null, "ALI_PAY"));
+        doThrow(new DuplicateKeyException("duplicate pay_order_id"))
+                .when(mapper).insert(any(PayTradeRecord.class));
+        PayTradeRecord existing = new PayTradeRecord();
+        existing.setUserId("u1");
+        existing.setOrderId("order-1");
+        existing.setPayAmount(new BigDecimal("10.00"));
+        when(mapper.selectByPayOrderId("pay-1")).thenReturn(existing);
+        org.junit.jupiter.api.Assertions.assertThrows(com.smartlect.exception.BusinessException.class,
+                () -> service.createPending("u1", "pay-1", "order-1", new BigDecimal("99.00"), "ALI_PAY"));
     }
 
     @Test

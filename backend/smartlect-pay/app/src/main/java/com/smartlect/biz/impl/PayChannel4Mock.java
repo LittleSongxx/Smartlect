@@ -19,7 +19,7 @@ import java.util.Objects;
 
 /** Simulated settlement against persisted Java payment intents; never contacts a provider. */
 @Service("payChannel4Mock")
-@ConditionalOnProperty(name = "smartlect.payment.mode", havingValue = "mock", matchIfMissing = true)
+@ConditionalOnProperty(name = "smartlect.payment.mode", havingValue = "mock", matchIfMissing = false)
 public class PayChannel4Mock implements PayChannel {
     private final PayTradeRecordService trades;
     private final OrderFeignSupport orders;
@@ -46,7 +46,20 @@ public class PayChannel4Mock implements PayChannel {
 
     /** Commit the simulated charge before notifying order, so a lost response is replayable. */
     public PaymentResult completePayment(String payOrderId) {
+        return completePayment(null, payOrderId, null);
+    }
+
+    public PaymentResult completePayment(String userId, String payOrderId, Long expectedAmountCents) {
         PayTradeRecord record = requireIntent(payOrderId);
+        if (userId != null) {
+            com.smartlect.security.DelegatedUserIdentity.requireOwner(userId, record.getUserId());
+        }
+        if (expectedAmountCents != null) {
+            long cents = record.getPayAmount().movePointRight(2).longValueExact();
+            if (cents != expectedAmountCents) {
+                throw new com.smartlect.exception.HttpBusinessException(409, "RECONFIRM_REQUIRED");
+            }
+        }
         if (Objects.equals(record.getTradeStatus(), 2)) {
             throw new BusinessException("已关闭的支付意图不能付款");
         }

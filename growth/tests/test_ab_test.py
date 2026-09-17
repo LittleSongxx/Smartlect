@@ -1,79 +1,67 @@
-"""A/B测试引擎单元测试"""
-
+"""Homepage A/B uses StrategyStore control/treatment; treatment must call semantic_rerank."""
+from types import SimpleNamespace
 import unittest
 
-from smartlect.recommendation.ab_test import ABTestEngine, Experiment, ExperimentGroup
+from smartlect.recommendation.service import RecommendationService
+from smartlect.recommendation.store import DEFAULT_STRATEGIES
+from test_recommendation import FakeCommerce, FakeStrategies
 
 
-def test_consistent_assignment():
-    """Same user always gets the same group."""
-    engine = ABTestEngine()
-    group1 = engine.assign("user_001")
-    group2 = engine.assign("user_001")
-    assert group1["group"] == group2["group"]
+class HomepageAbWiringTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.actor = SimpleNamespace(subject_type='user', actor_id='alice', execution_scope_id='isolated',
+                                     permissions=('shopping:read',))
+        self.scope = {'include': ['content', 'popular', 'new', 'paired', 'seed'], 'exclude': ['outside']}
+        self.commerce = FakeCommerce()
+
+    async def test_control_does_not_enter_semantic_rerank(self):
+        called = []
+
+        async def rerank(payload):
+            called.append(payload)
+            return {'sku_keys': [item['sku_key'] for item in payload['candidates']]}
+
+        result = await RecommendationService(self.commerce, FakeStrategies('rules-v1')).recommend(
+            self.actor, {'query': '轻便键盘', 'limit': 4}, seed_product_id='seed',
+            product_scope=self.scope, semantic_rerank=rerank)
+        self.assertEqual(result['ranking_mode'], 'rule')
+        self.assertEqual(called, [])
+
+    async def test_treatment_walks_rerank_and_differs_from_control(self):
+        called = []
+
+        async def reverse(payload):
+            called.append(True)
+            keys = [item['sku_key'] for item in payload['candidates']]
+            return {'sku_keys': list(reversed(keys))}
+
+        control = await RecommendationService(self.commerce, FakeStrategies('rules-v1')).recommend(
+            self.actor, {'query': '轻便键盘', 'limit': 4}, seed_product_id='seed',
+            product_scope=self.scope, semantic_rerank=reverse)
+        treatment = await RecommendationService(FakeCommerce(), FakeStrategies('content-v1')).recommend(
+            self.actor, {'query': '轻便键盘', 'limit': 4}, seed_product_id='seed',
+            product_scope=self.scope, semantic_rerank=reverse)
+        self.assertEqual(control['ranking_mode'], 'rule')
+        self.assertEqual(treatment['ranking_mode'], 'content_llm')
+        self.assertTrue(called)
+        self.assertNotEqual([item['sku_key'] for item in control['items']],
+                            [item['sku_key'] for item in treatment['items']])
+
+    async def test_treatment_rerank_failure_falls_back_without_raising(self):
+        async def boom(payload):
+            raise RuntimeError('semantic_rerank_unavailable')
+
+        result = await RecommendationService(self.commerce, FakeStrategies('content-v1')).recommend(
+            self.actor, {'query': '轻便键盘', 'limit': 4}, seed_product_id='seed',
+            product_scope=self.scope, semantic_rerank=boom)
+        self.assertEqual(result['ranking_mode'], 'content_rule_fallback')
+        self.assertEqual(result['diagnostics']['rerank_error'], 'semantic_rerank_unavailable_or_invalid')
+        self.assertTrue(result['items'])
+
+    def test_strategy_store_keeps_control_and_treatment(self):
+        self.assertEqual(DEFAULT_STRATEGIES['rules-v1']['ranking'], 'rule')
+        self.assertEqual(DEFAULT_STRATEGIES['content-v1']['ranking'], 'content')
 
 
-def test_distribution():
-    """Check rough distribution balance across many users."""
-    engine = ABTestEngine()
-    counts: dict[str, int] = {}
-    for i in range(1000):
-        result = engine.assign(f"user_{i}")
-        grp = result["group"]
-        counts[grp] = counts.get(grp, 0) + 1
-
-    for grp, count in counts.items():
-        assert 300 < count < 700, f"Group {grp} has {count} users — too skewed"
-
-
-def test_thompson_sampling():
-    """Thompson sampling updates posterior correctly."""
-    engine = ABTestEngine()
-    for _ in range(100):
-        engine.record_outcome("rec_strategy", "treatment_content", True)
-    for _ in range(100):
-        engine.record_outcome("rec_strategy", "control", False)
-
-    exp = engine.experiments["rec_strategy"]
-    treatment = next(g for g in exp.groups if g.name == "treatment_content")
-    control = next(g for g in exp.groups if g.name == "control")
-    assert treatment.successes > control.successes
-
-
-def test_custom_experiment():
-    engine = ABTestEngine()
-    engine.register_experiment(
-        Experiment(
-            id="prompt_test",
-            name="Prompt模板实验",
-            groups=[
-                ExperimentGroup(name="template_a", weight=30),
-                ExperimentGroup(name="template_b", weight=70),
-            ],
-        )
-    )
-    result = engine.assign("user_999", "prompt_test")
-    assert result["group"] in ("template_a", "template_b")
-
-
-def test_metrics_recording():
-    engine = ABTestEngine()
-    engine.record_metric("rec_strategy", "control", "ctr", 0.05, "user_001")
-    engine.record_metric("rec_strategy", "control", "ctr", 0.08, "user_002")
-    engine.record_metric("rec_strategy", "treatment_content", "ctr", 0.12, "user_003")
-
-    stats = engine.get_stats("rec_strategy")
-    assert "control" in stats
-    assert stats["control"]["ctr"]["count"] == 2
-
-
-def load_tests(loader, tests, pattern):
-    """Run every migrated source assertion through standard-library discovery."""
-    return unittest.TestSuite(unittest.FunctionTestCase(test) for test in (
-        test_consistent_assignment, test_distribution, test_thompson_sampling,
-        test_custom_experiment, test_metrics_recording,
-    ))
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

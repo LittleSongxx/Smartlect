@@ -100,19 +100,32 @@ class PayChannel4MockTest {
     }
 
     @Test
-    void authenticatedTriggerIgnoresCallerUserAndAmount() throws Exception {
+    void authenticatedTriggerRequiresDelegatedOwnerAndStoredAmount() throws Exception {
         InternalApiAuthFilter filter = new InternalApiAuthFilter();
         ReflectionTestUtils.setField(filter, "expectedToken", "smartlect-test-internal");
         ReflectionTestUtils.setField(filter, "authEnabled", true);
-        var mvc = MockMvcBuilders.standaloneSetup(new MockPaymentController(channel)).addFilters(filter).build();
+        var mvc = MockMvcBuilders.standaloneSetup(new MockPaymentController(channel))
+                .setControllerAdvice(new com.smartlect.controller.AGlobalExceptionHandlerController())
+                .addFilters(new org.springframework.web.filter.RequestContextFilter(), filter).build();
         mvc.perform(post("/internal/pay/mock/complete").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"payOrderId\":\"pay-1\"}"))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(trades, orders);
         when(trades.findByPayOrderId("pay-1")).thenReturn(trade(1));
         mvc.perform(post("/internal/pay/mock/complete").header("X-Internal-Token", "smartlect-test-internal")
+                        .header("X-Smartlect-User-Id", "attacker")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"payOrderId\":\"pay-1\",\"userId\":\"attacker\",\"amount\":99999}"))
+                        .content("{\"payOrderId\":\"pay-1\",\"expectedAmountCents\":9000}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/internal/pay/mock/complete").header("X-Internal-Token", "smartlect-test-internal")
+                        .header("X-Smartlect-User-Id", "owner-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"payOrderId\":\"pay-1\",\"expectedAmountCents\":1}"))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/internal/pay/mock/complete").header("X-Internal-Token", "smartlect-test-internal")
+                        .header("X-Smartlect-User-Id", "owner-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"payOrderId\":\"pay-1\",\"expectedAmountCents\":9000}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.userId").value("owner-1"))
                 .andExpect(jsonPath("$.data.amount").value(90.00));
     }

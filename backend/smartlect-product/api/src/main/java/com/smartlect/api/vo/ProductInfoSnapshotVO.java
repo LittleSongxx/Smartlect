@@ -14,6 +14,7 @@ public class ProductInfoSnapshotVO implements Serializable {
     private BigDecimal maxPrice;
     private String categoryId;
     private Integer totalSale;
+    private String catalogScope;
 
     public String getProductId() {
         return productId;
@@ -77,5 +78,13 @@ public class ProductInfoSnapshotVO implements Serializable {
 
     public void setTotalSale(Integer totalSale) {
         this.totalSale = totalSale;
+    }
+
+    public String getCatalogScope() {
+        return catalogScope;
+    }
+
+    public void setCatalogScope(String catalogScope) {
+        this.catalogScope = catalogScope;
     }
 }

@@ -1,7 +1,7 @@
 -- Current schema owned by the cart service.
 create table if not exists product_cart
 (
-    cart_id                varchar(15)  not null comment '购物车ID' primary key,
+    cart_id                varchar(36)  not null comment '购物车ID' primary key,
     user_id                varchar(15)  null comment '用户ID',
     product_id             varchar(15)  not null comment '商品ID',
     property_value_ids     varchar(500) null comment '属性值id组',
@@ -93,6 +93,20 @@ SET @sql = IF(
               AND column_name = 'recommendation_attributed_at'),
     'SELECT 1',
     'ALTER TABLE product_cart ADD COLUMN recommendation_attributed_at datetime(3) NULL COMMENT ''validated click time'''
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @sql = IF(
+    EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'product_cart'
+          AND column_name = 'cart_id'
+          AND character_maximum_length >= 36
+    ),
+    'SELECT 1',
+    'ALTER TABLE product_cart MODIFY cart_id varchar(36) not null comment ''购物车ID'''
 );
 PREPARE stmt FROM @sql;
 EXECUTE stmt;

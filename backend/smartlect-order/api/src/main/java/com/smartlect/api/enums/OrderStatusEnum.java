@@ -12,8 +12,7 @@ public enum OrderStatusEnum {
     CANCELLED(4, "交易取消"),
     CLOSED(5, "交易关闭"),
     REFUNDED(6, "已退款,交易关闭"),
-    PARTIALLY_REFUNDED(7, "部分退款"),
-    WAIT_COMMENT(8, "待评价");
+    PARTIALLY_REFUNDED(7, "部分退款");
 
     private Integer status;
     private String desc;

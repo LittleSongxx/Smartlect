@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
+from smartlect.algo_version import content_hash
 from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
 from smartlect.state import StateError, _integer
 from smartlect.tools import Arguments
@@ -123,34 +124,29 @@ class AdClickRequest(Arguments):
     exposure_id: ProductId
 
 
-AD_RANKING_VERSION = 'ad-fatigue-pacing-v1'
+AD_RANKING_VERSION = content_hash({
+    'ranker': 'relevance_fatigue_pacing',
+    'fatigue': 'impressions_24h',
+})
 
 
 def rank_ads(pairs):
-    """Order eligible ads by relevance, this viewer's fatigue, and budget pacing.
+    """Order eligible ads by relevance, this viewer's 24h fatigue, and budget pacing.
 
     A slot for one merchant's own campaigns has no auction to win, so bid ordering would be
-    meaningless here. What does matter is that the viewer is not shown the same creative they
-    already ignored, and that one campaign does not monopolise the slot until its budget is
-    gone. Relevance comes from the shared ranker, but it only scales the score and never
-    zeroes a candidate, so an eligible ad stays eligible.
-
-    All three inputs are already-recorded facts: the viewer's own impressions and clicks on
-    that creative, and the campaign's own budget and spend. Nothing here reads or changes
-    money authority, and reading them records no impression.
+    meaningless here. Fatigue is N impressions in the last 24 hours: more recent exposure
+    pushes a creative down. A prior click is not immunity. Relevance only scales the score
+    and never zeroes a candidate, so an eligible ad stays eligible.
     """
     scored = []
     for card, candidate in pairs:
         relevance = .4 + .6 * min(max(card.get('rule_score') or 0, 0), 1)
         seen = max(int(candidate.get('viewer_impressions') or 0), 0)
-        clicked = max(int(candidate.get('viewer_clicks') or 0), 0)
-        # Ignoring a creative pushes it down; having clicked it before is interest, not fatigue.
-        fatigue = 1.0 if clicked else 1 / (1 + seen)
+        fatigue = 1 / (1 + seen)
         budget = max(int(candidate.get('budget_cents') or 0), 0)
         spent = min(max(int(candidate.get('spent_cents') or 0), 0), budget)
         pacing = (budget - spent) / budget if budget else 0.0
         scored.append((card, candidate, round(relevance * fatigue * (.5 + .5 * pacing), 6)))
-    # Ties break on the deterministic candidate order the store already returned.
     return sorted(scored, key=lambda row: (-row[2], row[1]['campaign_id'], row[1]['creative_id']))
 
 
@@ -191,7 +187,7 @@ class AdsService:
             'cover', 'price_cents', 'stock', 'specification', 'reasons')}, **candidate,
             'ad_label': '推广', 'ad_mode': 'simulated_cpc', 'ad_rank_score': score}
             for card, candidate, score in rank_ads(pairs)[:limit]]
-        return {'items': items, 'ranking_mode': 'ad-fatigue-pacing-v1',
+        return {'items': items, 'ranking_mode': AD_RANKING_VERSION,
                 'observed_at': datetime.now(timezone.utc).isoformat()}
 
     async def create_campaign(self, actor, request):

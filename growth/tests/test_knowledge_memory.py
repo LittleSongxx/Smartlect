@@ -3,13 +3,14 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
-from smartlect.knowledge import (KnowledgeStore, _merchant, _vector, acl_denied_documents,
+from smartlect.knowledge import (CHUNK_WINDOW, KnowledgeStore, _merchant, _vector, acl_denied_documents,
                                 covering_span, evidence_result, rank_chunks, rrf_merge,
                                 split_document, tokens)
 from smartlect.agents.shopping import knowledge_observation
 from smartlect.events import canonical
 from smartlect.memory import MemoryStore, _preference, estimate_text_tokens, working_context
 from smartlect.state import StateError
+from smartlect.tokenizer import count_tokens
 
 
 def chunk(body, doc_id='refund', **extra):
@@ -24,10 +25,25 @@ class KnowledgeMemoryTests(unittest.TestCase):
         self.assertGreater(len(pieces), 2)
         for piece in pieces:
             self.assertEqual(body[piece['start_offset']:piece['end_offset']], piece['content'])
-            self.assertLessEqual(len(piece['content']), 1400)
+            self.assertLessEqual(count_tokens(piece['content']), CHUNK_WINDOW + 8)
             self.assertEqual(body.count('\n', 0, piece['start_offset']) + 1, piece['start_line'])
         self.assertEqual(pieces[-1]['heading'], '模拟支付')
-        self.assertEqual(''.join(piece['content'] for piece in pieces), body)
+        self.assertEqual(pieces[0]['start_offset'], 0)
+        self.assertEqual(pieces[-1]['end_offset'], len(body))
+
+    def test_chunk_window_and_overlap_keep_offsets_and_cover_the_body(self):
+        body = '# 退款\n\n' + '这是合成店铺政策。\n' * 80
+        pieces = split_document(body, window=512, overlap=64)
+        self.assertGreater(len(pieces), 1)
+        covered = []
+        for piece in pieces:
+            self.assertEqual(body[piece['start_offset']:piece['end_offset']], piece['content'])
+            self.assertLessEqual(count_tokens(piece['content']), 512 + 8)
+            covered.append((piece['start_offset'], piece['end_offset']))
+        self.assertEqual(covered[0][0], 0)
+        self.assertEqual(covered[-1][1], len(body))
+        for prev, nxt in zip(covered, covered[1:]):
+            self.assertGreater(prev[1], nxt[0])
 
     def test_synonym_baseline_and_no_answer_do_not_use_fake_vectors(self):
         rows = [chunk('# 退款申请\n退款前请先登录，确认后申请。'),
@@ -47,10 +63,14 @@ class KnowledgeMemoryTests(unittest.TestCase):
                       index_version='one:d2:v1', vector_json=[1, 0]),
                 chunk('# 测试乙\n不同主题乙。', 'other', embedding_model='other', embedding_dimensions=2,
                       index_version='other:d2:v1', vector_json=[1, 0])]
-        ranked, metadata = rank_chunks(rows, 'unmatched', query_vector=[1, 0],
-                                       embedding_model='one', index_version='one:d2:v1')
+        ranked, metadata = rank_chunks(
+            rows, 'unmatched', query_vector=[1, 0],
+            embedding_model='one', index_version='one:d2:v1',
+            dense_hits=[{'doc_id': 'refund', 'version': 1, 'chunk_id': rows[0]['chunk_id'], 'score': 0.9}],
+            vector_backend='pgvector_hnsw')
         self.assertEqual([row['doc_id'] for row in ranked], ['refund'])
         self.assertEqual(metadata['dense_matches'], 1)
+        self.assertEqual(metadata['vector_backend'], 'pgvector_hnsw')
         for vector in ([0, 0], [1, float('nan')], [True, 0], [1, '0']):
             with self.assertRaises(StateError):
                 _vector(vector)
@@ -105,7 +125,7 @@ class KnowledgeMemoryTests(unittest.TestCase):
         self.assertNotIn('退款已经完成', str(summary))
         self.assertEqual((summary['from_sequence'], summary['to_sequence']), (1, 3))
         self.assertTrue(summary['not_business_facts'])
-        self.assertGreater(estimate_text_tokens('中文 abc'), 4)
+        self.assertGreaterEqual(estimate_text_tokens('中文 abc'), 3)
         self.assertEqual(summary['dropped']['request_count'], 0)
         recent, summary = working_context(messages + [{'message_id': 'huge', 'sequence': 21, 'role': 'user', 'content': '很长' * 4000}])
         self.assertEqual(recent, [])
@@ -167,7 +187,8 @@ class KnowledgeMemoryTests(unittest.TestCase):
         covering = chunk('# 退款期限\n退款需要几天到账，期限按支付渠道计算。', 'cover')
         ranked, metadata = rank_chunks([repeated, covering], '退款几天到账')
         self.assertEqual([row['doc_id'] for row in ranked], ['cover', 'repeat'])
-        self.assertEqual(metadata['rerank_version'], 'zh-coverage-proximity-v2')
+        from smartlect.knowledge import RERANK_VERSION
+        self.assertEqual(metadata['rerank_version'], RERANK_VERSION)
         scores = {tuple(item['chunk'])[0]: item['score'] for item in metadata['rerank_scores']}
         self.assertGreater(scores['cover'], scores['repeat'])
         # Both stages are recorded so a miss can be attributed to recall or to ranking.

@@ -29,11 +29,13 @@ public class UserInternalController extends ABaseController {
 
     @PostMapping("/address/get")
     public ResponseVO<UserAddressVO> getAddress(@Valid @RequestBody UserAddressQueryDTO dto) {
+        com.smartlect.security.DelegatedUserIdentity.requireAndMatch(dto.getUserId());
         return getSuccessResponseVO(userInternalService.getAddress(dto.getAddressId(), dto.getUserId()));
     }
 
     @PostMapping("/member/addGrowthOnPay")
     public ResponseVO<Void> addGrowthOnPay(@Valid @RequestBody UserGrowthAddDTO dto) {
+        com.smartlect.security.DelegatedUserIdentity.requireAndMatch(dto.getUserId());
         userInternalService.addGrowthOnPay(dto.getUserId(), dto.getPayAmount());
         return getSuccessResponseVO(null);
     }

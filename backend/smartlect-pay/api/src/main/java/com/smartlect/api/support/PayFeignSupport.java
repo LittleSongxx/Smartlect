@@ -27,6 +27,12 @@ public class PayFeignSupport {
                 "查询支付意图失败");
     }
 
+    public void assertSettled(String payOrderId) {
+        feignResponseSupport.run(
+                () -> payFeignClient.assertSettled(new PayTradeStatusDTO(payOrderId)),
+                "核对支付意图失败");
+    }
+
     public void createPending(String userId, String payOrderId, String orderId, BigDecimal payAmount, String payChannel) {
         feignResponseSupport.run(
                 () -> payFeignClient.createPending(new PayTradeCreateDTO(userId, payOrderId, orderId, payAmount, payChannel)),

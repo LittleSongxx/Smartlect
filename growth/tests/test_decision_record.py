@@ -1,6 +1,9 @@
+import importlib
+import os
 import unittest
+from unittest.mock import patch
 
-from smartlect.decision_record import attach_merchant_audit, attach_shopping_audit
+from smartlect.decision_record import SHOPPING_MODEL_LIMIT, attach_merchant_audit, attach_shopping_audit
 
 
 class DecisionRecordTests(unittest.TestCase):
@@ -25,8 +28,12 @@ class DecisionRecordTests(unittest.TestCase):
         self.assertEqual(result['citations'][0]['chunk_id'], 'c1')
         self.assertIsNone(result['ticket'])
         self.assertIsNone(result['proposal'])
+        self.assertEqual(result['audit']['plane'], 'shopping')
+        self.assertIs(result['decision'], result['audit'])
+        self.assertIs(result['checks'], result['audit_checks'])
         self.assertEqual(result['decision']['plane'], 'shopping')
         self.assertEqual(result['decision']['citation_chunk_ids'], ['c1'])
+        self.assertEqual(result['audit']['budget']['model_attempts_limit'], SHOPPING_MODEL_LIMIT)
         self.assertEqual(result['decision']['accepted_tools'], ['search_knowledge'])
         self.assertIs(result['decision']['compiled_open_ticket'], False)
         statuses = {item['id']: item['status'] for item in result['checks']}
@@ -71,3 +78,11 @@ class DecisionRecordTests(unittest.TestCase):
         self.assertEqual(statuses['model_has_no_tools'], 'passed')
         self.assertEqual(statuses['no_replan_on_same_watermark'], 'passed')
         self.assertEqual(statuses['evidence_bound_or_waiting'], 'passed')
+
+    def test_shopping_model_limit_follows_env(self):
+        self.assertEqual(SHOPPING_MODEL_LIMIT, max(1, int(os.environ.get('SMARTLECT_MODEL_CALL_LIMIT') or 6)))
+        with patch.dict(os.environ, {'SMARTLECT_MODEL_CALL_LIMIT': '9'}):
+            import smartlect.decision_record as module
+            reloaded = importlib.reload(module)
+            self.assertEqual(reloaded.SHOPPING_MODEL_LIMIT, 9)
+        importlib.reload(module)

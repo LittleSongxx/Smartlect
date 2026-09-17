@@ -12,12 +12,13 @@ from smartlect.tools import tool_schema, SearchArgs, CreateOrderArgs, Preference
 
 class ShoppingBoundaryTests(unittest.TestCase):
     def test_final_answer_declares_request_kind_instead_of_status(self):
-        self.assertEqual(PROMPT_VERSION, 'shopping-react-v25')
-        self.assertEqual(SCHEMA_VERSION, 'shopping-answer-v5')
+        self.assertEqual(PROMPT_VERSION, 'shopping-react-v26')
+        self.assertEqual(SCHEMA_VERSION, 'shopping-answer-v6')
         advice = load_skill('shopping_advice')
         self.assertEqual(advice['version'], '1.13.0')
         self.assertIn('list_my_coupons', advice['tools'])
         self.assertIn('compare_skus', advice['tools'])
+        self.assertIn('search_skus', advice['tools'])
         self.assertIn('search_skus 或 recommend_skus', advice['instructions'])
         self.assertIn('要比较时用 compare_skus', advice['instructions'])
         self.assertIn('空集是合法收口', advice['instructions'])

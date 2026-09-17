@@ -416,7 +416,7 @@ class OrderCommerceInternalControllerTest {
         assertEquals(1, result.size());
         assertEquals("p2", result.get(0).get("productId"));
         assertEquals(3L, result.get(0).get("paidUnits"));
-        assertEquals("confirmed_payment_units_v1", result.get(0).get("basis"));
+        assertEquals("confirmed_payment_units_excluding_refunds", result.get(0).get("basis"));
         Instant.parse((String) result.get(0).get("observedAt"));
         assertEquals(java.util.Set.of("productId", "paidUnits", "basis", "observedAt"), result.get(0).keySet());
         verify(mapper).selectPopularProducts(List.of("p2"), List.of("p1"), 2);

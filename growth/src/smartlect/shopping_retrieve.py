@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import uuid
 
+from smartlect.algo_version import content_hash
 from smartlect.catalog_gate import _fold, eligible_skus, in_scope, scope_filter
 from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
 from smartlect.events import canonical
@@ -14,7 +15,10 @@ from smartlect.shopping_mission import (empty_mission, has_hard_constraints, ret
 from smartlect.state import StateError, _actor
 
 STRATEGY_VERSION = 'shopping-constraint-v2'
-ALGORITHM_VERSION = 'shopping-constraint-retrieve-v2'
+ALGORITHM_VERSION = content_hash({
+    'ranker': 'constraint_retrieve',
+    'features': ('content', 'category', 'preference', 'affordability'),
+})
 SHOPPING_FEATURES = ('content', 'category', 'preference', 'affordability')
 
 
@@ -49,6 +53,20 @@ def rank_shopping_skus(cards, request, preferences=()):
         results.append({**card, 'features': {key: round(value, 6) for key, value in features.items()},
             'feature_contributions': contributions, 'rule_score': round(sum(contributions.values()), 6),
             'candidate_routes': {'content': 1}, 'reasons': reasons})
+    return sorted(results, key=lambda card: (-card['rule_score'], card['price_cents'], card['sku_key']))
+
+
+def rank_search_skus(cards, request):
+    """Query-relevance rank only; no preference/affordability or homepage routes."""
+    query = set(tokens(request.get('query') or ''))
+    results = []
+    for card in cards:
+        text = card['productName'] + ' ' + card['specification']
+        content_score = len(query & set(tokens(text))) / max(len(query), 1)
+        results.append({**card, 'features': {'content': round(content_score, 6)},
+            'feature_contributions': {'content': round(content_score, 6)},
+            'rule_score': round(content_score, 6), 'candidate_routes': {'content': 1},
+            'reasons': ['商品名称或规格匹配本次查询'] if content_score else []})
     return sorted(results, key=lambda card: (-card['rule_score'], card['price_cents'], card['sku_key']))
 
 
@@ -101,6 +119,10 @@ class ShoppingRetrieve:
         query = {'keyword': keyword or '', 'limit': limit, **recall_scope}
         if category_id is not None:
             query['categoryId'] = category_id
+        if request.get('max_price_cents') is not None:
+            query['maxPriceCents'] = request['max_price_cents']
+        if request.get('min_price_cents'):
+            query['minPriceCents'] = request['min_price_cents']
         try:
             return await self.commerce.request('product', '/internal/product/commerce/searchOnSale', data=query)
         except CommerceError:
@@ -160,6 +182,35 @@ class ShoppingRetrieve:
         if extras:
             result.update(extras)
         return result
+
+    async def search(self, actor, request, *, product_scope=None):
+        """Independent query-relevance retrieve. Same eligibility gates, no mission merge, no homepage routes."""
+        kind, _, _ = _actor(actor)
+        if 'shopping:read' not in getattr(actor, 'permissions', ()) and not (
+                kind == 'merchant' and (
+                    'admin:legacy' in getattr(actor, 'permissions', ())
+                    or 'admin:trial' in getattr(actor, 'permissions', ()))):
+            raise StateError('permission_denied', 403)
+        from smartlect.shopping_mission import empty_mission, shopping_request
+        request = shopping_request(request, empty_mission())
+        scope = scope_filter(product_scope)
+        if request['product_id'] is not None:
+            requested = frozenset([request['product_id']])
+            scope = (requested if scope[0] is None else scope[0] & requested, scope[1])
+        errors = {}
+        rows = await self._search_on_sale(request, scope, request.get('query') or '',
+                                          category_id=request.get('category_id'), errors=errors)
+        product_ids = self._product_ids(rows, request)
+        cards, initial_removed = await self._snapshot(product_ids, request, scope)
+        if not cards:
+            return self._finish([], ranked=[], cards=cards, mode='query_relevance', rerank_error=None,
+                                initial_removed=initial_removed, final_removed={},
+                                empty_reason='no_eligible_sku', errors=errors)
+        ranked = rank_search_skus(cards, request)[:MAX_RERANK_SKUS]
+        selected = ranked[:request['limit']]
+        return self._finish(selected, ranked=ranked, cards=cards, mode='query_relevance',
+                            rerank_error=None, initial_removed=initial_removed, final_removed={},
+                            empty_reason=None if selected else 'no_eligible_sku', errors=errors)
 
     async def recommend(self, actor, request, *, mission=None, preferences=(), product_scope=None, semantic_rerank=None):
         kind, _, _ = _actor(actor)

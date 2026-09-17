@@ -162,6 +162,17 @@ class StateMySQLTests(unittest.TestCase):
                 cursor.execute("UPDATE schema_migration SET checksum=%s WHERE name='0001_ledger.sql'", (checksum,))
                 connection.commit()
 
+    def test_trial_chat_budget_is_persisted_and_caps_without_consuming_overflow(self):
+        actor_id = self.actor.actor_id
+        self.assertEqual(self.store.increment_trial_chat(actor_id, daily_limit=2), 1)
+        self.assertEqual(self.store.increment_trial_chat(actor_id, daily_limit=2), 2)
+        with self.assertRaisesRegex(StateError, "trial_chat_limit"):
+            self.store.increment_trial_chat(actor_id, daily_limit=2)
+        with self.connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT turns FROM trial_chat_budget WHERE actor_id=%s AND budget_date=UTC_DATE()",
+                           (actor_id,))
+            self.assertEqual(cursor.fetchone()["turns"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,10 +23,11 @@ PREFERENCE_KEYS = {"purpose", "budget_max_cents", "likes", "avoid", "categories"
 
 
 def estimate_text_tokens(text):
+    """tiktoken cl100k_base. Not a billing source; provider usage remains authoritative."""
     if not text:
         return 0
-    return (len(_CJK_RE.findall(text)) * 2 + (len(_ASCII_RE.findall(text)) + 3) // 4
-            + len(_SYMBOL_RE.findall(text)) + len(_WHITESPACE_RE.findall(text)))
+    from smartlect.tokenizer import count_tokens
+    return count_tokens(text)
 
 
 def working_context(messages, *, turns=8, token_budget=6500, excerpt_budget=1400):
@@ -150,7 +151,8 @@ class MemoryStore(SessionStore):
             final_event = "proposal_required" if proposal else "completed"
             cursor.executemany("""INSERT INTO agent_run_event (agent_run_id,sequence,event_type,data_json,created_at)
                 VALUES (%s,%s,%s,%s,UTC_TIMESTAMP(6))""", [
-                (run["agent_run_id"], run["event_sequence"] + 1, "message_delta", _json({"text": result["answer"]})),
+                (run["agent_run_id"], run["event_sequence"] + 1, "message_complete",
+                 _json({"text": result["answer"]})),
                 (run["agent_run_id"], run["event_sequence"] + 2, final_event, result_json)])
             cursor.execute("""UPDATE agent_run SET context_json=%s,result_json=%s,model_mode=%s,state=%s,
                 event_sequence=%s,version=version+1,updated_at=UTC_TIMESTAMP(6)

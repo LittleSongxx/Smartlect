@@ -213,7 +213,9 @@ async function transition() { await work(async () => {
   const result = await aiWrite(`/knowledge/${encodeURIComponent(item.doc_id)}/${item.version}/${item.action}`, {});
   selected.value = null;
   if (item.action === 'publish' && result.job_id) {
-    notice.value = `已提交发布：向量索引任务 ${result.job_id.slice(0, 8)} 排队中，索引完成后自动上线；进度见「AI 资产 · 知识索引」。`;
+    notice.value = result.index_state === 'DONE'
+      ? `已发布。索引任务 ${result.job_id.slice(0, 8)} 已记为同步发布（当前无向量密钥，检索走 BM25）；详情见「AI 资产 · 知识索引」。`
+      : `已提交发布：向量索引任务 ${result.job_id.slice(0, 8)} 排队中，索引完成后自动上线；进度见「AI 资产 · 知识索引」。`;
   } else {
     notice.value = '生命周期操作已返回，当前版本如下。';
   }

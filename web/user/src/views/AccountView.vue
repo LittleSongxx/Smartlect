@@ -73,7 +73,7 @@
           :key="item.code"
           type="button"
           class="order-tab"
-          @click="goOrders(item.status)"
+          @click="goOrders(item)"
         >
           <el-badge :value="countMap[item.code] || 0" :hidden="!countMap[item.code]" :max="99">
             <el-icon :size="26"><component :is="item.icon" /></el-icon>
@@ -351,7 +351,7 @@ const orderTabs = [
   { code: 'pendingPayment', name: '待付款', status: '0', icon: Wallet },
   { code: 'pendingShipment', name: '待发货', status: '1', icon: Box },
   { code: 'pendingReceipt', name: '待收货', status: '2', icon: Van },
-  { code: 'pendingComment', name: '待评价', status: '8', icon: Star },
+  { code: 'pendingComment', name: '待评价', commentPending: 1, icon: Star },
   { code: 'afterSale', name: '售后', status: 'all', icon: ChatDotRound }
 ];
 
@@ -517,12 +517,16 @@ const goProduct = (p: any) => {
   if (p?.productId) router.push(`/product/${p.productId}`);
 };
 
-const goOrders = (status: string) => {
-  if (status === 'all') {
+const goOrders = (item: { code?: string; status?: string; commentPending?: number }) => {
+  if (item.code === 'afterSale' || item.status === 'all') {
     router.push('/after-sale');
     return;
   }
-  router.push({ path: '/orders', query: { status } });
+  if (item.commentPending) {
+    router.push({ path: '/orders', query: { commentPending: '1' } });
+    return;
+  }
+  router.push({ path: '/orders', query: { status: item.status } });
 };
 
 const refreshPage = async () => {

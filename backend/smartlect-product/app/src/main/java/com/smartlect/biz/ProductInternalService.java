@@ -65,6 +65,7 @@ public class ProductInternalService {
             item.setMaxPrice(p.getMaxPrice());
             item.setCategoryId(p.getCategoryId());
             item.setTotalSale(p.getTotalSale());
+            item.setCatalogScope(p.getCatalogScope());
             productVos.add(item);
         }
         vo.setProducts(productVos);

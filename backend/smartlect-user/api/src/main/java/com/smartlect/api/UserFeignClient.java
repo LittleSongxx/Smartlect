@@ -20,10 +20,12 @@ import java.util.List;
 public interface UserFeignClient {
 
     @PostMapping("/address/get")
-    ResponseVO<UserAddressVO> getAddress(@RequestBody UserAddressQueryDTO dto);
+    ResponseVO<UserAddressVO> getAddress(@RequestBody UserAddressQueryDTO dto,
+            @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
 
     @PostMapping("/member/addGrowthOnPay")
-    ResponseVO<Void> addGrowthOnPay(@RequestBody UserGrowthAddDTO dto);
+    ResponseVO<Void> addGrowthOnPay(@RequestBody UserGrowthAddDTO dto,
+            @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
 
     @PostMapping("/notify/sendAsync")
     ResponseVO<Void> sendNotifyAsync(@RequestBody UserNotifyDTO dto);

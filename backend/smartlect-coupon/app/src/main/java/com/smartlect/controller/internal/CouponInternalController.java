@@ -30,6 +30,7 @@ public class CouponInternalController extends ABaseController {
 
     @PostMapping("/validateAndLock")
     public ResponseVO<CouponLockResultVO> validateAndLock(@Valid @RequestBody CouponValidateAndLockDTO dto) {
+        com.smartlect.security.DelegatedUserIdentity.requireAndMatch(dto.getUserId());
         return getSuccessResponseVO(couponInternalService.validateAndLock(dto));
     }
 
@@ -56,12 +57,14 @@ public class CouponInternalController extends ABaseController {
 
     @PostMapping("/changeUserCouponStatus")
     public ResponseVO<Void> changeUserCouponStatus(@Valid @RequestBody UserCouponStatusChangeDTO dto) {
+        com.smartlect.security.DelegatedUserIdentity.requireAndMatch(dto.getUserId());
         couponInternalService.changeUserCouponStatus(dto);
         return getSuccessResponseVO(null);
     }
 
     @PostMapping("/createUserCoupon")
     public ResponseVO<Void> createUserCoupon(@Valid @RequestBody UserCouponCreateDTO dto) {
+        com.smartlect.security.DelegatedUserIdentity.requireAndMatch(dto.getUserId());
         couponInternalService.createUserCoupon(dto);
         return getSuccessResponseVO(null);
     }
@@ -69,11 +72,13 @@ public class CouponInternalController extends ABaseController {
     @PostMapping("/grantCoupon")
     public ResponseVO<com.smartlect.api.vo.CouponGrantResultVO> grantCoupon(
             @Valid @RequestBody UserCouponCreateDTO dto) {
+        com.smartlect.security.DelegatedUserIdentity.requireAndMatch(dto.getUserId());
         return getSuccessResponseVO(couponInternalService.grantCoupon(dto));
     }
 
     @PostMapping("/deductStock")
     public ResponseVO<StockChangeResultVO> deductStock(@Valid @RequestBody CouponIdDTO dto) {
+        com.smartlect.security.DelegatedUserIdentity.require();
         return getSuccessResponseVO(new StockChangeResultVO(couponInternalService.deductStock(dto.getCouponId())));
     }
 

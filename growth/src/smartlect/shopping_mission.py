@@ -273,7 +273,9 @@ def requirement_slots(utterance):
         if len(cjk) == 2:
             terms.append(cjk)
         elif len(cjk) > 2:
-            terms.extend([cjk[:2], cjk[-2:]])
+            import jieba
+            words = [word.strip() for word in jieba.lcut(cjk) if len(word.strip()) >= 2]
+            terms.extend(words or [cjk])
     return _unique(terms, MAX_REQUIRED)
 
 

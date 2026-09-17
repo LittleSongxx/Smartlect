@@ -9,48 +9,6 @@
     <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="table-gap" />
     <el-alert v-if="notice" type="success" :title="notice" show-icon :closable="false" class="table-gap" />
 
-    <div class="table-data-card">
-      <el-empty v-if="!tickets.length" description="暂无人工工单。" :image-size="80" />
-      <article v-for="item in tickets" :key="item.ticket_id" class="ticket">
-        <div class="ticket-head">
-          <div class="ticket-title">
-            <h3>{{ ticketReasonText(item.reason) }}</h3>
-            <StatusTag :label="ticketStatusText(item.status)" :tone="badgeTone(item.status)" />
-            <span class="muted-note">v{{ item.version }}</span>
-            <p class="muted-note">创建 {{ timestamp(item.created_at) }} · 当前接管人 {{ item.assigned_actor_id || '待分配' }}</p>
-          </div>
-          <div class="button-row">
-            <el-button :disabled="busy || !canManage(item)" @click="view(item)">查看会话</el-button>
-            <el-button v-if="item.status === 'OPEN'" type="primary" :disabled="busy || !canManage(item)" @click="update(item, 'take_over')">接管</el-button>
-            <el-button v-if="item.status !== 'CLOSED'" :disabled="busy || !canManage(item)" @click="closing = item">核对结束</el-button>
-          </div>
-        </div>
-        <p v-if="item.resolution" class="resolution">最近人工回复：{{ item.resolution }}</p>
-        <GrowthTechDetails title="移交证据和工单凭据" :value="item" />
-        <el-form
-          v-if="item.status === 'TAKEN_OVER' && canManage(item)"
-          label-width="72px"
-          class="reply-form"
-          @submit.prevent="update(item, 'reply')"
-        >
-          <el-form-item label="人工回复">
-            <el-input
-              v-model="replies[item.ticket_id]"
-              type="textarea"
-              :rows="3"
-              maxlength="4000"
-              show-word-limit
-              :disabled="busy"
-              placeholder="写清处理结论与依据；提交后工单状态由服务端返回"
-            />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" native-type="submit" :disabled="busy || !replies[item.ticket_id]?.trim()">提交人工回复</el-button>
-          </el-form-item>
-        </el-form>
-      </article>
-    </div>
-
     <div v-if="detail" class="table-data-card support-detail table-gap" aria-label="工单会话详情">
       <div class="ticket-head">
         <div class="ticket-title">
@@ -109,6 +67,48 @@
           />
         </article>
       </section>
+    </div>
+
+    <div class="table-data-card">
+      <el-empty v-if="!tickets.length" description="暂无人工工单。" :image-size="80" />
+      <article v-for="item in tickets" :key="item.ticket_id" class="ticket">
+        <div class="ticket-head">
+          <div class="ticket-title">
+            <h3>{{ ticketReasonText(item.reason) }}</h3>
+            <StatusTag :label="ticketStatusText(item.status)" :tone="badgeTone(item.status)" />
+            <span class="muted-note">v{{ item.version }}</span>
+            <p class="muted-note">创建 {{ timestamp(item.created_at) }} · 当前接管人 {{ item.assigned_actor_id || '待分配' }}</p>
+          </div>
+          <div class="button-row">
+            <el-button :disabled="busy || !canManage(item)" @click="view(item)">查看会话</el-button>
+            <el-button v-if="item.status === 'OPEN'" type="primary" :disabled="busy || !canManage(item)" @click="update(item, 'take_over')">接管</el-button>
+            <el-button v-if="item.status !== 'CLOSED'" :disabled="busy || !canManage(item)" @click="closing = item">核对结束</el-button>
+          </div>
+        </div>
+        <p v-if="item.resolution" class="resolution">最近人工回复：{{ item.resolution }}</p>
+        <GrowthTechDetails title="移交证据和工单凭据" :value="item" />
+        <el-form
+          v-if="item.status === 'TAKEN_OVER' && canManage(item)"
+          label-width="72px"
+          class="reply-form"
+          @submit.prevent="update(item, 'reply')"
+        >
+          <el-form-item label="人工回复">
+            <el-input
+              v-model="replies[item.ticket_id]"
+              type="textarea"
+              :rows="3"
+              maxlength="4000"
+              show-word-limit
+              :disabled="busy"
+              placeholder="写清处理结论与依据；提交后工单状态由服务端返回"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" native-type="submit" :disabled="busy || !replies[item.ticket_id]?.trim()">提交人工回复</el-button>
+          </el-form-item>
+        </el-form>
+      </article>
     </div>
 
     <div v-if="closing" class="table-data-card table-gap">

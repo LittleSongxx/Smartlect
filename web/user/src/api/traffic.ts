@@ -23,7 +23,7 @@ export function recordLanding() {
   return landing ??= aiPost('/traffic/landing', { entry_id: entryId }, AbortSignal.timeout(2000)).then(
     () => true,
     (error) => {
-      const denied = error instanceof Error && /csrf_denied|invalid_session/.test(error.message);
+      const denied = error instanceof Error && /csrf_denied|csrf_replay|invalid_session/.test(error.message);
       if (!denied) return false;
       landing = undefined;
       return aiPost('/traffic/landing', { entry_id: crypto.randomUUID() }, AbortSignal.timeout(2000))

@@ -22,7 +22,7 @@ ENV_FILE = ROOT / "run/runtime.env"
 PROCESS_FILE = ROOT / "run/processes.json"
 DATABASES = ("admin", "user", "product", "stock", "cart", "order", "pay", "coupon")
 APPS = ("growth-worker", "growth", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
-PORTS = {"MYSQL": 13306, "REDIS": 16379, "RABBIT": 15672,
+PORTS = {"MYSQL": 13306, "POSTGRES": 15432, "REDIS": 16379, "RABBIT": 15672,
          "RABBIT_MANAGEMENT": 15674, "NACOS": 18848, "SEATA": 18092,
          "GATEWAY": 18080, "GROWTH": 18000, "DASHBOARD": 18501,
          "ADMIN": 18101, "USER": 18105, "PRODUCT": 18106, "STOCK": 18108,
@@ -97,6 +97,8 @@ def bootstrap():
             int(v) for k, v in env.items() if k.endswith('_PORT')}))
         admin_port = env.get('SMARTLECT_WEB_ADMIN_PORT') or str(free_ports(PORTS['WEB_ADMIN'], occupied={
             int(v) for k, v in env.items() if k.endswith('_PORT')} | {int(web_port)}))
+        occupied = {int(v) for k, v in env.items() if k.endswith("_PORT") and str(v).isdigit()}
+        postgres_port = env.get("SMARTLECT_POSTGRES_PORT") or str(free_ports(PORTS["POSTGRES"], occupied=occupied))
         additions = {key: value for key, value in {
             "SMARTLECT_DEMO_ENABLED": "true", "SMARTLECT_DEMO_PASSWORD": secrets.token_hex(24),
             "SMARTLECT_VISITOR_SECRET": secrets.token_hex(32),
@@ -104,6 +106,12 @@ def bootstrap():
             "SMARTLECT_ALLOWED_ORIGINS": "http://127.0.0.1:" + env["SMARTLECT_GATEWAY_PORT"],
             "SMARTLECT_WEB_USER_PORT": web_port,
             "SMARTLECT_WEB_ADMIN_PORT": admin_port,
+            "SMARTLECT_POSTGRES_HOST": "127.0.0.1",
+            "SMARTLECT_POSTGRES_PORT": postgres_port,
+            "SMARTLECT_POSTGRES_USER": "smartlect",
+            "SMARTLECT_POSTGRES_PASSWORD": secrets.token_hex(24),
+            "SMARTLECT_POSTGRES_DATABASE": "smartlect_growth",
+            "SMARTLECT_GROWTH_MYSQL_SSL": "0",
         }.items() if key not in env}
         if additions:
             with ENV_FILE.open("a") as target:
@@ -133,6 +141,10 @@ def bootstrap():
         "SMARTLECT_SEATA_TX_GROUP": "smartlect_tx_group",
         "SMARTLECT_GROWTH_MYSQL_USER": "smartlect_growth",
         "SMARTLECT_GROWTH_MYSQL_DATABASE": "smartlect_growth",
+        "SMARTLECT_POSTGRES_HOST": "127.0.0.1",
+        "SMARTLECT_POSTGRES_USER": "smartlect",
+        "SMARTLECT_POSTGRES_DATABASE": "smartlect_growth",
+        "SMARTLECT_GROWTH_MYSQL_SSL": "0",
         "SMARTLECT_MODEL_MODE": "mock", "SMARTLECT_PAYMENT_MODE": "mock", "SMARTLECT_DEMO_ENABLED": "true",
         "SMARTLECT_GROWTH_EVENTS_ENABLED": "true",
     }
@@ -140,7 +152,8 @@ def bootstrap():
                 "REDIS_PASSWORD", "RABBIT_PASSWORD", "NACOS_PASSWORD",
                 "NACOS_MYSQL_PASSWORD", "NACOS_IDENTITY", "SEATA_MYSQL_PASSWORD",
                 "SEATA_SECRET", "INTERNAL_TOKEN", "INTERNAL_OPS_TOKEN",
-                "GROWTH_MYSQL_PASSWORD", "ADMIN_PASSWORD", "DEMO_PASSWORD", "VISITOR_SECRET", "ATTRIBUTION_SECRET"):
+                "GROWTH_MYSQL_PASSWORD", "POSTGRES_PASSWORD",
+                "ADMIN_PASSWORD", "DEMO_PASSWORD", "VISITOR_SECRET", "ATTRIBUTION_SECRET"):
         env[f"SMARTLECT_{key}"] = secrets.token_hex(24)
     env["SMARTLECT_NACOS_AUTH_TOKEN"] = base64.b64encode(secrets.token_bytes(48)).decode()
     occupied = set()

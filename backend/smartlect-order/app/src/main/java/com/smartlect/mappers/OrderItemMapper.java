@@ -31,8 +31,8 @@ public interface OrderItemMapper<T,P> extends BaseMapper<T,P> {
             JOIN order_item candidate ON candidate.order_id = candidate_order.order_id
             WHERE seed.product_id = #{productId}
               AND seed_order.pay_order_id IS NOT NULL AND seed_order.pay_order_id &lt;&gt; ''
-              AND seed_order.order_status IN (1, 2, 3, 7, 8)
-              AND candidate_order.order_status IN (1, 2, 3, 7, 8)
+              AND seed_order.order_status IN (1, 2, 3, 7)
+              AND candidate_order.order_status IN (1, 2, 3, 7)
               AND seed.order_item_status = 1 AND candidate.order_item_status = 1
               AND seed.paid_amount IS NOT NULL AND candidate.paid_amount IS NOT NULL
               AND candidate.product_id &lt;&gt; #{productId}
@@ -59,13 +59,16 @@ public interface OrderItemMapper<T,P> extends BaseMapper<T,P> {
                                           @Param("excludeProductIds") List<String> excludeProductIds,
                                           @Param("limit") int limit);
 
-    // Historical confirmed payment units include zero-paid lines and later refunds.
+    // Confirmed payment units still on a live line: exclude refunded rows and fully refunded orders.
     // ponytail: aggregate existing facts on demand; add measured indexes before introducing a counter cache.
     @Select("""
             <script>
             SELECT item.product_id AS productId, SUM(item.buy_count) AS paidUnits
             FROM order_item item JOIN order_info orders ON orders.order_id = item.order_id
             WHERE item.paid_amount IS NOT NULL AND item.buy_count &gt; 0
+              AND (item.refunded_amount IS NULL OR item.refunded_amount = 0)
+              AND (item.order_item_status IS NULL OR item.order_item_status = 1)
+              AND orders.order_status NOT IN (6)
               AND orders.pay_order_id IS NOT NULL AND TRIM(orders.pay_order_id) &lt;&gt; ''
               AND orders.user_id IS NOT NULL AND TRIM(orders.user_id) &lt;&gt; ''
               AND NOT EXISTS (

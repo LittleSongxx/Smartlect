@@ -57,7 +57,7 @@ class FakeCommerce:
             return [deepcopy(self.products[key]) for key in scoped(keys)]
         if path.endswith('/popularProducts'):
             keys = sorted(self.paid_units, key=lambda key: (-self.paid_units[key], key))
-            return [dict(productId=key, paidUnits=self.paid_units[key], basis='confirmed_payment_units_v1',
+            return [dict(productId=key, paidUnits=self.paid_units[key], basis='confirmed_payment_units_excluding_refunds',
                          observedAt='2026-09-09T00:00:00Z') for key in scoped(keys)]
         if path.endswith('/coPurchaseProductIds'):
             return scoped(['outside', 'paired'])
@@ -204,7 +204,7 @@ class RecommendationTests(unittest.IsolatedAsyncioTestCase):
             first = after['items'][0]
             self.assertEqual(first['productId'], 'new')
             self.assertEqual(first['popularity_evidence'], {'paidUnits': 2000,
-                'basis': 'confirmed_payment_units_v1', 'observedAt': '2026-09-09T00:00:00Z'})
+                'basis': 'confirmed_payment_units_excluding_refunds', 'observedAt': '2026-09-09T00:00:00Z'})
             self.assertNotIn('totalSale', first)
             unknown = next(item for item in after['items'] if item['productId'] == 'paired')
             self.assertIsNone(unknown['popularity_evidence'])

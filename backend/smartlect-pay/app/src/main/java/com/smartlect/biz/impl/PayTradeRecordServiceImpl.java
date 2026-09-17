@@ -32,8 +32,8 @@ public class PayTradeRecordServiceImpl implements PayTradeRecordService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createPending(String userId, String payOrderId, String orderId, BigDecimal payAmount, String payChannel) {
-        if (StringTools.isEmpty(payOrderId) || payAmount == null) {
-            return;
+        if (StringTools.isEmpty(payOrderId) || StringTools.isEmpty(userId) || payAmount == null) {
+            throw new com.smartlect.exception.BusinessException("支付意图缺少用户、订单号或金额");
         }
         PayTradeRecord record = new PayTradeRecord();
         record.setTradeId(StringTools.createTradeId());
@@ -47,7 +47,13 @@ public class PayTradeRecordServiceImpl implements PayTradeRecordService {
         try {
             payTradeRecordMapper.insert(record);
         } catch (DuplicateKeyException ignored) {
-            // Database uniqueness is the idempotency boundary for concurrent create requests.
+            PayTradeRecord existing = findByPayOrderId(payOrderId);
+            if (existing == null
+                    || !userId.equals(existing.getUserId())
+                    || (orderId != null && existing.getOrderId() != null && !orderId.equals(existing.getOrderId()))
+                    || payAmount.compareTo(existing.getPayAmount()) != 0) {
+                throw new com.smartlect.exception.BusinessException("支付意图与已有记录不一致");
+            }
         }
     }
 

@@ -226,6 +226,10 @@ class SessionStore:
                 raise StateError('human_control_active')
             if conversation['lease_until'] and conversation['lease_until'] > conversation['db_now']:
                 raise StateError('conversation_busy')
+            cursor.execute("SELECT agent_run_id FROM agent_run WHERE conversation_id=%s "
+                           "AND state IN ('CREATED','RUNNING') LIMIT 1", (conversation_id,))
+            if cursor.fetchone():
+                raise StateError('conversation_busy')
             if conversation['lease_run_id']:
                 cursor.execute("UPDATE agent_run SET state='FAILED',version=version+1,result_json=%s "
                                "WHERE agent_run_id=%s AND state='RUNNING'",
@@ -296,6 +300,21 @@ class SessionStore:
             cursor.execute("SELECT lease_until FROM conversation WHERE conversation_id=%s", (conversation["conversation_id"],))
             until = cursor.fetchone()["lease_until"].replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
             return {**lease, "lease_until": until}
+
+    def increment_trial_chat(self, actor_id, *, daily_limit=30):
+        actor_id = _text(actor_id, "actor_id", 64)
+        daily_limit = _integer(daily_limit, "trial_chat_limit", 1, 1000)
+        with self._transaction() as cursor:
+            cursor.execute("""INSERT INTO trial_chat_budget (actor_id, budget_date, turns, updated_at)
+                VALUES (%s, UTC_DATE(), 0, UTC_TIMESTAMP(6))
+                ON DUPLICATE KEY UPDATE actor_id=actor_id""", (actor_id,))
+            cursor.execute("""UPDATE trial_chat_budget SET turns=turns+1, updated_at=UTC_TIMESTAMP(6)
+                WHERE actor_id=%s AND budget_date=UTC_DATE() AND turns < %s""", (actor_id, daily_limit))
+            if cursor.rowcount != 1:
+                raise StateError("trial_chat_limit", 429)
+            cursor.execute("SELECT turns FROM trial_chat_budget WHERE actor_id=%s AND budget_date=UTC_DATE()",
+                           (actor_id,))
+            return cursor.fetchone()["turns"]
 
     def release_run(self, lease):
         with self._transaction() as cursor:

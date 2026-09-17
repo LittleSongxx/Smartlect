@@ -33,7 +33,7 @@ public class CouponFeignSupport implements UserCouponStatusCompensatePort {
         dto.setUserId(userId);
         dto.setUserCouponId(userCouponId);
         dto.setOrderAmount(orderAmount);
-        return feignResponseSupport.call(() -> couponFeignClient.validateAndLock(dto), "优惠券校验失败");
+        return feignResponseSupport.call(() -> couponFeignClient.validateAndLock(dto, userId), "优惠券校验失败");
     }
 
     public CouponLockResultVO preview(String userId, String userCouponId, BigDecimal orderAmount) {
@@ -66,21 +66,21 @@ public class CouponFeignSupport implements UserCouponStatusCompensatePort {
         dto.setFromStatus(fromStatus);
         dto.setToStatus(toStatus);
         dto.setUseTime(useTime);
-        feignResponseSupport.run(() -> couponFeignClient.changeUserCouponStatus(dto), "更新用户券状态失败");
+        feignResponseSupport.run(() -> couponFeignClient.changeUserCouponStatus(dto, userId), "更新用户券状态失败");
     }
 
     public void createUserCoupon(UserCouponCreateDTO dto) {
-        feignResponseSupport.run(() -> couponFeignClient.createUserCoupon(dto), "创建用户券失败");
+        feignResponseSupport.run(() -> couponFeignClient.createUserCoupon(dto, dto.getUserId()), "创建用户券失败");
     }
 
     public CouponGrantResultVO grantCoupon(UserCouponCreateDTO dto) {
         return feignResponseSupport.call(
-                () -> couponFeignClient.grantCoupon(dto), "发放用户券失败");
+                () -> couponFeignClient.grantCoupon(dto, dto.getUserId()), "发放用户券失败");
     }
 
-    public int deductStock(String couponId) {
+    public int deductStock(String couponId, String userId) {
         StockChangeResultVO vo = feignResponseSupport.call(
-                () -> couponFeignClient.deductStock(new CouponIdDTO(couponId)), "扣减券库存失败");
+                () -> couponFeignClient.deductStock(new CouponIdDTO(couponId), userId), "扣减券库存失败");
         return vo == null || vo.getAffectedRows() == null ? 0 : vo.getAffectedRows();
     }
 

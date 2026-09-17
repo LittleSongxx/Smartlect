@@ -29,9 +29,9 @@
         </el-col>
         <el-col :span="13" class="toolbar-actions">
           <el-button type="primary" @click="loadDataList">搜索</el-button>
-          <el-button type="success" @click="showEdit()">新增优惠券</el-button>
-          <el-button type="warning" plain @click="warmupAllRush">秒杀库存预热(全部)</el-button>
-          <el-button type="warning" plain @click="reconcileAllRush">秒杀库存对账(全部)</el-button>
+          <el-button v-if="!isTrial" type="success" @click="showEdit()">新增优惠券</el-button>
+          <el-button v-if="!isTrial" type="warning" plain @click="warmupAllRush">秒杀库存预热(全部)</el-button>
+          <el-button v-if="!isTrial" type="warning" plain @click="reconcileAllRush">秒杀库存对账(全部)</el-button>
         </el-col>
       </el-row>
     </el-form>
@@ -75,7 +75,7 @@
         </template>
 
         <template #slotOp="{ index, row }">
-          <div class="list-op-panel">
+          <div v-if="!isTrial" class="list-op-panel">
             <OpBtn icon="icon-edit" tips="修改" @click="showEdit(row.couponId)"></OpBtn>
             <OpBtn :icon="row.status == 0 ? 'icon-shangjia' : 'icon-xiajia'"
               :tips="row.status == 0 ? '启用' : '停用'" @click="toggleStatus(row)">
@@ -180,7 +180,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, getCurrentInstance, computed } from 'vue'
+import { ref, reactive, getCurrentInstance, computed, inject } from 'vue'
+const isTrial = inject('isTrialAdmin', false)
 const { proxy } = getCurrentInstance()
 
 const columns = [

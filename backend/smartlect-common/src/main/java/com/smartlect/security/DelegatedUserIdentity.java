@@ -1,6 +1,7 @@
 package com.smartlect.security;
 
 import com.smartlect.constants.InternalApiHeaders;
+import com.smartlect.constants.TrialIdentities;
 import com.smartlect.exception.HttpBusinessException;
 import com.smartlect.utils.StringTools;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +28,15 @@ public final class DelegatedUserIdentity {
     public static final String MISMATCH_MESSAGE = "委托身份与请求体身份不一致";
 
     private DelegatedUserIdentity() {
+    }
+
+    /** 委托头必须存在，且不能是公开试用账号。交易写口用这个，避免只挡 Growth。 */
+    public static String requireNonTrial() {
+        String userId = require();
+        if (TrialIdentities.isTrialUserId(userId)) {
+            throw new HttpBusinessException(403, TrialIdentities.USER_DENIED);
+        }
+        return userId;
     }
 
     /** 从当前线程的请求解析委托头；不存在时抛 401。 */

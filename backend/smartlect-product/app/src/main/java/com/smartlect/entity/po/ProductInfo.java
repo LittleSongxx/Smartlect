@@ -52,6 +52,9 @@ public class ProductInfo implements Serializable {
 	/** Structured detail JSON. Old productDesc remains the extra_markdown fallback. */
 	private String contentJson;
 
+	/** store (default) or eval. Not inferred from product_id prefixes at runtime. */
+	private String catalogScope;
+
 	public void setProductId(String productId){
 		this.productId = productId;
 	}
@@ -162,6 +165,14 @@ public class ProductInfo implements Serializable {
 
 	public String getContentJson(){
 		return this.contentJson;
+	}
+
+	public void setCatalogScope(String catalogScope){
+		this.catalogScope = catalogScope;
+	}
+
+	public String getCatalogScope(){
+		return this.catalogScope;
 	}
 
 	@Override

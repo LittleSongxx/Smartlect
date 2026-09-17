@@ -1,6 +1,7 @@
-"""Append-only decision snapshots. Never changes answer_status, tickets, or grants."""
+"""Append-only audit snapshots. Never changes answer_status, tickets, or grants."""
+import os
 
-SHOPPING_MODEL_LIMIT = 6
+SHOPPING_MODEL_LIMIT = max(1, int(os.environ.get('SMARTLECT_MODEL_CALL_LIMIT') or 6))
 SHOPPING_TOOL_LIMIT = 10
 SHOPPING_RETRIEVAL_LIMIT = 2
 SHOPPING_REPAIR_LIMIT = 1
@@ -90,10 +91,12 @@ def shopping_checks(result, context, decision=None):
 
 
 def attach_shopping_audit(result, context):
-    """Add decision/checks. Leaves answer_status, ticket, proposal, and citations untouched."""
-    decision = shopping_decision(result, context)
-    result['decision'] = decision
-    result['checks'] = shopping_checks(result, context, decision)
+    """Add audit/audit_checks. Leaves answer_status, ticket, proposal, and citations untouched."""
+    audit = shopping_decision(result, context)
+    result['audit'] = audit
+    result['audit_checks'] = shopping_checks(result, context, audit)
+    result['decision'] = audit
+    result['checks'] = result['audit_checks']
     return result
 
 

@@ -130,7 +130,7 @@ private CouponRushRedisComponent couponRushRedisComponent;
 				throw new BusinessException("库存不足");
 			}
 
-			int affected = couponFeignSupport.deductStock(couponId);
+			int affected = couponFeignSupport.deductStock(couponId, userId);
 			if (affected == 0) {
 				couponFeignSupport.releaseRushRedisReserve(couponId, userId);
 				throw new BusinessException("库存不足或并发冲突");

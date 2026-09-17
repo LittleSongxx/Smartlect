@@ -25,12 +25,12 @@ public class UserFeignFallbackFactory implements FallbackFactory<UserFeignClient
         log.warn("User Feign fallback: {}", cause == null ? "unknown" : cause.toString());
         return new UserFeignClient() {
             @Override
-            public ResponseVO<UserAddressVO> getAddress(UserAddressQueryDTO dto) {
+            public ResponseVO<UserAddressVO> getAddress(UserAddressQueryDTO dto, String userId) {
                 return FeignFallbackResponses.unavailable("用户服务");
             }
 
             @Override
-            public ResponseVO<Void> addGrowthOnPay(UserGrowthAddDTO dto) {
+            public ResponseVO<Void> addGrowthOnPay(UserGrowthAddDTO dto, String userId) {
                 return FeignFallbackResponses.unavailable("用户服务");
             }
 

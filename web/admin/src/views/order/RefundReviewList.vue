@@ -26,8 +26,8 @@
         </template>
         <template #slotOperation="{ row }">
           <div class="list-op-panel">
-            <OpBtn icon="icon-edit" tips="通过" @click="openReview(row, 'approve')" />
-            <OpBtn icon="icon-delete" type="danger" tips="驳回" @click="openReview(row, 'reject')" />
+            <OpBtn v-if="!isTrial" icon="icon-edit" tips="通过" @click="openReview(row, 'approve')" />
+            <OpBtn v-if="!isTrial" icon="icon-delete" type="danger" tips="驳回" @click="openReview(row, 'reject')" />
           </div>
         </template>
       </Table>
@@ -50,13 +50,10 @@
 </template>
 
 <script setup>
-import { reactive, ref, getCurrentInstance } from 'vue'
-
-const { proxy } = getCurrentInstance()
-const OPERATOR = 'admin'
-const reviewKeys = new Map()
-
-const columns = [
+import { reactive, ref, getCurrentInstance, inject, computed } from 'vue'
+const isTrial = inject('isTrialAdmin', false)
+const columns = computed(() => {
+  const all = [
   { label: '退款请求', prop: 'refundRequestId', width: 220 },
   { label: '订单号', prop: 'orderId', width: 180 },
   { label: '订单明细', prop: 'orderItemId', width: 180 },
@@ -66,6 +63,12 @@ const columns = [
   { label: '最近错误', scopedSlots: 'slotError' },
   { label: '操作', prop: 'operation', width: 120, scopedSlots: 'slotOperation' },
 ]
+  return isTrial.value || isTrial === true ? all.filter((col) => col.prop !== 'userId') : all
+})
+
+const { proxy } = getCurrentInstance()
+const OPERATOR = 'admin'
+const reviewKeys = new Map()
 
 const tableInfoRef = ref()
 const tableData = ref({ list: [] })

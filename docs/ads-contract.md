@@ -4,7 +4,7 @@
 
 管理 API 统一 `/admin-api/assistant/ads`：GET 快照，POST `/campaigns`、`/creatives` 保存草稿，POST `/grants` 明确审批，POST `/actions` 执行1–8个动作，GET `/actions/{id}` 查回执，POST `/grants/{id}/revoke` 撤销当前授权。Java merchant cookie、`admin:legacy` 和所有写操作的同源 CSRF 都必须有效。
 
-展示侧 GET `/api/assistant/ads/recommendations` 只返回稳定grant、ACTIVE活动/素材、余额可扣CPC且Java逐SKU复核有货的候选；读取不记曝光、不扣费。排序由 `rank_ads` 负责，`ranking_mode` 为 `ad-fatigue-pacing-v1`，逐项记 `ad_rank_score`：相关性沿用共享排序器的 `rule_score`，另按该访客对该素材的疲劳（看过未点击则降权，点过不算疲劳）与活动预算配速打分。单商家自有广告位没有竞价对手，按出价排序没有意义，所以不用CPC出价决定顺序；相关性只缩放分数，不会把合格广告排除。疲劳与配速的输入全是已记录事实（该访客自己的 `ad_interaction`/`ad_spend` 计数、活动自身 budget/spent），不读写资金权威。
+展示侧 GET `/api/assistant/ads/recommendations` 只返回稳定grant、ACTIVE活动/素材、余额可扣CPC且Java逐SKU复核有货的候选；读取不记曝光、不扣费。排序由 `rank_ads` 负责，`ranking_mode` 为疲劳配速内容哈希，逐项记 `ad_rank_score`：相关性沿用共享排序器的 `rule_score`，另按该访客对该素材近 24 小时曝光次数降权（点击不再永久免疫）与活动预算配速打分。单商家自有广告位没有竞价对手，按出价排序没有意义，所以不用CPC出价决定顺序；相关性只缩放分数，不会把合格广告排除。疲劳与配速的输入全是已记录事实（该访客自己的 `ad_interaction`/`ad_spend` 计数、活动自身 budget/spent），不读写资金权威。
 
 用户通过 POST `/api/assistant/ads/exposures` 提交 exposure_id/creative_id，POST `/api/assistant/ads/clicks` 提交 click_id/exposure_id。主体、scope、时间、费用、产品和SKU均由服务端绑定；广告SKU是Java `propertyValueIdHash`，与product_id配对，不是推荐内部排序所用的复合key。生成或保存草稿不产生流量。实际曝光不收费，标明“模拟推广”；每个曝光最多有一个收费点击。
 

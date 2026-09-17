@@ -17,6 +17,7 @@
         <label>收货地址<select v-model="addressId"><option value="">请选择本人收货地址</option><option v-for="address in addresses" :key="address.addressId" :value="address.addressId">{{ addressLabel(addresses, address.addressId) }}</option></select></label>
         <label v-if="coupons.length">优惠券<select v-model="userCouponId"><option value="">不使用优惠券</option><option v-for="coupon in coupons" :key="coupon.userCouponId" :value="coupon.userCouponId">{{ couponLabel(coupon) }}</option></select></label></div>
       <p v-if="!scoped" class="notice error" role="alert">该商品不在当前店铺可售范围内，请换一件再下单。</p>
+      <p v-else-if="authStore.isTrial" class="muted">作品集试用账号只能浏览，不能下单。</p>
       <p v-else-if="session?.actor.subject_type !== 'user'" class="muted"><RouterLink :to="loginTo">登录</RouterLink>后可生成下单确认卡。</p>
       <p v-else-if="!addresses.length" class="muted">当前账号暂无收货地址，请先<RouterLink :to="{ path: '/address', query: { next: route.fullPath, action: 'add' } }">添加收货地址</RouterLink>后再下单。</p>
       <div class="actions-inline"><button class="primary" type="button" :disabled="busy || !canBuy" @click="buy">生成下单确认卡</button><button type="button" @click="consult">问问导购</button></div>
@@ -41,6 +42,8 @@ import { loginTarget } from '@/utils/navigation';
 import { addressLabel, canPurchase, productName, skuLabel, stockCap } from '@/utils/productDisplay';
 import { normalizeProductDesc } from '@/utils/productDesc';
 import { inProductScope, loadProductScope } from '@/utils/productScope';
+import { useAuthStore } from '@/stores/auth';
+const authStore = useAuthStore();
 const products = ref<Record<string, any>[]>([]); const detail = ref<Record<string, any> | null>(null);
 const query = ref(''); const maxPrice = ref(''); const recommendation = ref<RecommendationList | null>(null);
 const addresses = ref<Record<string, any>[]>([]); const coupons = ref<Record<string, any>[]>([]);
@@ -52,7 +55,8 @@ const selected = computed(() => detail.value?.skuList?.find((sku: Record<string,
 const quantityMax = computed(() => stockCap(selected.value?.stock));
 const scoped = ref(true);
 const canBuy = computed(() => scoped.value && canPurchase({
-  subjectType: session.value?.actor.subject_type, addressId: addressId.value, selected: selected.value, quantity: quantity.value,
+  subjectType: session.value?.actor.subject_type, addressId: addressId.value, selected: selected.value,
+  quantity: quantity.value, trial: authStore.isTrial,
 }));
 const loginTo = computed(() => loginTarget(route.path, route.fullPath));
 const productQuery = computed(() => typeof route.query.product === 'string' && route.query.product);
@@ -136,6 +140,7 @@ async function consult() {
   });
 }
 async function buy() {
+  if (authStore.isTrial) { error.value = '作品集试用账号只能浏览，不能下单。'; return; }
   if (!canBuy.value || busy.value || !scoped.value) return; busy.value = true; error.value = '';
   try {
     const parameters: Record<string, any> = { payMethod: 'mock', addressId: addressId.value, orderFrom: 0,

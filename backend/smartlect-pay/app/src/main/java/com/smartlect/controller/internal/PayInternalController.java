@@ -33,6 +33,15 @@ public class PayInternalController extends ABaseController {
         return getSuccessResponseVO(payInternalService.tradeStatus(userId, dto.getPayOrderId()));
     }
 
+    @PostMapping("/trade/assertSettled")
+    public ResponseVO<Void> assertSettled(@RequestBody PayTradeStatusDTO dto) {
+        if (dto == null || dto.getPayOrderId() == null || dto.getPayOrderId().isBlank()) {
+            throw new com.smartlect.exception.HttpBusinessException(400, "payOrderId required");
+        }
+        payInternalService.assertSettled(dto.getPayOrderId());
+        return getSuccessResponseVO(null);
+    }
+
     @PostMapping("/trade/createPending")
     public ResponseVO<Void> createPending(@RequestBody PayTradeCreateDTO dto) {
         payInternalService.createPending(dto);

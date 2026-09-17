@@ -21,7 +21,7 @@
         <el-descriptions-item label="环境默认模型"><span class="mono">{{ info?.chat?.env_model_id || '—' }}</span></el-descriptions-item>
         <el-descriptions-item label="向量模型"><span class="mono">{{ info?.env?.embedding_model || '—' }}</span></el-descriptions-item>
       </el-descriptions>
-      <p class="muted-note">Key 的增改与端点切换属于部署操作：修改 run/model.env 后重启生效（运维流程，非本页能力）。</p>
+      <p class="muted-note">Key 的增改与端点切换属于部署操作：修改 run/model.env 后重启生效（运维流程，非本页能力）。Rerank Key 即使已配置也不表示厂商精排已接线。</p>
     </div>
 
     <div class="table-data-card form-card">

@@ -31,6 +31,7 @@
 		<result column="commend_type" property="commendType"  />
 		<result column="brand" property="brand"  />
 		<result column="content_json" property="contentJson"  />
+		<result column="catalog_scope" property="catalogScope"  />
 	</resultMap>
 
 
@@ -38,7 +39,7 @@
 	<sql id="base_column_list">
 		 p.product_id,p.product_name,p.cover,p.create_time,
 		 p.category_id,p.p_category_id,p.status,p.min_price,p.max_price,
-		 p.total_sale,p.commend_type,p.product_desc,p.brand,p.content_json
+		 p.total_sale,p.commend_type,p.product_desc,p.brand,p.content_json,p.catalog_scope
 	</sql>
 
 	<sql id="base_condition_filed">
@@ -102,7 +103,7 @@
 				 and  p.product_id like concat('%', #{query.productIdFuzzy}, '%')
 			</if>
 			<if test="query.productNameFuzzy!= null  and query.productNameFuzzy!=''">
-				 and  p.product_name like concat('%', #{query.productNameFuzzy}, '%')
+				 and MATCH(p.product_name, p.product_desc) AGAINST (#{query.productNameFuzzy} IN NATURAL LANGUAGE MODE)
 			</if>
 			<if test="query.productDescFuzzy!= null  and query.productDescFuzzy!=''">
 				 and  p.product_desc like concat('%', #{query.productDescFuzzy}, '%')
@@ -135,8 +136,7 @@
 				</foreach>
 			</if>
 			<if test="query.excludeIsolatedCatalog != null and query.excludeIsolatedCatalog">
-				and p.product_id not like '9100%'
-				and p.product_id not like '9300%'
+				and COALESCE(p.catalog_scope, 'store') &lt;&gt; 'eval'
 			</if>
 	</sql>
 

@@ -1,19 +1,20 @@
 package com.smartlect.catalog;
 
 /**
- * Eval / shelf-filler SKUs use 9100* and 9300* IDs. Real demo goods such as
- * 917186661226040 stay in the default store catalogue.
+ * Isolated / eval catalogue is an explicit catalog_scope, not a product_id prefix guess.
+ * Java search and Growth eligibility both honor this column; 9100/9300 prefixes are only
+ * a one-time SQL backfill heuristic when the column is missing.
  */
 public final class IsolatedCatalog {
+
+    public static final String SCOPE_STORE = "store";
+    public static final String SCOPE_EVAL = "eval";
 
     private IsolatedCatalog() {
     }
 
-    public static boolean isIsolatedProductId(String productId) {
-        if (productId == null || productId.length() < 4) {
-            return false;
-        }
-        return productId.startsWith("9100") || productId.startsWith("9300");
+    public static boolean isEvalScope(String catalogScope) {
+        return SCOPE_EVAL.equalsIgnoreCase(catalogScope);
     }
 
     public static boolean looksLikeIsolatedSearch(String keyword) {
@@ -21,7 +22,6 @@ public final class IsolatedCatalog {
             return false;
         }
         String trimmed = keyword.trim();
-        return trimmed.startsWith("9100") || trimmed.startsWith("9300")
-                || trimmed.startsWith("Smartlect");
+        return trimmed.startsWith("scope:eval") || trimmed.startsWith("catalog_scope=eval");
     }
 }

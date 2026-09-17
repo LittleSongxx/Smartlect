@@ -10,6 +10,7 @@ export type CitationSource = {
 export type DisplayCitation = {
   index: number;
   title: string;
+  chunk_id: string;
 };
 
 export function citationTitle(source: CitationSource | null | undefined): string {
@@ -21,12 +22,10 @@ export function displayCitations(citations: CitationSource[] | null | undefined)
   const list: DisplayCitation[] = [];
   const seen = new Set<string>();
   for (const source of citations || []) {
-    const title = citationTitle(source);
-    if (!title) continue;
-    const key = title.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    list.push({ index: list.length + 1, title });
+    const chunkId = String(source.chunk_id || '').trim();
+    if (!chunkId || seen.has(chunkId)) continue;
+    seen.add(chunkId);
+    list.push({ index: list.length + 1, title: citationTitle(source) || chunkId, chunk_id: chunkId });
   }
   return list;
 }
@@ -40,13 +39,12 @@ export function annotateAnswerWithCitations(answer: string, sources: DisplayCita
   if (!text || !sources.length) return text;
   let next = text;
   const placed = new Set<number>();
-  const byLength = [...sources].sort((left, right) => right.title.length - left.title.length);
-  for (const source of byLength) {
+  for (const source of sources) {
     if (new RegExp(`\\[\\s*${source.index}\\s*\\]`).test(next)) {
       placed.add(source.index);
       continue;
     }
-    const found = new RegExp(escapeRegExp(source.title), 'i').exec(next);
+    const found = new RegExp(escapeRegExp(source.chunk_id), 'i').exec(next);
     if (!found) continue;
     const insertAt = found.index + found[0].length;
     next = `${next.slice(0, insertAt)} [${source.index}]${next.slice(insertAt)}`;

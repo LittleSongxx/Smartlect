@@ -17,13 +17,15 @@ class AttributionContractTests(unittest.TestCase):
 
     def test_ad_a_b_and_independent_sku_click_windows_are_inclusive(self):
         now = datetime(2026, 9, 9)
-        ad = self.touch('AD_CLICK', now - timedelta(days=7), campaign_id='campaign-A', product_id='A')
+        ad = self.touch('AD_CLICK', now - timedelta(days=7), campaign_id='campaign-A', product_id='B')
         rec = self.touch('REC_CLICK', now - timedelta(hours=24), 'b', product_id='B', sku_key='B-standard',
                          recommendation_id='recommend-B', assignment_id='assignment', strategy_version='rules-v1')
         natural = self.touch('NATURAL_VISIT', now, 'c')
         result = select_attribution([ad, rec, natural], now, 'B', 'B-standard')
         self.assertEqual((result['category'], result['campaign_id'], result['recommendation_id'], result['traffic_channel']),
                          ('AD_ATTRIBUTED', 'campaign-A', 'recommend-B', 'NATURAL'))
+        mismatched = self.touch('AD_CLICK', now - timedelta(days=1), 'd', campaign_id='campaign-A', product_id='A')
+        self.assertIsNone(select_attribution([mismatched, rec, natural], now, 'B', 'B-standard')['campaign_id'])
         for delta in (timedelta(microseconds=1), timedelta(days=1)):
             aged = select_attribution([ad, rec, natural], now + delta, 'B', 'B-standard')
             self.assertEqual(aged['category'], 'NATURAL_VERIFIED')
@@ -38,7 +40,7 @@ class AttributionContractTests(unittest.TestCase):
         self.assertEqual(result['category'], 'UNKNOWN_CONTEXT')
         self.assertEqual(result['recommendation_assist_id'], 'c')
         self.assertIsNone(result['recommendation_click_id'])
-        tied = [self.touch('AD_CLICK', now, x, campaign_id=x) for x in ('b', 'a')]
+        tied = [self.touch('AD_CLICK', now, x, campaign_id=x, product_id='B') for x in ('b', 'a')]
         self.assertEqual(select_attribution(tied, now, 'B', 'B-standard')['campaign_id'], 'b')
 
     def test_signed_context_and_bad_optional_source_do_not_change_money(self):

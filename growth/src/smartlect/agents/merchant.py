@@ -1,11 +1,13 @@
 """One bounded Merchant planning graph; persisted grants and actions remain deterministic."""
 import asyncio
 from copy import deepcopy
+from types import SimpleNamespace
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import re
 import time
+import uuid
 from typing import Literal, TypedDict, get_args
 
 from langgraph.graph import END, START, StateGraph
@@ -588,12 +590,6 @@ async def run_merchant(*, actor, run, lease, store, provider, ads_service, mode,
             return {'messages': state['messages'] + [{'role': 'assistant', 'content': state['response'].get('content') or ''},
                 {'role': 'user', 'content': '仅修复这一份计划的格式或事实引用，禁止新增权限。校验失败：' + reason[:600]}]}
 
-    graph = StateGraph(PlanState)
-    graph.add_node('plan', model_node)
-    graph.add_node('validate', validate_node)
-    graph.add_edge(START, 'plan')
-    graph.add_edge('plan', 'validate')
-    graph.add_conditional_edges('validate', lambda state: END if state.get('plan') else 'plan')
     effective_mode = mode
     try:
         if mode != 'live':
@@ -607,8 +603,18 @@ async def run_merchant(*, actor, run, lease, store, provider, ads_service, mode,
                 {'memory_id': row.get('memory_id', row.get('experience_id')), 'version': row.get('version')}
                 for row in source.get('approved_experiences', []) if row.get('status') == 'APPROVED'][:3]
             messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': redact_text(canonical(payload))}]
-            result = await asyncio.wait_for(graph.compile().ainvoke({'messages': messages}, config={'recursion_limit': 6}),
-                                            timeout=max(.001, model_deadline - time.monotonic()))
+            from smartlect.graph_runtime import invoke_config, merchant_graph, merchant_session, ensure_postgres_tables
+            session = SimpleNamespace(model_node=model_node, validate_node=validate_node)
+            token = merchant_session.set(session)
+            try:
+                ensure_postgres_tables()
+                result = await asyncio.wait_for(
+                    merchant_graph().ainvoke({'messages': messages},
+                                             {**invoke_config(f"merchant:{run['agent_run_id']}:{uuid.uuid4().hex}",
+                                                              run['agent_run_id']), 'recursion_limit': 6}),
+                    timeout=max(.001, model_deadline - time.monotonic()))
+            finally:
+                merchant_session.reset(token)
             plan = result['plan']
             if not any(record.get('model_mode') == 'live' and record.get('status') == 'succeeded' for record in context['model_attempts']):
                 effective_mode = 'mock'  # Contract fakes cannot become evidence of a live model invocation.
@@ -621,3 +627,21 @@ async def run_merchant(*, actor, run, lease, store, provider, ads_service, mode,
     await persist()
     saved = await asyncio.to_thread(store.save_merchant_plan, lease, plan)
     return await execute(saved, effective_mode)
+
+
+def build_merchant_graph():
+    from smartlect.graph_runtime import merchant_session
+
+    async def plan_node(state):
+        return await merchant_session.get().model_node(state)
+
+    async def validate_node(state):
+        return await merchant_session.get().validate_node(state)
+
+    graph = StateGraph(PlanState)
+    graph.add_node('plan', plan_node)
+    graph.add_node('validate', validate_node)
+    graph.add_edge(START, 'plan')
+    graph.add_edge('plan', 'validate')
+    graph.add_conditional_edges('validate', lambda state: END if state.get('plan') else 'plan')
+    return graph

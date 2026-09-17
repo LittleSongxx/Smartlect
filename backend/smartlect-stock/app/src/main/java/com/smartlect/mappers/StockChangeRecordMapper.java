@@ -24,4 +24,7 @@ public interface StockChangeRecordMapper {
 
     @Select("SELECT COUNT(1) FROM stock_change_record WHERE business_key = #{businessKey}")
     int exists(@Param("businessKey") String businessKey);
+
+    @org.apache.ibatis.annotations.Delete("DELETE FROM stock_change_record WHERE business_key = #{businessKey}")
+    int deleteByBusinessKey(@Param("businessKey") String businessKey);
 }

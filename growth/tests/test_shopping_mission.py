@@ -48,11 +48,11 @@ class ShoppingMissionTests(unittest.TestCase):
 
     def test_requirement_slots_are_closed_and_do_not_harvest_purpose_words(self):
         self.assertEqual(requirement_slots('要金属键盘'), ['金属', '键盘'])
-        self.assertEqual(requirement_slots('100元以内的金属机械键盘'), ['金属', '键盘'])
+        self.assertEqual(requirement_slots('100元以内的金属机械键盘'), ['金属', '机械', '键盘'])
         self.assertEqual(requirement_slots('办公用、200元以内的键盘'), ['键盘'])
         self.assertEqual(requirement_slots('不要塑料'), [])
         self.assertEqual(requirement_slots('可以要金属'), [])
-        self.assertEqual(requirement_slots('只要轻便键盘黑色这款'), ['轻便', '黑色'])
+        self.assertEqual(requirement_slots('只要轻便键盘黑色这款'), ['轻便', '键盘', '黑色'])
         self.assertEqual(requirement_slots('50元以内的USB线'), ['USB'])
         self.assertEqual(requirement_slots('预算800元的键盘'), ['键盘'])
         self.assertEqual(requirement_slots('不要塑料的键盘'), [])
@@ -128,7 +128,10 @@ class GroundingAndBuyFrameTests(unittest.TestCase):
     def test_buy_frames_harvest_product_terms_with_quantifier_stripped(self):
         self.assertEqual(requirement_slots('帮我买6个桌面音箱，预算1000元'), ['桌面', '音箱'])
         self.assertEqual(requirement_slots('买键盘'), ['键盘'])
-        self.assertEqual(requirement_slots('购买人体工学椅'), ['人体', '学椅'])
+        import jieba
+        expected = [word.strip() for word in jieba.lcut('人体工学椅') if len(word.strip()) >= 2] or ['人体工学椅']
+        self.assertEqual(requirement_slots('购买人体工学椅'), expected)
+        self.assertNotEqual(requirement_slots('购买人体工学椅'), ['人体', '学椅'])
         self.assertEqual(requirement_slots('我想买一台台灯'), ['台灯'])
 
     def test_trailing_count_phrase_is_not_a_product_term(self):
@@ -244,7 +247,7 @@ class QuantityIntentTests(unittest.TestCase):
         # stay with the model (v14 shop-d-34 under-reported the head and a white
         # wireless headset slipped in). Tool-arg union tops the gate up.
         self.assertEqual(requirement_slots('白色的入门耳机'), ['入门', '耳机'])
-        self.assertEqual(requirement_slots('黑色的金属机械键盘'), ['金属', '键盘'])
+        self.assertEqual(requirement_slots('黑色的金属机械键盘'), ['金属', '机械', '键盘'])
         self.assertEqual(requirement_slots('粉色的便携鼠标'), ['便携', '鼠标'])
         # Interrogatives, negations, reversals, multi-clause and policy turns stay out.
         self.assertEqual(requirement_slots('有没有统一的七天无理由退货'), [])

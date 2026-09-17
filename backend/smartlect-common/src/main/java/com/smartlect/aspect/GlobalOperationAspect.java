@@ -35,6 +35,9 @@ public class GlobalOperationAspect {
     @Value("${smartlect.dev-login-bypass:false}")
     private boolean devLoginBypass;
 
+    @Value("${smartlect.production-ready:false}")
+    private boolean productionReady;
+
     // 校验登录
     @Before("@annotation(com.smartlect.annotation.GlobalInterceptor)")
     public void interceptorDo(JoinPoint point){
@@ -73,7 +76,7 @@ public class GlobalOperationAspect {
         // 根据token查询用户
         TokenUserInfoDTO tokenUserInfoDto;
         // 仅显式开启开发绕过（smartlect.production-ready=true 时启动会失败）
-        if (devLoginBypass || System.getProperty("dev") != null) {
+        if (!productionReady && (devLoginBypass || System.getProperty("dev") != null)) {
             tokenUserInfoDto = new TokenUserInfoDTO();
             tokenUserInfoDto.setUserId("vuzPteqk");
             tokenUserInfoDto.setNickName("test");

@@ -61,7 +61,7 @@
                       v-if="canRefundItem(order, item)"
                       class="goods-action"
                     >
-                      <el-button size="small" text type="danger" @click.stop="refundItem(item.orderItemId)">
+                      <el-button size="small" text type="danger" @click.stop="refundItem(item)">
                         退款
                       </el-button>
                     </div>
@@ -173,11 +173,17 @@ import { orderApi } from '@/api/modules';
 import { displayOrderStatusText } from '@/constants/backendEnums';
 import { confirmAction } from '@/utils/confirm';
 import { toast } from '@/utils/toast';
+import { remainingRefundCents } from '@/utils/orderRefund';
+import { useAgentSession } from '@/composables/useAgentSession';
+import { useOpenAgent } from '@/composables/useOpenAgent';
 
 const router = useRouter();
 const route = useRoute();
+const { propose } = useAgentSession();
+const { openAgent } = useOpenAgent();
 
 const initTab = (() => {
+  if (route.query.commentPending === '1' || route.query.status === 'evaluate') return 'evaluate';
   const q = route.query.status as string | undefined;
   if (q === '3') return 'completed';
   if (q === '8') return 'evaluate';
@@ -187,7 +193,7 @@ const initTab = (() => {
 const tab = ref(initTab);
 const apiStatus = computed(() => {
   if (tab.value === 'completed') return '3';
-  if (tab.value === 'evaluate') return '8';
+  if (tab.value === 'evaluate') return undefined;
   return tab.value || undefined;
 });
 const pageNo = ref(0);
@@ -285,15 +291,18 @@ const canRefundItem = (order: Record<string, any>, item: Record<string, any>) =>
   (order.orderStatus === 1 || order.orderStatus === 2) &&
   Number(item.orderItemStatus) === 1;
 
-const refundItem = async (orderItemId: string) => {
-  const ok = await confirmAction('确定要申请退款吗？退款将按原支付方式退回。', {
+const refundItem = async (item: Record<string, any>) => {
+  const ok = await confirmAction('将按原支付方式退回，提交后请在助手确认卡里再次确认。', {
     title: '申请退款',
-    confirmButtonText: '申请退款'
+    confirmButtonText: '生成退款确认卡'
   });
   if (!ok) return;
-  await orderApi.refundOrder(orderItemId);
-  toast.success('退款申请已提交');
-  onTabChange();
+  await propose('refund', {
+    orderItemId: item.orderItemId,
+    refundAmountCents: remainingRefundCents(item)
+  });
+  toast.success('退款确认卡已生成，请在助手会话中确认');
+  openAgent({ draft: `请带我核对明细 ${item.orderItemId} 的退款确认卡` });
 };
 
 const setupObserver = () => {
@@ -343,7 +352,8 @@ const loadMore = async () => {
     const next = pageNo.value + 1;
     const r = await orderApi.loadMyOrder({
       pageNo: next,
-      status: apiStatus.value
+      status: apiStatus.value,
+      ...(tab.value === 'evaluate' ? { commentPending: 1 } : {})
     });
     const chunk = r?.list || [];
     if (next === 1) list.value = chunk;

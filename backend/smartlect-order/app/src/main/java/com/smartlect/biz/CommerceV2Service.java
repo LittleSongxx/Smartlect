@@ -149,7 +149,7 @@ public class CommerceV2Service {
         boolean paid = "PAID".equals(state) || "REFUNDED".equals(state);
         Set<Integer> synchronizedStates = Set.of(OrderStatusEnum.PAID.getStatus(), OrderStatusEnum.SHIPPED.getStatus(),
                 OrderStatusEnum.COMPLETED.getStatus(), OrderStatusEnum.PARTIALLY_REFUNDED.getStatus(),
-                OrderStatusEnum.REFUNDED.getStatus(), OrderStatusEnum.WAIT_COMMENT.getStatus());
+                OrderStatusEnum.REFUNDED.getStatus());
         boolean synced = paid && found.stream().allMatch(order -> synchronizedStates.contains(order.getOrderStatus()));
         String outcome = synced ? "business_completed" : "CLOSED".equals(state) ? "rejected"
                 : paid || "PENDING".equals(state) ? "business_pending" : "unknown";

@@ -15,21 +15,25 @@ public final class GatewayTokenResolver {
     }
 
     public static String resolveWebToken(ServerWebExchange exchange) {
-        ServerHttpRequest request = exchange.getRequest();
-        String header = request.getHeaders().getFirst(TOKEN_WEB);
-        if (StringUtils.hasText(header)) {
-            return header.trim();
-        }
-        return cookieValue(request, TOKEN_WEB);
+        return resolveToken(exchange, TOKEN_WEB);
     }
 
     public static String resolveAdminToken(ServerWebExchange exchange) {
+        return resolveToken(exchange, TOKEN_ADMIN);
+    }
+
+    private static String resolveToken(ServerWebExchange exchange, String cookieName) {
         ServerHttpRequest request = exchange.getRequest();
-        String header = request.getHeaders().getFirst(TOKEN_ADMIN);
-        if (StringUtils.hasText(header)) {
-            return header.trim();
+        String cookie = cookieValue(request, cookieName);
+        if (StringUtils.hasText(cookie)) {
+            return cookie;
         }
-        return cookieValue(request, TOKEN_ADMIN);
+        String authorization = request.getHeaders().getFirst("Authorization");
+        if (StringUtils.hasText(authorization) && authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            String bearer = authorization.substring(7).trim();
+            return StringUtils.hasText(bearer) ? bearer : null;
+        }
+        return null;
     }
 
     private static String cookieValue(ServerHttpRequest request, String name) {

@@ -178,6 +178,15 @@ public class RedisComponent {
         return list == null ? null : list;
     }
 
+    public void slideTokenTtl(String token) {
+        TokenUserInfoDTO userInfo = getTokenUserInfo(token);
+        if (userInfo == null) {
+            return;
+        }
+        redisUtils.setex(Constants.REDIS_KEY_TOKEN_USERID_WEB + userInfo.getUserId(), userInfo, Constants.REDIS_KEY_EXPIRES_DAY);
+        redisUtils.setex(Constants.REDIS_KEY_TOKEN_WEB + token, userInfo, Constants.REDIS_KEY_EXPIRES_DAY);
+    }
+
     // 从TokenUserInfoDTO中获取token，并存入redis，清除旧token,返回新token
     public String saveTokenUserInfo(TokenUserInfoDTO tokenUserInfoDTO) {
         // 从TokenUserInfoDTO中获取token
@@ -268,7 +277,16 @@ public class RedisComponent {
     }
 
     public LogisticsSendDTO getLogisticsInfo() {
-        return (LogisticsSendDTO) redisUtils.get(Constants.REDIS_KEY_SETTING_LOGISTICS);
+        LogisticsSendDTO current = (LogisticsSendDTO) redisUtils.get(Constants.REDIS_KEY_SETTING_LOGISTICS);
+        if (current != null && !StringTools.isEmpty(current.getSenderName())) {
+            return current;
+        }
+        LogisticsSendDTO seeded = new LogisticsSendDTO();
+        seeded.setSenderName("智选商城");
+        seeded.setSenderPhone("400-000-0000");
+        seeded.setSenderAddress("演示仓（作品集默认发货地址）");
+        redisUtils.set(Constants.REDIS_KEY_SETTING_LOGISTICS, seeded);
+        return seeded;
     }
 
     public void saveSignRewardConfig(SignRewardConfigDTO config) {

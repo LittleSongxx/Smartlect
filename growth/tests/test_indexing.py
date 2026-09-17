@@ -151,6 +151,15 @@ class IndexingServiceTests(unittest.TestCase):
         self.assertEqual(len(publications), 2)
         self.assertEqual(service.jobs.rows[job["job_id"]]["state"], "DONE")
 
+    def test_sync_publish_records_a_done_job(self):
+        service, _, _ = build_service(lambda request: embedding_response(1), chunks_of(1))
+        job = service.record_sync_publish(ACTOR, "policy", 2)
+        stored = service.jobs.rows[job["job_id"]]
+        self.assertEqual(stored["state"], "DONE")
+        self.assertEqual(stored["message"], "published_without_embedding")
+        self.assertEqual(stored["index_version"], "bm25")
+        self.assertEqual(job["doc_id"], "policy")
+
 
 if __name__ == "__main__":
     unittest.main()

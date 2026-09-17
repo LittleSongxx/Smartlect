@@ -121,12 +121,10 @@ public class AccountController extends ABaseController{
         validUserInfo.setNickName(userInfo.getNickName());
         validUserInfo.setAvatar(userInfo.getAvatar());
         validUserInfo.setTrial(TrialIdentities.isTrialUser(userInfo.getUserId(), userInfo.getEmail()));
-        // 否则存入新token，刷新redis
-        String newToken = redisComponent.saveTokenUserInfo(validUserInfo);
-        validUserInfo.setToken(newToken);
+        redisComponent.slideTokenTtl(validUserInfo.getToken());
         HttpServletRequest request = currentRequest();
         HttpServletResponse response = currentResponse();
-        authCookieHelper.writeWebTokenCookie(request, response, newToken);
+        authCookieHelper.writeWebTokenCookie(request, response, validUserInfo.getToken());
         validUserInfo.setToken(null);
         return getSuccessResponseVO(validUserInfo);
     }

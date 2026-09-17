@@ -28,11 +28,17 @@ class McpProtocolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_initialize_answers_with_a_version_it_supports(self):
         for requested, expected in (('2025-06-18', '2025-06-18'), ('2025-03-26', '2025-03-26'),
-                                    (None, mcp.PROTOCOL_VERSION), ('1999-01-01', mcp.PROTOCOL_VERSION)):
+                                    (None, mcp.PROTOCOL_VERSION)):
             result = await self.call('initialize', {'protocolVersion': requested} if requested else {})
             self.assertEqual(result['protocolVersion'], expected)
-        self.assertEqual(result['capabilities'], {'tools': {'listChanged': False}})
-        self.assertEqual(result['serverInfo']['name'], 'smartlect-shopping-read')
+            self.assertFalse(result.get('protocolVersionDowngraded'))
+        unknown = await self.call('initialize', {'protocolVersion': '1999-01-01'})
+        self.assertEqual(unknown['protocolVersion'], mcp.PROTOCOL_VERSION)
+        self.assertTrue(unknown['protocolVersionDowngraded'])
+        self.assertEqual(unknown['requestedProtocolVersion'], '1999-01-01')
+        self.assertEqual(unknown['supportedProtocolVersions'], list(mcp.SUPPORTED_PROTOCOL_VERSIONS))
+        self.assertEqual(unknown['capabilities'], {'tools': {'listChanged': False}})
+        self.assertEqual(unknown['serverInfo']['name'], 'smartlect-shopping-read')
 
     async def test_no_write_tool_is_reachable_over_this_surface(self):
         writes = {name for name, tool in REGISTRY.items() if tool.kind != 'read'}

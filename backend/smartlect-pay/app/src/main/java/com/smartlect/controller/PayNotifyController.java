@@ -26,6 +26,8 @@ public class PayNotifyController {
     private OrderFeignSupport orderFeignSupport;
     @Resource
     private AlipayNotifyValidationService notifyValidationService;
+    @Resource
+    private com.smartlect.biz.PayTradeRecordService payTradeRecordService;
 
     @PostMapping("/alipayNotify")
     public String alipayNotify(HttpServletRequest request) {
@@ -47,10 +49,11 @@ public class PayNotifyController {
             return "failure";
         }
         if (notifyDTO == null || notifyDTO.getPayOrderId() == null) {
-            return "success";
+            return "failure";
         }
         String payOrderId = notifyDTO.getPayOrderId();
         try {
+            payTradeRecordService.markSuccess(payOrderId, notifyDTO.getChannelOrderId());
             orderFeignSupport.paySuccess(notifyDTO);
         } catch (BusinessException e) {
             log.warn("支付宝回调业务处理失败 payOrderId={}, msg={}", payOrderId, e.getMessage());

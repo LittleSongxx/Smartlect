@@ -502,8 +502,11 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 			throw new BusinessException("请选择商品");
 		}
 		boolean stockDeducted = false;
+		boolean stockLocked = false;
+		List<ProductItem> deductList = copyItemsWithSignedBuyCount(newList, true);
 		try {
 			stockFeignSupport.lockAndVerify(newList);
+			stockLocked = true;
 			// Compare the exact final amount and resolved SKU/address after coupon/stock locks,
 			// before any order, coupon relation or payment-intent persistence.
 			if (quote != null) {
@@ -517,8 +520,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 			orderLogisticsInfoMapper.insertBatch(orderLogisticsInfoList);
 			orderAttributionService.freeze(userId, orderInfoList, attributionContextToken);
 			// 远程扣减库存（与本地订单事务分离；后续步骤失败时补偿回补）
-			List<ProductItem> deductList = copyItemsWithSignedBuyCount(newList, true);
-			stockFeignSupport.changeStockBatch(deductList);
+			stockFeignSupport.changeStockBatch(deductList, "order-deduct:" + unifiedPayOrderId);
 			stockDeducted = true;
 			if (OrderFromTypeEnum.CART == orderFromTypeEnum) {
 				cartFeignSupport.deleteBatch(productCartList);
@@ -547,12 +549,18 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		} catch (RuntimeException ex) {
 			if (stockDeducted) {
 				try {
-					stockFeignSupport.changeStockBatch(copyItemsWithSignedBuyCount(newList, false));
+					stockFeignSupport.restoreOrderStock(
+							unifiedPayOrderId, copyItemsWithSignedBuyCount(newList, false));
 				} catch (Exception compensateEx) {
 					log.error("下单失败后库存回补失败, payOrderId={}", unifiedPayOrderId, compensateEx);
 					remoteCompensateRecorder.recordStockChangeBatch(
 							unifiedPayOrderId, copyItemsWithSignedBuyCount(newList, false), compensateEx);
 				}
+			} else if (stockLocked) {
+				// lockAndVerify succeeded but deduct was not confirmed. Persist an explicit
+				// outbox of the intended deduct so ops can reconcile; do not invent a restore.
+				log.error("先锁后扣中间失败, payOrderId={}", unifiedPayOrderId, ex);
+				remoteCompensateRecorder.recordStockChangeBatch(unifiedPayOrderId, deductList, ex);
 			}
 			if (couponLocked) {
 				try {
@@ -573,6 +581,9 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 
 	PayInfoDTO requestInitialPayInfoBestEffort(
 			String payScene, String payOrderId, String subject, BigDecimal amount) {
+		if (OrderPayAmountUtil.isFreeOrder(amount)) {
+			return new PayInfoDTO("FREE", payOrderId, BigDecimal.ZERO.setScale(2));
+		}
 		try {
 			return payFeignSupport.getPayUrl(payScene, payOrderId, subject, amount);
 		} catch (RuntimeException ex) {
@@ -772,8 +783,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 				|| OrderStatusEnum.SHIPPED.getStatus().equals(status)
 				|| OrderStatusEnum.COMPLETED.getStatus().equals(status)
 				|| OrderStatusEnum.REFUNDED.getStatus().equals(status)
-				|| OrderStatusEnum.PARTIALLY_REFUNDED.getStatus().equals(status)
-				|| OrderStatusEnum.WAIT_COMMENT.getStatus().equals(status);
+				|| OrderStatusEnum.PARTIALLY_REFUNDED.getStatus().equals(status);
 	}
 
 	private void closeUnpaidPayOrderForTimeout(String payOrderId) {
@@ -856,6 +866,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 
 	private void paySuccessInLock(PayOrderNotifyDTO payOrderNotifyDTO) {
 		String payOrderId = payOrderNotifyDTO.getPayOrderId();
+		payFeignSupport.assertSettled(payOrderId);
 		List<OrderInfo> orderInfoList = loadOrdersByPayOrderId(payOrderId);
 		if (orderInfoList.isEmpty()) {
 			throw new BusinessException("订单不存在");
@@ -1612,8 +1623,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 						OrderStatusEnum.PAID.getStatus(),
 						OrderStatusEnum.SHIPPED.getStatus(),
 						OrderStatusEnum.COMPLETED.getStatus(),
-						OrderStatusEnum.PARTIALLY_REFUNDED.getStatus(),
-						OrderStatusEnum.WAIT_COMMENT.getStatus()));
+						OrderStatusEnum.PARTIALLY_REFUNDED.getStatus()));
 		return count != null && count > 0;
 	}
 

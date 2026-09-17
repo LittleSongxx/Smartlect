@@ -8,7 +8,6 @@ import java.util.stream.Collectors;
 import com.smartlect.api.dto.ProductSnapshotBatchVO;
 import com.smartlect.api.support.ProductFeignSupport;
 import com.smartlect.api.support.StockFeignSupport;
-import com.smartlect.constants.Constants;
 import com.smartlect.api.enums.ProductStatusEnum;
 import com.smartlect.api.vo.ProductInfoSnapshotVO;
 import com.smartlect.api.vo.ProductPropertyValueSnapshotVO;
@@ -32,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service("productCartService")
 public class ProductCartServiceImpl implements ProductCartService {
+
+	static final int MAX_CART_LINE_QTY = 99;
 
 	@Resource
 	private ProductCartMapper<ProductCart, ProductCartQuery> productCartMapper;
@@ -138,10 +139,17 @@ public class ProductCartServiceImpl implements ProductCartService {
 		String propertyValueIdHash = StringTools.encodeByMD5(propertyValueIds);
 		// 查询当前商品是否已经在购物车中
 		ProductCart cart = this.getProductCartByProductIdAndPropertyValueIdHashAndUserId(productCart.getProductId(), propertyValueIdHash, productCart.getUserId());
+		int add = productCart.getBuyCount() == null ? 1 : productCart.getBuyCount();
+		if (add < 1) {
+			throw new BusinessException("购买数量无效");
+		}
 		// 如果已经存在购物车中，则修改数量（保留首次加入时的单价）
 		if (cart != null) {
-			// 修改数据在数据库中操作
-			productCartMapper.setBuyCountByProductIdAndPropertyValueIdHashAndUserId(productCart.getBuyCount(),productCart.getProductId(), propertyValueIdHash, productCart.getUserId());
+			int current = cart.getBuyCount() == null ? 0 : cart.getBuyCount();
+			if (current + add > MAX_CART_LINE_QTY) {
+				throw new BusinessException("购物车单品数量不能超过99");
+			}
+			productCartMapper.setBuyCountByProductIdAndPropertyValueIdHashAndUserId(add,productCart.getProductId(), propertyValueIdHash, productCart.getUserId());
 			// 修改lastUpdateTime,此时不修改buyCount / addPrice
 			productCart.setLastUpdateTime(now);
 			productCart.setBuyCount(null);
@@ -158,11 +166,13 @@ public class ProductCartServiceImpl implements ProductCartService {
 			// 如果不存在购物车中，则添加，并记录当时单价
 			productCart.setPropertyValueIdHash(propertyValueIdHash);
 			productCart.setAddPrice(resolveSkuPrice(productCart.getProductId(), propertyValueIds));
+			if (add > MAX_CART_LINE_QTY) {
+				throw new BusinessException("购物车单品数量不能超过99");
+			}
+			productCart.setBuyCount(add);
 			productCart.setCreateTime(now);
 			productCart.setLastUpdateTime(now);
-			// 计算长度为15的随机数作为cartId
-			String cartId = StringTools.getRandomNumber(Constants.LENGTH_15);
-			productCart.setCartId(cartId);
+			productCart.setCartId(UUID.randomUUID().toString());
 			this.add(productCart);
 		}
 		ProductCart persisted = getProductCartByProductIdAndPropertyValueIdHashAndUserId(

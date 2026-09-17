@@ -17,8 +17,8 @@ F3 API 新增自然entry、可信访客登录绑定、持久推荐列表和可�
 成功/失败模式分别记录 `content_llm/content_rule_fallback`，不能用全局live开关当作每份列表实际调用模型的证据。
 两种排序都执行最终SKU复验，详见 [agent-design.md](agent-design.md)。
 
-推荐结果记录 `algorithm_version=sku-rank-paid-units-v1`：热门路使用Java订单只读
-`/internal/order/commerce/popularProducts`，按历史确认付款件数排序（含0元及后续退款），不取商品`totalSale`冒充付款反馈。
+推荐结果记录 `algorithm_version` 为排序器内容哈希：热门路使用Java订单只读
+`/internal/order/commerce/popularProducts`，按仍有效的确认付款件数排序（排除已退款行与整单退款），不取商品`totalSale`冒充付款反馈。
 五路召回通过`productIds/excludeProductIds`在SQL LIMIT前过滤scope及用户排除项；include为None时省略、空数组严格空结果。
 这些新读取入口需随Order/Product服务一起更新；口径与观测时间存在`popularity_evidence`，不改变Java计价/支付/退款。
 精确参数与名单上限见 [contracts.md](contracts.md)。

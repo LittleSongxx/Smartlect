@@ -1,5 +1,6 @@
 package com.smartlect.controller.internal;
 
+import com.smartlect.catalog.IsolatedCatalog;
 import com.smartlect.controller.ABaseController;
 import com.smartlect.constants.Constants;
 import com.smartlect.api.enums.ProductStatusEnum;
@@ -76,6 +77,14 @@ public class ProductCommerceInternalController extends ABaseController {
         }
         if (!StringTools.isEmpty(categoryId)) {
             query.setCategoryId(categoryId);
+        }
+        java.math.BigDecimal priceFrom = yuanFromCents(body.get("minPriceCents"));
+        if (priceFrom != null && priceFrom.compareTo(java.math.BigDecimal.ZERO) > 0) {
+            query.setPriceFrom(priceFrom);
+        }
+        java.math.BigDecimal priceTo = yuanFromCents(body.get("maxPriceCents"));
+        if (priceTo != null) {
+            query.setPriceTo(priceTo);
         }
         boolean hotSale = Boolean.TRUE.equals(body.get("hotSale"))
                 || "true".equalsIgnoreCase(String.valueOf(body.get("hotSale")));
@@ -404,6 +413,7 @@ public class ProductCommerceInternalController extends ABaseController {
         m.put("categoryId", p.getCategoryId());
         m.put("totalSale", p.getTotalSale());
         m.put("commendType", p.getCommendType());
+        m.put("catalogScope", p.getCatalogScope() == null ? IsolatedCatalog.SCOPE_STORE : p.getCatalogScope());
         return m;
     }
 
@@ -430,6 +440,21 @@ public class ProductCommerceInternalController extends ABaseController {
         }
         String v = String.valueOf(body.get(key));
         return "null".equals(v) ? null : v;
+    }
+
+    private static java.math.BigDecimal yuanFromCents(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            long cents = Long.parseLong(String.valueOf(raw).trim());
+            if (cents < 0 || cents > 100_000_000L) {
+                return null;
+            }
+            return java.math.BigDecimal.valueOf(cents, 2);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private static int intVal(Object v, int def) {

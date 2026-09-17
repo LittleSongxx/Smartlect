@@ -45,7 +45,8 @@ public class AGlobalExceptionHandlerController extends ABaseController {
                     || Objects.equals(biz.getCode(), 401)
                     || Objects.equals(biz.getCode(), 403)
                     || Objects.equals(biz.getCode(), 409)
-                    || Objects.equals(biz.getCode(), 410))) {
+                    || Objects.equals(biz.getCode(), 410)
+                    || Objects.equals(biz.getCode(), 429))) {
                 response.setStatus(biz.getCode());
             }
             ajaxResponse.setCode(biz.getCode() == null ? ResponseCodeEnum.CODE_600.getCode() : biz.getCode());

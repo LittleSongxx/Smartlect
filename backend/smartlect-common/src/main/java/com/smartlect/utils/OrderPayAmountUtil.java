@@ -29,14 +29,14 @@ public final class OrderPayAmountUtil {
         return discount.setScale(2, RoundingMode.HALF_UP);
     }
 
+    public static boolean isFreeOrder(BigDecimal amount) {
+        return amount == null || amount.compareTo(BigDecimal.ZERO) <= 0;
+    }
+
     public static BigDecimal normalizeChannelPayAmount(BigDecimal amount) {
-        BigDecimal minPay = minOrderPayAmount();
         BigDecimal pay = amount == null ? BigDecimal.ZERO : amount;
         if (pay.compareTo(BigDecimal.ZERO) <= 0) {
-            return minPay;
-        }
-        if (pay.compareTo(minPay) < 0) {
-            return minPay;
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
         return pay.setScale(2, RoundingMode.HALF_UP);
     }

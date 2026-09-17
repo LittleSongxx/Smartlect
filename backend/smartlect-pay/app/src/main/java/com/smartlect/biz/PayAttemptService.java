@@ -22,7 +22,7 @@ import java.util.Map;
 
 /** Java mock provider owns these attempt outcomes; no payment/stock/financial state is changed. */
 @Service
-@ConditionalOnProperty(name = "smartlect.payment.mode", havingValue = "mock", matchIfMissing = true)
+@ConditionalOnProperty(name = "smartlect.payment.mode", havingValue = "mock", matchIfMissing = false)
 public class PayAttemptService {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final JdbcTemplate jdbc;

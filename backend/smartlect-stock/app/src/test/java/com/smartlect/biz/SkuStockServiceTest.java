@@ -99,6 +99,54 @@ class SkuStockServiceTest {
     }
 
     @Test
+    void deductBusinessKeySkipsSecondApply() {
+        com.smartlect.api.dto.SkuStockBatchChangeDTO batch = new com.smartlect.api.dto.SkuStockBatchChangeDTO();
+        SkuStockChangeDTO item = new SkuStockChangeDTO();
+        item.setProductId("p1");
+        item.setPropertyValueIdHash("sku1");
+        item.setChangeAmount(-2);
+        batch.setItems(List.of(item));
+        batch.setBusinessKey("order-deduct:pay-1");
+        when(stockChangeRecordMapper.insertIgnore(
+                "order-deduct:pay-1", "ORDER_DEDUCT", "p1", "sku1", 2))
+                .thenReturn(0);
+
+        assertEquals(0, service.changeStockBatch(batch));
+        verify(skuStockMapper, never()).changeStock("p1", "sku1", -2);
+    }
+
+    @Test
+    void firstDeductClaimsBusinessKeyThenChangesStock() {
+        com.smartlect.api.dto.SkuStockBatchChangeDTO batch = new com.smartlect.api.dto.SkuStockBatchChangeDTO();
+        SkuStockChangeDTO item = new SkuStockChangeDTO();
+        item.setProductId("p1");
+        item.setPropertyValueIdHash("sku1");
+        item.setChangeAmount(-2);
+        batch.setItems(List.of(item));
+        batch.setBusinessKey("order-deduct:pay-2");
+        when(stockChangeRecordMapper.insertIgnore(
+                "order-deduct:pay-2", "ORDER_DEDUCT", "p1", "sku1", 2))
+                .thenReturn(1);
+        when(skuStockMapper.changeStock("p1", "sku1", -2)).thenReturn(1);
+
+        assertEquals(1, service.changeStockBatch(batch));
+        verify(skuStockMapper).changeStock("p1", "sku1", -2);
+    }
+
+    @Test
+    void orderRestoreReleasesDeductKey() {
+        OrderStockRestoreDTO dto = orderRestore("pay-release", 2);
+        when(stockChangeRecordMapper.insertIgnore(
+                argThat(key -> key.startsWith("order-close:")),
+                eq("ORDER_CLOSE_RESTORE"), eq("p1"), eq("sku1"), eq(2)))
+                .thenReturn(1);
+        when(skuStockMapper.changeStock("p1", "sku1", 2)).thenReturn(1);
+
+        assertEquals(1, service.restoreOrderStock(dto));
+        verify(stockChangeRecordMapper).deleteByBusinessKey("order-deduct:pay-release");
+    }
+
+    @Test
     void cancellationStatusRequiresEveryPersistedSkuQuantityWithoutMutatingStock() {
         OrderStockRestoreDTO dto = orderRestore("pay-check", 2, 3);
         when(stockChangeRecordMapper.existsOrderRestore(

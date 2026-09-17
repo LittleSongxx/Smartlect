@@ -187,6 +187,42 @@ class OrderRequestIdempotencyServiceTest {
     }
 
     @Test
+    void staleProcessingMovesToInconclusiveInsteadOfPermanentLock() {
+        Map<String, String> request = Map.of("orderId", "o1");
+        OrderRequestIdempotency stored = storedRecord(request, "PROCESSING", null);
+        stored.setCreateTime(new java.util.Date(System.currentTimeMillis() - 3 * 60_000L));
+        when(mapper.insertProcessing(any())).thenReturn(0);
+        when(mapper.selectForUpdate(
+                "u1", OrderRequestIdempotencyService.COMMAND_COMMERCE_CONFIRM_RECEIPT, KEY))
+                .thenReturn(stored);
+        AtomicInteger executions = new AtomicInteger();
+
+        HttpBusinessException error = assertThrows(
+                HttpBusinessException.class,
+                () -> service.execute(
+                        "u1",
+                        OrderRequestIdempotencyService.COMMAND_COMMERCE_CONFIRM_RECEIPT,
+                        KEY,
+                        request,
+                        Map.class,
+                        () -> {
+                            executions.incrementAndGet();
+                            return Map.of();
+                        }));
+
+        assertEquals(409, error.getHttpStatus());
+        assertEquals("原请求结果正在核对，不能重复执行", error.getMessage());
+        assertEquals(0, executions.get());
+        verify(mapper).recordInconclusive(
+                eq("u1"),
+                eq(OrderRequestIdempotencyService.COMMAND_COMMERCE_CONFIRM_RECEIPT),
+                eq(KEY),
+                eq(3),
+                any(),
+                eq("processing_stale"));
+    }
+
+    @Test
     void uncertainAndManualReviewRequestsNeverExecuteCommandAgain() {
         Map<String, String> request = Map.of("orderId", "o1");
         for (String status : List.of("INCONCLUSIVE", "MANUAL_REVIEW")) {

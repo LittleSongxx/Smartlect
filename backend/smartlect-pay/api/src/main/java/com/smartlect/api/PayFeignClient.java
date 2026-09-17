@@ -22,6 +22,9 @@ public interface PayFeignClient {
     ResponseVO<java.util.Map<String, Object>> tradeStatus(@RequestBody PayTradeStatusDTO dto,
             @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
 
+    @PostMapping("/trade/assertSettled")
+    ResponseVO<Void> assertSettled(@RequestBody PayTradeStatusDTO dto);
+
     @PostMapping("/trade/createPending")
     ResponseVO<Void> createPending(@RequestBody PayTradeCreateDTO dto);
 

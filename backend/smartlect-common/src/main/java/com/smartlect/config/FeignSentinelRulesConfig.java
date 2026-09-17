@@ -28,18 +28,18 @@ public class FeignSentinelRulesConfig {
                 "StockFeignClient#lockAndVerify(SkuStockBatchChangeDTO)",
                 "StockFeignClient#setStock(SkuStockSetDTO)",
                 "StockFeignClient#totalByProduct(ProductIdDTO)",
-                "CouponFeignClient#validateAndLock(CouponValidateAndLockDTO)",
+                "CouponFeignClient#validateAndLock(CouponValidateAndLockDTO,String)",
                 "CouponFeignClient#getCoupon(CouponIdDTO)",
                 "CouponFeignClient#getCouponBrief(CouponIdDTO)",
                 "CouponFeignClient#getUserCoupon(UserCouponIdDTO)",
-                "CouponFeignClient#changeUserCouponStatus(UserCouponStatusChangeDTO)",
-                "CouponFeignClient#createUserCoupon(UserCouponCreateDTO)",
-                "CouponFeignClient#deductStock(CouponIdDTO)",
+                "CouponFeignClient#changeUserCouponStatus(UserCouponStatusChangeDTO,String)",
+                "CouponFeignClient#createUserCoupon(UserCouponCreateDTO,String)",
+                "CouponFeignClient#deductStock(CouponIdDTO,String)",
                 "ProductFeignClient#snapshotBatch(ProductIdListDTO)",
                 "ProductFeignClient#defaultSku(ProductIdDTO)",
                 "ProductFeignClient#increaseSales(ProductSalesIncreaseDTO)",
-                "UserFeignClient#getAddress(UserAddressQueryDTO)",
-                "UserFeignClient#addGrowthOnPay(UserGrowthAddDTO)"
+                "UserFeignClient#getAddress(UserAddressQueryDTO,String)",
+                "UserFeignClient#addGrowthOnPay(UserGrowthAddDTO,String)"
         }) {
             DegradeRule rule = new DegradeRule(resource)
                     .setGrade(RuleConstant.DEGRADE_GRADE_EXCEPTION_RATIO)

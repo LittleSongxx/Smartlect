@@ -70,10 +70,23 @@ class ProductCommerceSearchScopeTest {
         assertEquals("phones", query.getCategoryId());
         assertNull(query.getProductNameFuzzy());
         assertEquals(20, query.getSimplePage().getEnd());
+        assertNull(query.getPriceFrom());
+        assertNull(query.getPriceTo());
         String sql = boundSql(query).getSql().replaceAll("\\s+", " ");
         assertFalse(sql.contains("p.product_id in"));
         assertFalse(sql.contains("p.product_id not in"));
         assertTrue(sql.contains("order by p.create_time desc"));
+    }
+
+    @Test
+    void bindsServerSidePriceIntervalFromCents() {
+        controller.searchOnSale(Map.of("keyword", "keyboard", "minPriceCents", 1000, "maxPriceCents", 5000));
+        ProductInfoQuery query = capturedQuery();
+        assertEquals(new java.math.BigDecimal("10.00"), query.getPriceFrom());
+        assertEquals(new java.math.BigDecimal("50.00"), query.getPriceTo());
+        String sql = boundSql(query).getSql().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        assertTrue(sql.contains("p.min_price >="));
+        assertTrue(sql.contains("p.min_price <="));
     }
 
     @Test

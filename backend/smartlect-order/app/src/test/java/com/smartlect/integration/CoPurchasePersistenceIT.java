@@ -118,7 +118,7 @@ class CoPurchasePersistenceIT {
             order(session, "zero-candidate", "pay-zero", "u1");
             item(session, "zero-seed-item", "zero-seed", "p1", BigDecimal.ZERO);
             item(session, "zero-candidate-item", "zero-candidate", "p4", BigDecimal.ZERO);
-            update(session, "UPDATE order_info SET amount=0,order_status=8 WHERE pay_order_id='pay-zero'");
+            update(session, "UPDATE order_info SET amount=0,order_status=3 WHERE pay_order_id='pay-zero'");
             assertEquals(List.of("p4"), query(session, 5));
         }
     }
@@ -170,7 +170,7 @@ class CoPurchasePersistenceIT {
             var result = popular(session, Map.of("limit", 20));
             assertEquals(List.of("p4", "p3", "p1"), result.stream().map(r -> r.get("productId")).toList());
             assertEquals(List.of(4L, 3L, 2L), result.stream().map(r -> r.get("paidUnits")).toList());
-            assertEquals(List.of("confirmed_payment_units_v1"), result.stream().map(r -> r.get("basis")).distinct().toList());
+            assertEquals(List.of("confirmed_payment_units_excluding_refunds"), result.stream().map(r -> r.get("basis")).distinct().toList());
         }
     }
 

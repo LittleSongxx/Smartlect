@@ -118,7 +118,26 @@ services:
       timeout: 3s
       retries: 30
 
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports: ["127.0.0.1:${SMARTLECT_POSTGRES_PORT:?run bootstrap}:5432"]
+    environment:
+      POSTGRES_USER: ${SMARTLECT_POSTGRES_USER:?run bootstrap}
+      POSTGRES_PASSWORD: ${SMARTLECT_POSTGRES_PASSWORD:?run bootstrap}
+      POSTGRES_DB: ${SMARTLECT_POSTGRES_DATABASE:?run bootstrap}
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/00-smartlect.sql:ro
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
 volumes:
   mysql:
   redis:
   rabbit:
+  postgres:

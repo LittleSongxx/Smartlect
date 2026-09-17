@@ -147,6 +147,9 @@ public class SkuStockService {
         if (batch == null || CollectionUtils.isEmpty(batch.getItems())) {
             throw new BusinessException("库存变更列表为空");
         }
+        if (hasBusinessKey(batch) && !claimBusinessKey(batch)) {
+            return 0;
+        }
         Map<String, Integer> merged = mergeBySku(batch.getItems());
         int total = 0;
         for (Map.Entry<String, Integer> entry : new TreeMap<>(merged).entrySet()) {
@@ -185,6 +188,7 @@ public class SkuStockService {
     @Transactional(rollbackFor = Exception.class)
     public int restoreOrderStock(OrderStockRestoreDTO dto) {
         Map<String, Integer> merged = orderRestoreItems(dto);
+        releaseOrderDeductKey(dto.getPayOrderId());
 
         int total = 0;
         for (Map.Entry<String, Integer> entry : merged.entrySet()) {
@@ -287,6 +291,40 @@ public class SkuStockService {
                     merged.merge(key, item.getChangeAmount(), Integer::sum);
                 });
         return merged;
+    }
+
+    public static String orderDeductBusinessKey(String payOrderId) {
+        return "order-deduct:" + payOrderId;
+    }
+
+    private static boolean hasBusinessKey(SkuStockBatchChangeDTO batch) {
+        return batch.getBusinessKey() != null && !batch.getBusinessKey().isBlank();
+    }
+
+    private boolean claimBusinessKey(SkuStockBatchChangeDTO batch) {
+        String key = batch.getBusinessKey().trim();
+        if (key.length() > 96) {
+            throw new BusinessException("库存业务键超长");
+        }
+        SkuStockChangeDTO first = batch.getItems().get(0);
+        int amount = 0;
+        for (SkuStockChangeDTO item : batch.getItems()) {
+            int delta = item.getChangeAmount() == null ? 0 : item.getChangeAmount();
+            amount += Math.abs(delta);
+        }
+        return stockChangeRecordMapper.insertIgnore(
+                key,
+                "ORDER_DEDUCT",
+                first.getProductId(),
+                first.getPropertyValueIdHash(),
+                amount) == 1;
+    }
+
+    private void releaseOrderDeductKey(String payOrderId) {
+        if (payOrderId == null || payOrderId.isBlank()) {
+            return;
+        }
+        stockChangeRecordMapper.deleteByBusinessKey(orderDeductBusinessKey(payOrderId));
     }
 
     private String orderRestoreBusinessKey(

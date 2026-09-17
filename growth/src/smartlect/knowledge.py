@@ -6,6 +6,7 @@ Copyright (c) 2026 Audreator, MIT; see licenses/shop-ai-python-LICENSE.
 Changes: fail-closed MySQL ACL/lifecycle, Chinese BM25, fixed RRF empty/duplicates.
 """
 from collections import Counter
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import math
@@ -13,23 +14,29 @@ import re
 import unicodedata
 import uuid
 
+import jieba
 from prometheus_client import Counter as PrometheusCounter
 
+from smartlect.algo_version import content_hash
+from smartlect.observability import gen_ai_span
 from smartlect.cache import TtlCache
 from smartlect.events import canonical
 from smartlect.knowledge_scope import parse_product_ids, search_document_clause
 from smartlect.state import SessionStore, StateError, _actor, _expiry, _integer, _json, _public, _text
+from smartlect.tokenizer import encoding
 
 KNOWLEDGE_CACHE_REQUESTS = PrometheusCounter("growth_knowledge_cache_requests_total",
                                              "Knowledge search cache outcomes", ["outcome"])
 
 MAX_CHUNKS = 5000
-LEXICAL_VERSION = "zh-bigram-bm25-v1"
-RERANK_VERSION = "zh-coverage-proximity-v2"
+# Tokenizer tokens (tiktoken cl100k_base), not Python characters. 512 + ~10% overlap
+# is the industry default this repo now ships; eval_chunk_window.py starts from 512.
+CHUNK_WINDOW = 512
+CHUNK_OVERLAP = 51
 COMPOSED_QUERY_LIMIT = 800
 CONSTRAINT_WEIGHT = 0.45
-FIRST_STAGE_DEPTH = 20
-FUSED_DEPTH = 12
+FIRST_STAGE_DEPTH = 50
+FUSED_DEPTH = 24
 FINAL_DEPTH = 8
 # Vocabulary variants only: colloquial or misspelled wording for the same word. Intent
 # phrases do not belong here, because mapping an action request onto a document lookup
@@ -38,6 +45,17 @@ SYNONYMS = (("退钱", "退款"), ("退回款项", "退款"), ("付钱", "支付
             ("快递", "物流"), ("包裹", "物流"), ("收货地", "地址"), ("优惠卷", "优惠券"),
             ("清空", "清理"))
 STOP_TERMS = {"什么", "怎么", "如何", "可以", "能否", "是否", "请问", "一下", "我的", "这个", "那个", "哪些", "多少"}
+LEXICAL_VERSION = content_hash({
+    "algo": "jieba_bm25",
+    "synonyms": list(SYNONYMS),
+    "stop_terms": sorted(STOP_TERMS),
+})
+RERANK_VERSION = content_hash({
+    "algo": "vendor_rerank_or_rrf",
+    "first_stage_depth": FIRST_STAGE_DEPTH,
+    "fused_depth": FUSED_DEPTH,
+    "final_depth": FINAL_DEPTH,
+})
 INSTRUCTION_PATTERN = re.compile(r"忽略.{0,12}(?:指令|规则|提示)|(?:系统|开发者)提示词|泄露.{0,10}(?:密钥|token)|"
                                  r"ignore.{0,25}(?:instruction|previous)|system\s*prompt|api[_ -]?key", re.I)
 VISIBLE_DOCUMENT = """d.execution_scope_id=%s AND d.status='PUBLISHED'
@@ -74,6 +92,7 @@ def _ids(value, name):
 
 
 def tokens(text):
+    """jieba words. Single-character policy verbs such as 退/付 are kept; stop words drop."""
     value = unicodedata.normalize("NFKC", text).casefold()
     for source, target in SYNONYMS:
         value = value.replace(source, target)
@@ -81,16 +100,51 @@ def tokens(text):
     for part in re.findall(r"[\u3400-\u9fff]+|[a-z0-9]+", value):
         if re.fullmatch(r"[a-z0-9]+", part):
             result.append(part)
-        elif len(part) == 1:
-            continue  # Single Chinese characters create spurious policy evidence.
-        else:
-            result.extend(part[i:i + 2] for i in range(len(part) - 1) if part[i:i + 2] not in STOP_TERMS)
+            continue
+        for word in jieba.cut(part, cut_all=False):
+            word = word.strip()
+            if not word or word in STOP_TERMS:
+                continue
+            result.append(word)
     return result
 
 
-def split_document(body):
-    """Heading chunks with exact Python-character offsets and one-based line locations."""
+def _token_windows(text, window, overlap):
+    """Split `text` into token windows; return (content, start_char, end_char) slices."""
+    if not text:
+        return []
+    pieces = []
+    enc = encoding()
+    token_ids = enc.encode(text)
+    if not token_ids:
+        return []
+    # Approximate char mapping: decode prefixes.
+    prefixes = [0]
+    acc = []
+    for token_id in token_ids:
+        acc.append(token_id)
+        prefixes.append(len(enc.decode(acc)))
+    start = 0
+    while start < len(token_ids):
+        stop = min(start + window, len(token_ids))
+        char_start, char_end = prefixes[start], prefixes[stop]
+        content = text[char_start:char_end]
+        if content.strip():
+            pieces.append((content, char_start, char_end))
+        if stop >= len(token_ids):
+            break
+        nxt = stop - overlap
+        start = nxt if nxt > start else start + 1
+    return pieces
+
+
+def split_document(body, *, window=CHUNK_WINDOW, overlap=CHUNK_OVERLAP):
+    """Heading-first chunks in tokenizer tokens, with ~10% overlap and character offsets."""
     body = _text(body, "body", 300000)
+    window = _integer(window, "chunk_window", 1, 300000)
+    overlap = _integer(overlap, "chunk_overlap", 0, 299999)
+    if overlap >= window:
+        raise StateError("invalid_chunk_overlap", 422)
     chunks, start, heading = [], 0, ""
     boundaries = [match.start() for match in re.finditer(r"(?m)^#{1,6} +[^\n]+", body)]
     for end in sorted(set([*boundaries, len(body)])):
@@ -100,38 +154,36 @@ def split_document(body):
         first = re.match(r"#{1,6} +([^\n]+)", section)
         if first:
             heading = first.group(1)[:256]
-        offset = start
-        while offset < end:
-            stop = min(offset + 1400, end)
-            if stop < end:
-                newline = body.rfind("\n", offset + 700, stop)
-                if newline > offset:
-                    stop = newline + 1
-            content = body[offset:stop]
-            if content.strip():
-                chunks.append({"chunk_id": f"c{len(chunks) + 1:04d}", "heading": heading,
-                               "content": content, "start_offset": offset, "end_offset": stop,
-                               "start_line": body.count("\n", 0, offset) + 1,
-                               "end_line": body.count("\n", 0, max(offset, stop - 1)) + 1})
-            offset = stop
+        for content, rel_start, rel_end in _token_windows(section, window, overlap):
+            offset = start + rel_start
+            stop = start + rel_end
+            chunks.append({"chunk_id": f"c{len(chunks) + 1:04d}", "heading": heading,
+                           "content": content, "start_offset": offset, "end_offset": stop,
+                           "start_line": body.count("\n", 0, offset) + 1,
+                           "end_line": body.count("\n", 0, max(offset, stop - 1)) + 1,
+                           "token_window": window, "token_overlap": overlap})
         start = end
     return chunks
 
 
 def compose_search_query(utterance, model_query, *, limit=COMPOSED_QUERY_LIMIT):
-    """Keep the user's words first; truncate the model rewrite when the pair is too long."""
+    """Rewrite replaces the submitted query. Original is kept for parallel lexical fusion."""
     original = (utterance or "").strip()
     rewrite = (model_query or "").strip()
-    if not original:
+    if rewrite:
         return rewrite[:limit]
-    if not rewrite or rewrite == original:
-        return original[:limit]
-    if len(original) >= limit:
-        return original[:limit]
-    room = limit - len(original) - 1
-    if room <= 0:
-        return original[:limit]
-    return original + " " + rewrite[:room]
+    return original[:limit]
+
+
+def parallel_queries(utterance, model_query, *, limit=COMPOSED_QUERY_LIMIT):
+    original = (utterance or "").strip()[:limit]
+    rewrite = (model_query or "").strip()[:limit]
+    queries = []
+    if rewrite:
+        queries.append(rewrite)
+    if original and original != rewrite:
+        queries.append(original)
+    return queries or [""]
 
 
 def constraint_terms(utterance, model_query):
@@ -215,35 +267,20 @@ def covering_span(sequence, terms):
     return len(distinct), best
 
 
-def rerank(candidates, terms, constraint_terms=None):
-    """Second stage over the fused candidates, scoring coverage and term proximity.
-
-    The first stage already used term frequency and length, so repeating that here would
-    only reorder by the same signal. This stage asks a different question: how many of the
-    distinct query terms the chunk covers, and how tightly they sit together. A chunk that
-    repeats one term many times therefore loses to one that discusses the whole question.
-
-    Terms that appear only in the user's utterance (not the model rewrite) are extra
-    constraints: a chunk that covers them outranks a theme-only passage. The first-stage
-    BM25 formula is unchanged so a miss can still be attributed to recall or ranking.
-
-    Keeping the stages separate is what makes a retrieval failure attributable. Compare the
-    recorded first-stage order with the final order to tell a recall miss, where the chunk
-    never entered the candidate set, from a ranking miss, where it entered and lost.
-    """
-    extra = set(constraint_terms or ())
-    scored = []
-    for key, row in candidates:
-        sequence = tokens(row["heading"] + " " + row["content"])
-        distinct, span = covering_span(sequence, terms)
-        coverage = distinct / len(terms) if terms else 0.0
-        density = 1.0 if span is None else distinct / span
-        score = coverage * (.7 + .3 * density)
-        if extra:
-            score += CONSTRAINT_WEIGHT * (len(extra & set(sequence)) / len(extra))
-        scored.append((key, score))
-    scored.sort(key=lambda item: (-item[1], item[0]))
-    return scored
+def apply_index_order(candidates, order_keys):
+    """Keep fused/vendor order. Coverage formulas are not a rerank substitute."""
+    by_key = {key: (key, 0.0) for key, _ in candidates}
+    ranked = []
+    seen = set()
+    for key in order_keys:
+        if key in by_key and key not in seen:
+            ranked.append((key, 1.0 / (1 + len(ranked))))
+            seen.add(key)
+    for key, _ in candidates:
+        if key not in seen:
+            ranked.append((key, 0.0))
+            seen.add(key)
+    return ranked
 
 
 def rrf_merge(keyword_ids, vector_ids, limit=FUSED_DEPTH):
@@ -271,21 +308,12 @@ def _vector(value, dimensions=None):
     return [number / norm for number in value]
 
 
-def rank_chunks(rows, query, *, query_vector=None, embedding_model=None, index_version=None,
-                utterance=None, model_query=None):
-    """Only accepts the already ACL/lifecycle-filtered rows from KnowledgeStore.search."""
-    if len(rows) > MAX_CHUNKS:
-        raise StateError("knowledge_capacity_exceeded", 503)
+def _bm25_rank(rows, query):
     terms = set(tokens(query))
-    model_terms = set(tokens(model_query)) if model_query is not None else terms
-    utterance_terms = set(tokens(utterance)) if utterance is not None else set()
-    rerank_terms = model_terms | utterance_terms if (utterance is not None or model_query is not None) else terms
-    extra_terms = constraint_terms(utterance, model_query) if utterance is not None else set()
     counters = [Counter(tokens(row["heading"] + " " + row["content"])) for row in rows]
     frequency = Counter(term for counter in counters for term in counter)
     average = sum(sum(counter.values()) for counter in counters) / max(len(rows), 1)
-    lexical = []
-    by_key = {}
+    lexical, by_key = [], {}
     for row, counter in zip(rows, counters):
         key = (row["doc_id"], row["version"], row["chunk_id"])
         by_key[key] = row
@@ -296,47 +324,128 @@ def rank_chunks(rows, query, *, query_vector=None, embedding_model=None, index_v
             idf = math.log(1 + (len(rows) - frequency[term] + .5) / (frequency[term] + .5))
             score += idf * tf * 2.2 / (tf + 1.2 * (.25 + .75 * length / max(average, 1)))
         if matched:
-            # A single overlap in a long question is weak evidence, but discarding it also
-            # drops the chunk that one rare term matched, and that chunk never reaches the
-            # rerank stage to be judged. Downweight instead and let fusion decide.
             if len(terms) > 4 and len(matched) < 2:
                 score *= .3
             lexical.append((key, score))
     lexical.sort(key=lambda item: (-item[1], item[0]))
+    return lexical, by_key
+
+
+def rank_chunks(rows, query, *, query_vector=None, embedding_model=None, index_version=None,
+                utterance=None, model_query=None, dense_hits=None, vendor_order=None,
+                vector_backend="unavailable", rerank_backend="rrf_only"):
+    """Lexical jieba BM25 + optional ANN hits + RRF. No in-process MySQL vector_json scan."""
+    if len(rows) > MAX_CHUNKS:
+        raise StateError("knowledge_capacity_exceeded", 503)
+    lexical, by_key = _bm25_rank(rows, query)
+    extra_queries = [item for item in (utterance, model_query) if item and item != query]
+    for extra in extra_queries:
+        extra_lex, extra_map = _bm25_rank(rows, extra)
+        by_key.update(extra_map)
+        lexical = extra_lex + [(key, score * 0.9) for key, score in lexical]
+        lexical.sort(key=lambda item: (-item[1], item[0]))
     dense = []
-    if query_vector is not None:
-        vector = _vector(query_vector)
-        _text(embedding_model, "embedding_model", 128)
-        _text(index_version, "index_version", 128)
-        for key, row in by_key.items():
-            if (row.get("embedding_model"), row.get("embedding_dimensions"), row.get("index_version")) != (
-                    embedding_model, len(vector), index_version):
-                continue
-            stored = row.get("vector_json")
-            stored = json.loads(stored) if isinstance(stored, (str, bytes)) else stored
-            normalized = _vector(stored, len(vector))
-            score = sum(a * b for a, b in zip(vector, normalized))
-            if score >= .45:
-                dense.append((key, score))
+    if dense_hits:
+        for hit in dense_hits:
+            key = (hit["doc_id"], hit["version"], hit["chunk_id"])
+            if key in by_key:
+                dense.append((key, hit.get("score") or 0.0))
         dense.sort(key=lambda item: (-item[1], item[0]))
-    fused = rrf_merge([key for key, _ in lexical[:FIRST_STAGE_DEPTH]], [key for key, _ in dense[:FIRST_STAGE_DEPTH]])
-    reranked = rerank([(key, by_key[key]) for key in fused], rerank_terms, extra_terms)
-    keys = [key for key, _ in reranked[:FINAL_DEPTH]]
-    retrieval = {"mode": "hybrid" if query_vector is not None else "lexical",
-            "lexical_version": LEXICAL_VERSION, "embedding_model": embedding_model if query_vector is not None else None,
-            "index_version": index_version if query_vector is not None else None,
+    fused = rrf_merge([key for key, _ in lexical[:FIRST_STAGE_DEPTH]],
+                      [key for key, _ in dense[:FIRST_STAGE_DEPTH]])
+    order = vendor_order or fused
+    reranked = apply_index_order([(key, by_key[key]) for key in fused if key in by_key], order)
+    keys = [key for key, _ in reranked[:FINAL_DEPTH] if key in by_key]
+    mode = "hybrid" if dense else "lexical"
+    retrieval = {"mode": mode,
+            "lexical_version": LEXICAL_VERSION, "embedding_model": embedding_model if dense else None,
+            "index_version": index_version if dense else None,
             "dimensions": len(query_vector) if query_vector is not None else None,
             "eligible_chunks": len(rows), "lexical_matches": len(lexical), "dense_matches": len(dense),
-            "dense_verified": query_vector is not None and bool(dense),
+            "dense_verified": bool(dense),
+            "vector_backend": vector_backend if dense else "unused",
+            "rerank_backend": rerank_backend,
             "rerank_version": RERANK_VERSION, "first_stage_depth": FIRST_STAGE_DEPTH,
             "fused_candidates": len(fused), "final_depth": FINAL_DEPTH,
-            # Recorded so a wrong answer can be attributed to recall or to ranking.
             "fused_ranking": [list(key) for key in fused],
             "rerank_scores": [{"chunk": list(key), "score": round(score, 6)} for key, score in reranked]}
     if model_query is not None:
         retrieval["submitted_query"] = query
         retrieval["model_query"] = model_query
+        retrieval["query_mode"] = "replace_or_parallel"
     return [by_key[key] for key in keys], retrieval
+
+
+def _mirror_pgvector(scope, doc_id, version, model, index_version, mapped):
+    try:
+        from smartlect.vector_store import upsert_vectors
+        rows = [{
+            "chunk_pk": f"{scope}:{doc_id}:{version}:{chunk_id}",
+            "execution_scope_id": scope,
+            "doc_id": doc_id,
+            "version": version,
+            "chunk_id": chunk_id,
+            "embedding_model": model,
+            "index_version": index_version,
+            "acl": "PUBLIC",
+            "embedding": vector,
+        } for chunk_id, vector in mapped.items()]
+        upsert_vectors(rows)
+    except Exception:
+        return
+
+
+def _ann_hits(scope, query_vector, embedding_model, index_version):
+    if query_vector is None or not embedding_model or not index_version:
+        return [], "unused"
+    try:
+        from smartlect.vector_store import ann_search
+        hits = ann_search(query_vector, scope=scope, embedding_model=embedding_model,
+                          index_version=index_version, limit=FIRST_STAGE_DEPTH)
+        if hits is None:
+            return [], "unavailable"
+        return hits, "pgvector_hnsw"
+    except Exception:
+        return [], "unavailable"
+
+
+def _vendor_rerank_order(query, rows, dense_hits):
+    """Sync vendor call. Missing key or HTTP failure stays on RRF order."""
+    from smartlect.rerank_client import configured
+    if not configured() or not rows:
+        return None, "rrf_only"
+    try:
+        order_keys = _sync_vendor_keys(query, rows)
+        return order_keys, "vendor_http"
+    except Exception:
+        return None, "rrf_fallback"
+
+
+def _sync_vendor_keys(query, rows):
+    import httpx
+    from smartlect.rerank_client import RerankError
+    env = __import__("os").environ
+    key = (env.get("SMARTLECT_RERANK_API_KEY") or "").strip()
+    if not key:
+        raise RerankError("rerank_not_configured")
+    base = (env.get("SMARTLECT_RERANK_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-api/v1").rstrip("/")
+    model = env.get("SMARTLECT_RERANK_MODEL") or "gte-rerank-v2"
+    documents = [(row.get("heading") or "") + "\n" + (row.get("content") or "") for row in rows[:FUSED_DEPTH]]
+    body = {"model": model, "query": query, "documents": documents, "top_n": min(FINAL_DEPTH, len(documents))}
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    with httpx.Client(timeout=15, trust_env=False) as client:
+        response = client.post(f"{base}/reranks", json=body, headers=headers)
+        if response.status_code >= 400:
+            raise RerankError("rerank_http_error")
+        payload = response.json()
+    results = payload.get("results") or payload.get("output", {}).get("results") or []
+    indexes = [int(item["index"]) for item in results if isinstance(item, dict) and "index" in item]
+    keys = []
+    for index in indexes:
+        if 0 <= index < len(rows):
+            row = rows[index]
+            keys.append((row["doc_id"], row["version"], row["chunk_id"]))
+    return keys or None
 
 
 def evidence_result(rows, retrieval):
@@ -573,6 +682,7 @@ class KnowledgeStore(SessionStore):
             cursor.executemany("UPDATE knowledge_chunk SET embedding_model=%s,embedding_dimensions=%s,index_version=%s,vector_json=%s "
                 "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s AND chunk_id=%s",
                 [(model, dimensions, index_version, canonical(vector), scope, doc_id, version, key) for key, vector in mapped.items()])
+        _mirror_pgvector(scope, doc_id, version, model, index_version, mapped)
         return {"model": model, "index_version": index_version, "dimensions": dimensions, "chunks": len(mapped)}
 
     def draft_chunks_with_status(self, actor, doc_id, version):
@@ -616,6 +726,7 @@ class KnowledgeStore(SessionStore):
                 "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s AND chunk_id=%s",
                 [(model, dimensions, index_version, canonical(vector), scope, doc_id, version, key)
                  for key, vector in mapped.items()])
+        _mirror_pgvector(scope, doc_id, version, model, index_version, mapped)
         return {"chunks": len(mapped), "model": model, "index_version": index_version}
 
     def embedding_counts(self, actor, doc_id, version):
@@ -631,30 +742,50 @@ class KnowledgeStore(SessionStore):
     def search(self, actor, query, *, query_vector=None, embedding_model=None, index_version=None,
                product_id=None, category_id=None, utterance=None, model_query=None, corpus=None):
         kind, actor_id, scope = _actor(actor)
-        query = _text(query, "query", 1000)
+        raw_query = _text(query, "query", 1000)
+        query = compose_search_query(utterance, model_query or raw_query)
         if "shopping:read" not in getattr(actor, "permissions", ()) and kind != "merchant":
             raise StateError("permission_denied", 403)
         filters, values = search_document_clause(product_id=product_id, category_id=category_id, corpus=corpus)
-        # Identical authorized searches repeat within a turn and across sessions. The exact
-        # scan pair below is the measured hot path, so reuse its result for 5 minutes; a
-        # publish bumps catalog revision (key part), while expiry/ACL shifts can lag by the TTL.
         with self._transaction() as cursor:
             cursor.execute("SELECT revision FROM knowledge_catalog WHERE execution_scope_id=%s", (scope,))
             catalog = cursor.fetchone()
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
         revision = catalog["revision"] if catalog else 0
         vector_key = (sha256(canonical(query_vector).encode()).hexdigest()
                       if isinstance(query_vector, list) else None)
+        # ACL + valid_until belong in the key; a publish bump is not enough if the same
+        # revision later hides a document by expiry.
         cache_key = (scope, kind, actor_id, query, vector_key, embedding_model, index_version,
-                     product_id, category_id, corpus, utterance, model_query, revision)
+                     product_id, category_id, corpus, utterance, model_query, revision, now[:16])
         cached = self._search_cache.get(cache_key)
-        if cached is not None:
-            KNOWLEDGE_CACHE_REQUESTS.labels("hit").inc()
-            return json.loads(cached)
-        KNOWLEDGE_CACHE_REQUESTS.labels("miss").inc()
+        with gen_ai_span(
+            "retrieve knowledge",
+            kind="retrieve",
+            attributes={
+                "gen_ai.operation.name": "retrieve",
+                "gen_ai.retrieval.name": "knowledge",
+            },
+        ) as span:
+            if cached is not None:
+                KNOWLEDGE_CACHE_REQUESTS.labels("hit").inc()
+                if span is not None:
+                    span.set_attribute("smartlect.cache_hit", True)
+                return json.loads(cached)
+            KNOWLEDGE_CACHE_REQUESTS.labels("miss").inc()
+            return self._search_uncached(
+                actor, query, raw_query=raw_query, query_vector=query_vector,
+                embedding_model=embedding_model, index_version=index_version,
+                utterance=utterance, model_query=model_query, filters=filters,
+                values=values, cache_key=cache_key, span=span)
+
+    def _search_uncached(self, actor, query, *, raw_query, query_vector, embedding_model,
+                         index_version, utterance, model_query, filters, values, cache_key, span):
+        _kind, _actor_id, scope = _actor(actor)
         with self._transaction() as cursor:
-            # ponytail: derive <=5000 authorized chunks per request; move to a versioned
-            # numeric index only when this bounded exact scan is a measured bottleneck.
-            cursor.execute("""SELECT c.*,d.title,d.source_uri,d.checksum,d.facts_json,d.product_ids_json,d.source_type
+            cursor.execute("""SELECT c.doc_id,c.version,c.chunk_id,c.heading,c.content,c.start_offset,c.end_offset,
+                c.start_line,c.end_line,d.title,d.source_uri,d.checksum,d.facts_json,d.product_ids_json,d.source_type,
+                d.acl,d.valid_until
                 FROM knowledge_document d
                 JOIN knowledge_chunk c USING(execution_scope_id,doc_id,version)
                 WHERE """ + VISIBLE_DOCUMENT + " " + filters +
@@ -667,13 +798,24 @@ class KnowledgeStore(SessionStore):
             hidden_rows = list(cursor.fetchall())
             cursor.execute("SELECT revision FROM knowledge_catalog WHERE execution_scope_id=%s", (scope,))
             catalog = cursor.fetchone()
-        ranked, metadata = rank_chunks(rows, query, query_vector=query_vector, embedding_model=embedding_model,
-                                       index_version=index_version, utterance=utterance, model_query=model_query)
+        dense_hits, vector_backend = _ann_hits(scope, query_vector, embedding_model, index_version)
+        vendor_order, rerank_backend = _vendor_rerank_order(query, rows, dense_hits)
+        ranked, metadata = rank_chunks(
+            rows, query, query_vector=query_vector, embedding_model=embedding_model,
+            index_version=index_version, utterance=utterance, model_query=model_query,
+            dense_hits=dense_hits, vendor_order=vendor_order,
+            vector_backend=vector_backend, rerank_backend=rerank_backend)
         metadata["catalog_revision"] = catalog["revision"] if catalog else 0
+        metadata["parallel_queries"] = parallel_queries(utterance, model_query or raw_query)
         denied = acl_denied_documents(rows, hidden_rows, utterance, query)
         metadata["acl_denied"] = denied
         result = evidence_result(ranked, metadata)
         result["acl_denied"] = denied
+        if span is not None:
+            span.set_attribute("smartlect.cache_hit", False)
+            if metadata.get("eligible_chunks") is not None:
+                span.set_attribute("smartlect.eligible_chunks", metadata["eligible_chunks"])
+            span.set_attribute("gen_ai.retrieval.document.count", len(ranked))
         self._search_cache.put(cache_key, canonical(result))
         return result
 

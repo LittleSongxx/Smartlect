@@ -29,7 +29,7 @@ public class OrderCommerceV2Controller extends ABaseController {
 
     @PostMapping("/quote")
     public ResponseVO<Map<String, Object>> quote(@RequestBody JsonNode body) {
-        String userId = DelegatedUserIdentity.require();
+        String userId = DelegatedUserIdentity.requireNonTrial();
         return getSuccessResponseVO(orders.quoteOrder(userId,
                 OrderQuoteService.normalize(OrderQuoteService.parse(body, OrderQuoteService.Input.class))));
     }
@@ -37,7 +37,7 @@ public class OrderCommerceV2Controller extends ABaseController {
     @PostMapping("/createConfirmed")
     public ResponseVO<Map<String, Object>> createConfirmed(@RequestBody JsonNode body,
             @RequestHeader("Idempotency-Key") String key) {
-        String userId = DelegatedUserIdentity.require();
+        String userId = DelegatedUserIdentity.requireNonTrial();
         JsonNode rawContext = body == null ? null : body.get("attributionContextToken");
         JsonNode purchase = body;
         if (body != null && body.isObject()) {
@@ -56,7 +56,7 @@ public class OrderCommerceV2Controller extends ABaseController {
     @PostMapping("/executeAction")
     public ResponseVO<Map<String, Object>> execute(@RequestBody JsonNode body,
             @RequestHeader("Idempotency-Key") String key) {
-        String userId = DelegatedUserIdentity.require();
+        String userId = DelegatedUserIdentity.requireNonTrial();
         return getSuccessResponseVO(actions.execute(userId,
                 OrderQuoteService.parse(body, CommerceV2Service.Action.class), key));
     }

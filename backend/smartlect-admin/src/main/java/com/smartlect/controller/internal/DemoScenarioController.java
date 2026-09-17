@@ -313,10 +313,10 @@ public class DemoScenarioController extends ABaseController {
         List<Map<String, Object>> outboxes = outboxes(references);
         List<String> blockers = new ArrayList<>();
         if (!"ACTIVE".equals(run.get("state"))) blockers.add("retired_run");
-        if (orders.stream().anyMatch(r -> !(r.get("order_status") instanceof Number n) || n.intValue() == 0 || n.intValue() < -1 || n.intValue() > 8)) blockers.add("pending_or_unknown_orders");
+        if (orders.stream().anyMatch(r -> !(r.get("order_status") instanceof Number n) || n.intValue() == 0 || n.intValue() < -1 || n.intValue() > 7)) blockers.add("pending_or_unknown_orders");
         if (payments.stream().anyMatch(r -> !(r.get("trade_status") instanceof Number n) || n.intValue() < 1 || n.intValue() > 3)) blockers.add("pending_or_unknown_payments");
         if (payments.stream().anyMatch(r -> !"mock".equals(r.get("pay_channel")))) blockers.add("non_mock_payments");
-        if (orders.stream().anyMatch(o -> o.get("order_status") instanceof Number n && Set.of(1,2,3,6,7,8).contains(n.intValue())
+        if (orders.stream().anyMatch(o -> o.get("order_status") instanceof Number n && Set.of(1,2,3,6,7).contains(n.intValue())
                 && payments.stream().noneMatch(p -> o.get("pay_order_id") != null && o.get("pay_order_id").equals(p.get("pay_order_id"))
                 && p.get("trade_status") instanceof Number status && Set.of(1,3).contains(status.intValue())))) blockers.add("payment_state_mismatch");
         if (refunds.stream().anyMatch(r -> !Set.of("COMPLETED", "REJECTED").contains(r.get("status")))) blockers.add("pending_refunds");

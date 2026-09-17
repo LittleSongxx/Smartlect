@@ -57,4 +57,14 @@ class OrderInfoInitialPaymentTest {
         assertEquals("pay-2", actual.getPayOrderId());
         assertEquals(amount, actual.getAmount());
     }
+
+    @Test
+    void zeroAmountSkipsChannelAndStaysFree() {
+        PayInfoDTO actual = service.requestInitialPayInfoBestEffort(
+                "alipay_wap", "pay-free", "subject", BigDecimal.ZERO);
+
+        assertEquals("FREE", actual.getPayInfo());
+        assertEquals("pay-free", actual.getPayOrderId());
+        assertEquals(new BigDecimal("0.00"), actual.getAmount());
+    }
 }

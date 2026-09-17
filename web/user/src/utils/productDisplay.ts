@@ -62,9 +62,11 @@ export function canPurchase(options: {
   addressId?: string;
   selected?: { stock?: unknown } | null;
   quantity: unknown;
+  trial?: boolean;
 }): boolean {
   const cap = stockCap(options.selected?.stock);
   return options.subjectType === 'user'
+    && !options.trial
     && Boolean(options.addressId)
     && Boolean(options.selected)
     && Number.isInteger(options.quantity)

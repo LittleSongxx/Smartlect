@@ -34,6 +34,7 @@ public class OrderRequestIdempotencyService {
     public static final String COMMAND_COMMERCE_RECOMMENT = "COMMERCE_RECOMMENT";
 
     private static final Pattern KEY_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{16,64}");
+    static final long STALE_PROCESSING_MILLIS = 120_000L;
 
     @Resource
     private OrderRequestIdempotencyMapper mapper;
@@ -81,6 +82,16 @@ public class OrderRequestIdempotencyService {
                 throw new HttpBusinessException(409, "同一幂等键不能用于不同请求");
             }
             if ("PROCESSING".equals(existing.getStatus())) {
+                if (isStaleProcessing(existing)) {
+                    mapper.recordInconclusive(
+                            userId,
+                            commandType,
+                            idempotencyKey,
+                            3,
+                            Date.from(Instant.now().plusSeconds(3600)),
+                            "processing_stale");
+                    throw new HttpBusinessException(409, "原请求结果正在核对，不能重复执行");
+                }
                 throw new HttpBusinessException(409, "请求正在处理中，请稍后重试");
             }
             if ("INCONCLUSIVE".equals(existing.getStatus())) {
@@ -224,6 +235,12 @@ public class OrderRequestIdempotencyService {
             return value;
         }
         return value.substring(0, maxLength);
+    }
+
+    static boolean isStaleProcessing(OrderRequestIdempotency existing) {
+        Date created = existing == null ? null : existing.getCreateTime();
+        return created != null
+                && Instant.now().toEpochMilli() - created.getTime() >= STALE_PROCESSING_MILLIS;
     }
 
     public void validateKey(String idempotencyKey) {

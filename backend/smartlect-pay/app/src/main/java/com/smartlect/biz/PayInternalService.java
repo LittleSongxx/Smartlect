@@ -40,6 +40,20 @@ public class PayInternalService {
                 "amountCents", record.getPayAmount().movePointRight(2).longValueExact());
     }
 
+    public void assertSettled(String payOrderId) {
+        if (StringTools.isEmpty(payOrderId)) {
+            throw new BusinessException("支付订单号无效");
+        }
+        com.smartlect.entity.po.PayTradeRecord record = payTradeRecordService.findByPayOrderId(payOrderId);
+        if (record == null) {
+            throw new BusinessException("支付意图不存在");
+        }
+        Integer status = record.getTradeStatus();
+        if (status == null || (status != 1 && status != 3)) {
+            throw new BusinessException("支付意图尚未确认成功");
+        }
+    }
+
     public void createPending(PayTradeCreateDTO dto) {
         payTradeRecordService.createPending(
                 dto.getUserId(), dto.getPayOrderId(), dto.getOrderId(), dto.getPayAmount(), dto.getPayChannel());

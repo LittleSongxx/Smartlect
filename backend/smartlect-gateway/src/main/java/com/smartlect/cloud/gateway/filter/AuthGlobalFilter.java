@@ -130,9 +130,7 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
                     headers.remove(USER_ID_HEADER);
                     headers.remove(USER_VERIFIED_HEADER);
                     headers.remove(ADMIN_VERIFIED_HEADER);
-                    if (!isInternalPath(exchange.getRequest().getURI().getPath())) {
-                        INTERNAL_IDENTITY_HEADERS.forEach(headers::remove);
-                    }
+                    INTERNAL_IDENTITY_HEADERS.forEach(headers::remove);
                 })
                 .build();
         return exchange.mutate().request(sanitized).build();

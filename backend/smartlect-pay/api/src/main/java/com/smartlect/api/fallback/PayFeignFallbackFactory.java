@@ -29,6 +29,11 @@ public class PayFeignFallbackFactory implements FallbackFactory<PayFeignClient> 
             }
 
             @Override
+            public ResponseVO<Void> assertSettled(PayTradeStatusDTO dto) {
+                return FeignFallbackResponses.unavailable(log, "支付服务", cause);
+            }
+
+            @Override
             public ResponseVO<Void> createPending(PayTradeCreateDTO dto) {
                 return FeignFallbackResponses.unavailable(log, "支付服务", cause);
             }

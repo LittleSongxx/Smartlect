@@ -122,7 +122,7 @@ public class OrderController extends ABaseController{
     // 查询我的订单
     @PostMapping("/loadMyOrder")
     @GlobalInterceptor(checkLogin = true)
-    public ResponseVO loadMyOrder(@NotNull Integer pageNo, Integer status){
+    public ResponseVO loadMyOrder(@NotNull Integer pageNo, Integer status, Integer commentPending){
         // 返回PaginationResultVO<OrderInfo> 分页对象，包含订单列表和分页信息
         // 不查询OrderStatus为-1，即已删除的订单
         OrderInfoQuery query = new OrderInfoQuery();
@@ -144,8 +144,7 @@ public class OrderController extends ABaseController{
         }else {
             query.setOrderStatus(status);
         }
-        // 待评价页：已完成且（未评价）
-        if (OrderStatusEnum.WAIT_COMMENT.getStatus().equals(status)) {
+        if (commentPending != null && commentPending == 1) {
             query.setOrderStatus(OrderStatusEnum.COMPLETED.getStatus());
             query.setCommentStatusList(new Integer[]{
                     OrderCommentStatusEnum.NOT_EVALUATED.getStatus(),

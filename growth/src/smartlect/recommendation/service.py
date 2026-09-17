@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import math
 
+from smartlect.algo_version import content_hash
 from smartlect.catalog_gate import (RecommendationRequest, _fold, constraints, eligible_skus,
                                     in_scope, scope_filter)
 from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
@@ -15,7 +16,12 @@ ROUTES = ('content', 'category', 'copurchase', 'popular', 'newest')
 FEATURES = ('content', 'category', 'copurchase', 'popularity', 'newness', 'preference', 'affordability')
 MAX_PRODUCTS = 50
 MAX_RERANK_SKUS = 12
-ALGORITHM_VERSION = 'sku-rank-paid-units-v1'
+ALGORITHM_VERSION = content_hash({
+    'ranker': 'weighted_features',
+    'features': FEATURES,
+    'routes': ROUTES,
+})
+POPULAR_BASIS = 'confirmed_payment_units_excluding_refunds'
 
 
 def merge_candidates(route_rows, *, product_scope, limit=MAX_PRODUCTS):
@@ -64,7 +70,7 @@ def rank_skus(cards, request, routes, weights, preferences=(), *, paid_products=
         if features['copurchase']:
             reasons.append('曾与您关注的商品一起购买')
         if paid_units:
-            reasons.append('已有' + str(paid_units) + '件确认付款（含后续退款订单）')
+            reasons.append('已有' + str(paid_units) + '件确认付款（不含已退款）')
         if features['newness']:
             reasons.append('按上架时间为您推荐')
         if features['preference']:
@@ -164,7 +170,7 @@ class RecommendationService:
         for row in popular:
             try:
                 if (type(row.get('paidUnits')) is not int or row['paidUnits'] < 0
-                        or row.get('basis') != 'confirmed_payment_units_v1'
+                        or row.get('basis') != POPULAR_BASIS
                         or datetime.fromisoformat(row['observedAt'].replace('Z', '+00:00')).tzinfo is None):
                     continue
                 paid_products[row['productId']] = {key: row[key] for key in ('paidUnits', 'basis', 'observedAt')}

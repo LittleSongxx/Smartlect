@@ -54,10 +54,12 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
         result = await provider.chat(MESSAGES, tools=[tool], tool_choice='required')
         self.assertEqual(bodies[-1]['tool_choice'], 'required')
         self.assertEqual(result['metadata']['request_parameters']['tool_choice'], 'required')
+        await provider.chat(MESSAGES, tools=[tool], tool_choice='auto')
+        self.assertEqual(bodies[-1]['tool_choice'], 'auto')
         for params in ({'tool_choice': 'required'}, {'tools': [tool], 'tool_choice': 'anything'}):
             with self.assertRaises(ValueError):
                 await provider.chat(MESSAGES, **params)
-        self.assertEqual(len(bodies), 1)
+        self.assertEqual(len(bodies), 2)
 
     async def test_retry_budget_metadata_and_redaction(self):
         bodies, traces, admitted = [], [], []
@@ -95,8 +97,6 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
     async def test_fail_closed_without_retries_for_auth_format_and_output_limit(self):
         for response, code in [(httpx.Response(401, text="secret body"), "model_http_error"),
                                (httpx.Response(200, text="not-json"), "model_invalid_response"),
-                               (httpx.Response(200, json={"choices": [{"finish_reason": "length"}]}),
-                                "model_incomplete_response"),
                                (httpx.Response(200, json={**completion(), "model": "unapproved-model"}),
                                 "model_response_id_mismatch")]:
             calls = []
@@ -110,6 +110,20 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(calls), 1)
             self.assertEqual(len(raised.exception.attempts), 1)
             self.assertNotIn("secret body", str(raised.exception))
+
+    async def test_length_finish_reason_is_retryable_and_not_a_channel_fault(self):
+        calls = []
+        def handler(request):
+            calls.append(json.loads(request.content))
+            return httpx.Response(200, json={"choices": [{"finish_reason": "length"}]})
+        provider = Provider(CONFIG, transport=httpx.MockTransport(handler))
+        with self.assertRaises(ProviderError) as raised:
+            await provider.chat(MESSAGES)
+        self.assertEqual(raised.exception.code, "model_output_truncated")
+        self.assertTrue(raised.exception.retryable)
+        self.assertEqual(len(calls), 2)
+        self.assertGreater(calls[1].get("max_completion_tokens") or calls[1].get("max_tokens"),
+                           calls[0].get("max_completion_tokens") or calls[0].get("max_tokens"))
 
     async def test_transport_timeout_has_at_most_two_attempts_and_unknown_usage(self):
         calls = []
@@ -290,6 +304,18 @@ class ResilienceTests(unittest.IsolatedAsyncioTestCase):
         state["mode"] = "ok"
         self.assertEqual((await provider.chat(MESSAGES))["message"]["content"], "ok")
         self.assertEqual((await provider.chat(MESSAGES))["message"]["content"], "ok")
+
+    def test_half_open_admits_only_one_probe(self):
+        from smartlect.provider import ProviderError, _Breaker
+        breaker = _Breaker(1, 30, "chat")
+        breaker.record(False)
+        breaker._opened_until = 0.0
+        breaker.check()
+        with self.assertRaises(ProviderError) as blocked:
+            breaker.check()
+        self.assertEqual(blocked.exception.code, "model_circuit_open")
+        breaker.record(True)
+        breaker.check()
 
     async def test_breakers_are_scoped_per_endpoint(self):
         def handler(request):

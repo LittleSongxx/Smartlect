@@ -72,21 +72,28 @@ public class ProductProjectionClient {
 
     void enqueueQuietly(String productId) {
         if (internalToken.isBlank()) {
-            log.info("product_projection_skipped product_id={} reason=internal_token_missing", productId);
+            log.error("product_projection_skipped product_id={} reason=internal_token_missing", productId);
             return;
         }
-        try {
-            client.post()
-                    .uri("/internal/product-projection/enqueue")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .header(InternalApiHeaders.INTERNAL_TOKEN, internalToken)
-                    .body(Map.of("product_id", productId, "execution_scope_id", "store"))
-                    .retrieve()
-                    .toBodilessEntity();
-            log.info("product_projection_enqueued product_id={}", productId);
-        } catch (Exception error) {
-            log.warn("product_projection_enqueue_failed product_id={} error={}",
-                    productId, error.getClass().getSimpleName());
+        Exception last = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                client.post()
+                        .uri("/internal/product-projection/enqueue")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(InternalApiHeaders.INTERNAL_TOKEN, internalToken)
+                        .body(Map.of("product_id", productId, "execution_scope_id", "store"))
+                        .retrieve()
+                        .toBodilessEntity();
+                log.info("product_projection_enqueued product_id={} attempt={}", productId, attempt);
+                return;
+            } catch (Exception error) {
+                last = error;
+                log.warn("product_projection_enqueue_failed product_id={} attempt={} error={}",
+                        productId, attempt, error.getClass().getSimpleName());
+            }
         }
+        log.error("product_projection_enqueue_exhausted product_id={} error={}",
+                productId, last == null ? "unknown" : last.getClass().getSimpleName());
     }
 }

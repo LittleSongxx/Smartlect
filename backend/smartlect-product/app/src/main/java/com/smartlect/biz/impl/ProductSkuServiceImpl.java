@@ -210,8 +210,7 @@ public class ProductSkuServiceImpl implements ProductSkuService {
 
 	private ProductSkuListVO buildLessStockSkuVo(SkuStockDTO skuStock) {
 		if (skuStock == null || StringTools.isEmpty(skuStock.getProductId())
-				|| StringTools.isEmpty(skuStock.getPropertyValueIdHash())
-				|| IsolatedCatalog.isIsolatedProductId(skuStock.getProductId())) {
+				|| StringTools.isEmpty(skuStock.getPropertyValueIdHash())) {
 			return null;
 		}
 		ProductSku productSku = getProductSkuByProductIdAndPropertyValueIdHash(
@@ -220,7 +219,7 @@ public class ProductSkuServiceImpl implements ProductSkuService {
 			return null;
 		}
 		ProductInfo productInfo = productInfoService.getProductInfoByProductId(productSku.getProductId());
-		if (productInfo == null) {
+		if (productInfo == null || IsolatedCatalog.isEvalScope(productInfo.getCatalogScope())) {
 			return null;
 		}
 		ProductSkuListVO productSkuListVO = new ProductSkuListVO();

@@ -2,6 +2,7 @@ package com.smartlect.component;
 
 import com.smartlect.constants.Constants;
 import com.smartlect.exception.BusinessException;
+import com.smartlect.exception.HttpBusinessException;
 import com.smartlect.redis.LuaScriptLoader;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
@@ -41,7 +42,7 @@ public class CouponRushRateLimitService {
         }
         String key = Constants.REDIS_KEY_RUSH_RATE_USER + userId;
         if (!tryAcquire(key, windowSeconds, maxCount)) {
-            throw new BusinessException("操作过于频繁，请稍后再试");
+            throw new HttpBusinessException(429, "操作过于频繁，请稍后再试");
         }
     }
 
@@ -51,7 +52,7 @@ public class CouponRushRateLimitService {
         }
         String key = Constants.REDIS_KEY_RUSH_RATE_COUPON + couponId;
         if (!tryAcquire(key, windowSeconds, maxCount)) {
-            throw new BusinessException("当前抢购人数过多，请稍后再试");
+            throw new HttpBusinessException(429, "当前抢购人数过多，请稍后再试");
         }
     }
 

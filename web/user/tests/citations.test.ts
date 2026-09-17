@@ -2,27 +2,29 @@ import { describe, expect, it } from 'vitest';
 import { annotateAnswerWithCitations, citationTitle, displayCitations } from '../src/utils/citations';
 
 describe('客服引用展示', () => {
-  it('按文档名去重并去掉标题井号', () => {
+  it('只按 chunk_id 去重，标题井号去掉', () => {
     const list = displayCitations([
       { title: '# 退货条件与期限', chunk_id: 'a', text: '原文甲' },
-      { title: '退货条件与期限', chunk_id: 'b', text: '原文乙' },
+      { title: '退货条件与期限', chunk_id: 'a', text: '重复同一片段' },
       { title: '换货与更换规格', chunk_id: 'c', text: '原文丙' },
+      { title: '没有编号的资料' },
     ]);
     expect(list).toEqual([
-      { index: 1, title: '退货条件与期限' },
-      { index: 2, title: '换货与更换规格' },
+      { index: 1, title: '退货条件与期限', chunk_id: 'a' },
+      { index: 2, title: '换货与更换规格', chunk_id: 'c' },
     ]);
     expect(citationTitle({ title: '## 售后政策' })).toBe('售后政策');
   });
 
-  it('在正文首次出现的文档名后加标号，未出现的标号跟在段末', () => {
+  it('不按文档名正则贴标，只认正文里的 chunk_id 或已有 [n]', () => {
     const sources = displayCitations([
-      { title: '退货条件与期限' },
-      { title: '换货与更换规格' },
+      { title: '退货条件与期限', chunk_id: 'chunk-a' },
+      { title: '换货与更换规格', chunk_id: 'chunk-b' },
     ]);
     expect(annotateAnswerWithCitations('退货条件与期限如下，换货请另询。', sources))
-      .toBe('退货条件与期限 [1]如下，换货请另询。[2]');
-    expect(annotateAnswerWithCitations('可以办理退换货。', sources)).toBe('可以办理退换货。[1][2]');
-    expect(annotateAnswerWithCitations('已按退货条件与期限 [1]说明。', sources)).toBe('已按退货条件与期限 [1]说明。[2]');
+      .toBe('退货条件与期限如下，换货请另询。[1][2]');
+    expect(annotateAnswerWithCitations('依据 chunk-a 办理。', sources))
+      .toBe('依据 chunk-a [1] 办理。[2]');
+    expect(annotateAnswerWithCitations('已按说明 [1] 办理。', sources)).toBe('已按说明 [1] 办理。[2]');
   });
 });

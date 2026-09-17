@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import unittest
 
 from smartlect.shopping_mission import empty_mission
-from smartlect.shopping_retrieve import ALGORITHM_VERSION, STRATEGY_VERSION, ShoppingRetrieve
+from smartlect.shopping_retrieve import ALGORITHM_VERSION, STRATEGY_VERSION, ShoppingRetrieve, rank_search_skus
 
 
 class FakeCommerce:
@@ -59,6 +59,7 @@ class ShoppingRetrieveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['strategy_version'], STRATEGY_VERSION)
         self.assertEqual(result['algorithm_version'], ALGORITHM_VERSION)
         self.assertTrue(any(path.endswith('/searchOnSale') for _, path, _ in self.commerce.calls))
+        self.assertTrue(any(data.get('maxPriceCents') == 1 for _, path, data in self.commerce.calls if path.endswith('/searchOnSale')))
         self.assertFalse(any('popularProducts' in path or 'coPurchase' in path for _, path, _ in self.commerce.calls))
 
     async def test_saved_avoid_preference_is_soft_and_browse_may_use_newest(self):
@@ -172,6 +173,28 @@ class ShoppingRetrieveTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['diagnostics']['recall_relaxed'])
         self.assertIsNone(result['diagnostics']['empty_reason'])
         self.assertFalse(result['diagnostics']['popular_used'])
+
+    async def test_search_is_query_relevance_not_constraint_recommend(self):
+        searched = await ShoppingRetrieve(self.commerce).search(
+            self.actor, {'query': '轻便键盘', 'max_price_cents': 1}, product_scope=self.scope)
+        recommended = await ShoppingRetrieve(self.commerce).recommend(
+            self.actor, {'query': '轻便键盘', 'max_price_cents': 1}, mission=empty_mission(),
+            product_scope=self.scope)
+        self.assertEqual(searched['ranking_mode'], 'query_relevance')
+        self.assertNotEqual(searched['ranking_mode'], recommended['ranking_mode'])
+        self.assertEqual(recommended['items'], [])
+        self.assertEqual(recommended['diagnostics']['empty_reason'], 'hard_constraint_unsatisfied')
+        self.assertFalse(any('popularProducts' in path or 'coPurchase' in path for _, path, _ in self.commerce.calls))
+        self.assertTrue(all(item.get('features', {}).keys() == {'content'} for item in searched['items']))
+
+    def test_rank_search_skus_ignores_preference_and_budget_features(self):
+        cards = [
+            {'sku_key': 'cheap:std', 'productName': '基础键盘', 'specification': '黑色', 'price_cents': 1000},
+            {'sku_key': 'match:std', 'productName': '轻便键盘', 'specification': '黑色', 'price_cents': 90000},
+        ]
+        ranked = rank_search_skus(cards, {'query': '轻便键盘', 'max_price_cents': 2000})
+        self.assertEqual([card['sku_key'] for card in ranked], ['match:std', 'cheap:std'])
+        self.assertEqual(set(ranked[0]['features']), {'content'})
 
 
 if __name__ == '__main__':

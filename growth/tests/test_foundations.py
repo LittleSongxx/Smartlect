@@ -17,7 +17,7 @@ import smartlect
 from smartlect.ads.analytics import CampaignMetrics, detect_anomalies, optimize_budget_allocation, to_cents
 from smartlect.app import health
 from smartlect.config import Settings
-from smartlect.recommendation.ab_test import ABTestEngine, Experiment, ExperimentGroup
+from smartlect.recommendation.store import DEFAULT_STRATEGIES, bucket_for, strategy_config
 
 
 class FoundationTests(unittest.TestCase):
@@ -122,18 +122,12 @@ class FoundationTests(unittest.TestCase):
                 self.assertEqual(lower, (budget + 1) // 2)
 
     def test_experiment_boundaries_and_config_isolation(self):
-        engine = ABTestEngine(seed=42)
-        for groups in ([], [ExperimentGroup("zero", weight=0)],
-                       [ExperimentGroup("bad", weight=-1)]):
-            with self.assertRaises(ValueError):
-                engine.register_experiment(Experiment("bad", "bad", groups))
-        result = engine.assign("user")
-        result["config"]["rerank"] = "mutated"
-        self.assertNotEqual(engine.assign("user")["config"]["rerank"], "mutated")
-        engine.experiments["rec_strategy"].end_time = 1
-        self.assertEqual(engine.assign("user"), {"group": "control", "config": {}})
-        with self.assertRaises(ValueError):
-            engine.record_metric("rec_strategy", "control", "ctr", float("nan"))
+        config = strategy_config(DEFAULT_STRATEGIES['rules-v1'])
+        config['ranking'] = 'mutated'
+        self.assertEqual(strategy_config(DEFAULT_STRATEGIES['rules-v1'])['ranking'], 'rule')
+        self.assertEqual(DEFAULT_STRATEGIES['content-v1']['ranking'], 'content')
+        self.assertNotEqual(bucket_for('s', 'e', 'user-a', 'salt'), bucket_for('s', 'e', 'user-b', 'salt'))
+        self.assertEqual(bucket_for('s', 'e', 'user-a', 'salt'), bucket_for('s', 'e', 'user-a', 'salt'))
 
 
 if __name__ == "__main__":

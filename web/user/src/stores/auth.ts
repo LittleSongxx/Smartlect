@@ -188,6 +188,8 @@ export const useAuthStore = defineStore('auth', () => {
   const logout = async (silent = false) => {
     if (!silent && isLoggedIn.value) await accountApi.logout();
     clearAuth();
+    const { reset } = await import('@/composables/useAgentSession');
+    reset();
   };
 
   const finishLogoutNavigation = () => {

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 from pydantic import ValidationError
 
-from smartlect.ads.service import AdsService, ActionRequest, AdClickRequest, GrantRequest, rank_ads
+from smartlect.ads.service import AD_RANKING_VERSION, AdsService, ActionRequest, AdClickRequest, GrantRequest, rank_ads
 from smartlect.auth import IdentityBridge, ActorContext
 from smartlect.commerce import AsyncCommerceClient
 from smartlect.config import Settings
@@ -41,7 +41,7 @@ class AdsServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mouse['items'][0]['productId'], 'new')
         self.assertEqual(mouse['items'][0]['propertyValueIds'], 'vnew')
         self.assertEqual(mouse['items'][0]['sku_key'], 'hash-new')
-        self.assertEqual(mouse['ranking_mode'], 'ad-fatigue-pacing-v1')
+        self.assertEqual(mouse['ranking_mode'], AD_RANKING_VERSION)
         self.assertTrue(all(row['productId'] != 'outside' for row in mouse['items']))
         excluded = await service.recommend(actor, preferences=[{'preference_key': 'avoid', 'value': ['鼠标'], 'source': 'explicit'}])
         self.assertEqual([row['productId'] for row in excluded['items']], ['content'])
@@ -64,9 +64,9 @@ class AdsServiceTests(unittest.IsolatedAsyncioTestCase):
         # repeating a creative this viewer ignored and stop one campaign owning the slot.
         self.assertEqual(self.order([self.pair('ignored', seen=6), self.pair('fresh')]),
                          ['fresh', 'ignored'])
-        # Having clicked before is interest, so it is not treated as fatigue.
+        # Clicks no longer grant immunity; N impressions in 24h always fatigue.
         self.assertEqual(self.order([self.pair('engaged', seen=6, clicked=2), self.pair('fresh')]),
-                         ['engaged', 'fresh'])
+                         ['fresh', 'engaged'])
         # Same fatigue, so the campaign with budget headroom leads.
         self.assertEqual(self.order([self.pair('drained', spent=950), self.pair('funded', spent=100)]),
                          ['funded', 'drained'])

@@ -292,6 +292,8 @@ const pauseReasonText = (reason) => ({
   grant_expired: '授权已过期',
   budget_exhausted: '累计预算已用尽',
   stock_unavailable: '库存不足，已保护暂停',
+  stockout: '库存不足，已保护暂停',
+  merchant_manual_pause: '商家手动暂停',
   policy_paused: '策略要求暂停',
 }[reason] || reason);
 const campaign = reactive({ campaign_id: crypto.randomUUID(), name: '', product_id: '', sku_key: '', budget_cents: '1000', cpc_cents: '10' });

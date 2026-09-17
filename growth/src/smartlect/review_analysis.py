@@ -7,15 +7,23 @@ model the snapshot still stores the deterministic statistics and marks insights 
 """
 import asyncio
 import json
+import os
 
+from smartlect.algo_version import content_hash
 from smartlect.events import canonical
 from smartlect.privacy import redact_text
 from smartlect.state import SessionStore, StateError, _actor, _public, _text
 
-ANALYSIS_VERSION = "review-analysis-v1"
 GOOD_STAR, MID_STAR = 4, 3
-POSITIVE_AVG, POSITIVE_RATE = 4.5, 0.8
-NEGATIVE_AVG = 3.0
+POSITIVE_AVG = float(os.environ.get("SMARTLECT_REVIEW_POSITIVE_AVG", "4.5"))
+POSITIVE_RATE = float(os.environ.get("SMARTLECT_REVIEW_POSITIVE_RATE", "0.8"))
+NEGATIVE_AVG = float(os.environ.get("SMARTLECT_REVIEW_NEGATIVE_AVG", "3.0"))
+ANALYSIS_VERSION = content_hash({
+    "algo": "review_comment_statistics",
+    "positive_avg": POSITIVE_AVG,
+    "positive_rate": POSITIVE_RATE,
+    "negative_avg": NEGATIVE_AVG,
+})
 
 INSIGHT_SYSTEM = (
     "你是电商评价分析助手。只依据给出的真实用户评价输出 JSON（不要 markdown）："
@@ -52,7 +60,7 @@ def _validated_insights(text):
     if not isinstance(data, dict) or set(data) != {"strengths", "problems", "keywords", "suggestions"}:
         raise StateError("invalid_insights_structure", 422)
     for key, value in data.items():
-        if not isinstance(value, list) or not value or len(value) > 8 or any(
+        if not isinstance(value, list) or len(value) > 8 or any(
                 not isinstance(item, str) or not item.strip() or len(item) > 500 for item in value):
             raise StateError("invalid_insights_structure", 422)
     return data

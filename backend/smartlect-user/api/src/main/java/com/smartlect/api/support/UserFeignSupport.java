@@ -31,13 +31,13 @@ public class UserFeignSupport {
 
     public UserAddressVO getAddress(String addressId, String userId) {
         return feignResponseSupport.call(
-                () -> userFeignClient.getAddress(new UserAddressQueryDTO(addressId, userId)),
+                () -> userFeignClient.getAddress(new UserAddressQueryDTO(addressId, userId), userId),
                 "查询收货地址失败");
     }
 
     public void addGrowthOnPay(String userId, BigDecimal payAmount) {
         feignResponseSupport.run(
-                () -> userFeignClient.addGrowthOnPay(new UserGrowthAddDTO(userId, payAmount)),
+                () -> userFeignClient.addGrowthOnPay(new UserGrowthAddDTO(userId, payAmount), userId),
                 "增加成长值失败");
     }
 

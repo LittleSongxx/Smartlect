@@ -374,7 +374,7 @@ public class OrderCommerceInternalController extends ABaseController {
         for (Map<String, Object> row : orderItemMapper.selectPopularProducts(productIds, excluded, limit)) {
             result.add(Map.of("productId", row.get("productId"),
                     "paidUnits", new BigDecimal(row.get("paidUnits").toString()).longValueExact(),
-                    "basis", "confirmed_payment_units_v1", "observedAt", observedAt));
+                    "basis", "confirmed_payment_units_excluding_refunds", "observedAt", observedAt));
         }
         return getSuccessResponseVO(result);
     }

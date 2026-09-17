@@ -27,7 +27,7 @@ public class CouponFeignFallbackFactory implements FallbackFactory<CouponFeignCl
         log.warn("Coupon Feign fallback: {}", cause == null ? "unknown" : cause.toString());
         return new CouponFeignClient() {
             @Override
-            public ResponseVO<CouponLockResultVO> validateAndLock(CouponValidateAndLockDTO dto) {
+            public ResponseVO<CouponLockResultVO> validateAndLock(CouponValidateAndLockDTO dto, String userId) {
                 return FeignFallbackResponses.unavailable("优惠券服务");
             }
 
@@ -52,23 +52,23 @@ public class CouponFeignFallbackFactory implements FallbackFactory<CouponFeignCl
             }
 
             @Override
-            public ResponseVO<Void> changeUserCouponStatus(UserCouponStatusChangeDTO dto) {
+            public ResponseVO<Void> changeUserCouponStatus(UserCouponStatusChangeDTO dto, String userId) {
                 return FeignFallbackResponses.unavailable("优惠券服务");
             }
 
             @Override
-            public ResponseVO<Void> createUserCoupon(UserCouponCreateDTO dto) {
+            public ResponseVO<Void> createUserCoupon(UserCouponCreateDTO dto, String userId) {
                 return FeignFallbackResponses.unavailable("优惠券服务");
             }
 
             @Override
             public ResponseVO<com.smartlect.api.vo.CouponGrantResultVO> grantCoupon(
-                    UserCouponCreateDTO dto) {
+                    UserCouponCreateDTO dto, String userId) {
                 return FeignFallbackResponses.unavailable("优惠券服务");
             }
 
             @Override
-            public ResponseVO<StockChangeResultVO> deductStock(CouponIdDTO dto) {
+            public ResponseVO<StockChangeResultVO> deductStock(CouponIdDTO dto, String userId) {
                 return FeignFallbackResponses.unavailable("优惠券服务");
             }
 

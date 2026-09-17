@@ -200,14 +200,18 @@ const canRefundItem = (item: Record<string, any>) => {
 };
 
 const refundItem = async (orderItemId: string) => {
-  const ok = await confirmAction('确定要申请退款吗？退款将按原支付方式退回。', {
+  const item = itemList.value.find((row) => row.orderItemId === orderItemId);
+  const ok = await confirmAction('将按原支付方式退回，提交后请在助手确认卡里再次确认。', {
     title: '申请退款',
-    confirmButtonText: '申请退款'
+    confirmButtonText: '生成退款确认卡'
   });
   if (!ok) return;
-  await orderApi.refundOrder(orderItemId);
-  toast.success('退款申请已提交');
-  load();
+  await propose('refund', {
+    orderItemId,
+    refundAmountCents: item ? remainingRefundCents(item) : 0
+  });
+  toast.success('退款确认卡已生成，请在助手会话中确认');
+  openAgent({ draft: `请带我核对明细 ${orderItemId} 的退款确认卡` });
 };
 
 const formatMoney = (val: unknown) => Number(val ?? 0).toFixed(2);

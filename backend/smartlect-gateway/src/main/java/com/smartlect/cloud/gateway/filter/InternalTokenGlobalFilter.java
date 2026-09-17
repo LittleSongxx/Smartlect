@@ -16,6 +16,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -51,10 +52,19 @@ public class InternalTokenGlobalFilter implements GlobalFilter, Ordered {
         }
         String expected = internalProperties.getToken();
         String actual = exchange.getRequest().getHeaders().getFirst(INTERNAL_TOKEN_HEADER);
-        if (StringUtils.hasText(expected) && expected.equals(actual)) {
+        if (tokenMatches(expected, actual)) {
             return chain.filter(exchange);
         }
         return unauthorized(exchange, "invalid internal token");
+    }
+
+    private static boolean tokenMatches(String expected, String actual) {
+        if (!StringUtils.hasText(expected) || actual == null) {
+            return false;
+        }
+        byte[] left = expected.getBytes(StandardCharsets.UTF_8);
+        byte[] right = actual.getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(left, right);
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange, String msg) {

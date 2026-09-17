@@ -107,15 +107,23 @@ export async function loadSession(signal?: AbortSignal): Promise<Session> {
     sessionRequest!.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
 }
+export async function refreshCsrf(signal?: AbortSignal): Promise<Session> {
+  signal?.throwIfAborted();
+  // Drop a completed/foreign in-flight read so this write gets its own nonce.
+  // Concurrent readers started after this still join the new GET.
+  sessionRequest = undefined;
+  return loadSession(signal);
+}
+
 export async function aiWrite<T = any>(path: string, body: unknown, method = 'POST', signal?: AbortSignal) {
   const previous = session.value ? ownerKey(session.value.actor) : '';
-  await loadSession(signal);
-  if (previous && previous !== ownerKey(session.value!.actor)) {
+  const current = await refreshCsrf(signal);
+  if (previous && previous !== ownerKey(current.actor)) {
     window.dispatchEvent(new Event('smartlect:identity-changed'));
     throw new ApiError(409, '账号已切换，请在当前账号下重新查看并操作。');
   }
   return request<T>(`/api/assistant${path}`, {
-    method, signal, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.value!.csrf_token }, body: body === undefined ? undefined : JSON.stringify(body),
+    method, signal, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': current.csrf_token }, body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
 export const aiPost = <T = any>(path: string, body: unknown, signal?: AbortSignal) => aiWrite<T>(path, body, 'POST', signal);

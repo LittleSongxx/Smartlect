@@ -18,6 +18,7 @@ from smartlect.provider import ProviderError
 from smartlect.state import StateError
 from smartlect.catalog_gate import RecommendationRequest, in_scope, scope_filter
 from smartlect.knowledge_scope import compile_search_filter
+from smartlect.observability import gen_ai_span
 
 
 class Arguments(BaseModel):
@@ -130,12 +131,12 @@ class Tool:
 
 
 REGISTRY = {
-    "load_skill": Tool(SkillArgs, "shopping:read", "按当前任务加载已审核的业务Skill；只能缩小现有权限"),
+    "load_skill": Tool(SkillArgs, "shopping:read", "按当前任务加载已审核的业务Skill，把该 Skill 的工具并入本轮可用集；管理端热改只能再缩小已加载 Skill 的 tools"),
     "request_handoff": Tool(HandoffArgs, "shopping:read", "用户请求人工或当前问题需人工核实时创建本地工单并结束本轮；必须单独调用。不是退款或交易授权。", "handoff"),
     "search_knowledge": Tool(KnowledgeArgs, "shopping:read",
                              "检索已发布且有权限的政策/说明原文及引用；商品页由服务端限定本商品+店规，模型不能换库"),
-    "search_skus": Tool(SearchArgs, "shopping:read", "按关键字/预算从Java查询实际有货SKU；价格单位分"),
-    "recommend_skus": Tool(SearchArgs, "shopping:read", "按用途/预算/硬约束推荐真实可售SKU，返回来源、策略和理由；价格单位分"),
+    "search_skus": Tool(SearchArgs, "shopping:read", "按关键字做查询相关性检索，返回实际有货SKU；不走首页五路召回；价格单位分"),
+    "recommend_skus": Tool(SearchArgs, "shopping:read", "按用途/预算/硬约束做约束检索，返回真实可售SKU；不走首页五路召回；价格单位分"),
     "compare_skus": Tool(CompareArgs, "shopping:read", "对照2–4个可售SKU或任务槽比较目标；缺目标只标不全，不用热销凑数"),
     "get_my_addresses": Tool(Arguments, "orders:read", "查询本人收货地址ID与默认标记，不返回电话或详细地址"),
     "get_payment_status": Tool(PaymentArgs, "orders:read", "核对本人付款意图及订单同步状态"),
@@ -184,11 +185,13 @@ def schemas(actor, allowed=None):
 
 
 async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None, allowed=None,
-                 knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, product_scope=None,
-                 observed_citations=None, user_utterance=None, focus=None):
+                 knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, search=None,
+                 product_scope=None, observed_citations=None, user_utterance=None, focus=None):
     tool = REGISTRY.get(name)
-    if tool is None or (allowed is not None and name not in allowed):
+    if tool is None:
         raise ValueError("tool_not_allowed")
+    if allowed is not None and name not in allowed:
+        raise StateError("tool_not_loaded", 403)
     actor.require(tool.permission)
     params = tool.schema.model_validate(arguments).model_dump(exclude_none=True,
                     exclude_unset=name in {'search_skus', 'recommend_skus', 'compare_skus'})
@@ -210,8 +213,17 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
     if prior["outcome"] != "started":
         return prior["receipt"]
     try:
-        result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, compare, observed_citations, user_utterance, focus),
-                                        timeout=30 if name in {"search_knowledge", "search_skus", "recommend_skus", "compare_skus"} else 15)
+        with gen_ai_span(
+            f"execute_tool {name}",
+            kind="execute_tool",
+            attributes={
+                "gen_ai.operation.name": "execute_tool",
+                "gen_ai.tool.name": name,
+                "gen_ai.tool.call.id": call_id,
+            },
+        ):
+            result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, compare, search, observed_citations, user_utterance, focus),
+                                            timeout=30 if name in {"search_knowledge", "search_skus", "recommend_skus", "compare_skus"} else 15)
         status = "command_accepted"
         if name == "get_refund_status":
             status = "business_completed" if result and all(item.get("status") == "COMPLETED" for item in result) else "business_pending"
@@ -230,8 +242,10 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
         raise
 
 
-async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, observed_citations=None, user_utterance=None, focus=None):
+async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, search=None, observed_citations=None, user_utterance=None, focus=None):
     if name == 'request_handoff':
+        if actor.is_trial_user():
+            raise ValueError('trial_read_only')
         citations = [(observed_citations or {})[key] for key in params['citation_chunk_ids']]
         ticket = await asyncio.to_thread(memory.handoff, actor, lease['conversation_id'], 'model_requested_handoff',
                                          evidence=citations, cancel_running=False, lease=lease)
@@ -295,7 +309,11 @@ async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, e
         if dense_error:
             result['retrieval']['dense_error'] = dense_error
         return result
-    if name in {'search_skus', 'recommend_skus'}:
+    if name == 'search_skus':
+        if search is None:
+            raise ValueError('search_service_unavailable')
+        return await search(params)
+    if name == 'recommend_skus':
         if recommend is None:
             raise ValueError('recommendation_service_unavailable')
         return await recommend(params)

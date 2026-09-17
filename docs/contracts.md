@@ -13,7 +13,7 @@ Gateway 将 `/api/assistant/**`、`/admin-api/assistant/**` 原路径转发到�
 | `POST /api/assistant/conversations` | JSON `{}`，有效主体＋CSRF，创建本人会话。 |
 | `GET /api/assistant/conversations/{conversation_id}` | 仅本人，返回会话、最近最多100条消息、原提案、相关运行与人工状态。 |
 | `POST /api/assistant/conversations/{conversation_id}/messages` | `{message_id,text}`；幂等保存消息/运行。返回 `RUNNING` 并执行有界Shopping；已接受message_id重试返回原run，同会话并发新消息拒绝且不偷偷插入上下文。GET/SSE不触发重跑。 |
-| `POST /api/assistant/conversations/{conversation_id}/mcp` | MCP Streamable HTTP（JSON-RPC 2.0）：`initialize`（版本协商，支持 2025-06-18／2025-03-26，响应回 `MCP-Protocol-Version` 头）、`tools/list`、`tools/call`。通知返回 202 无响应体。工具集、Schema、权限校验与 Agent 同一份 `REGISTRY`。**仅只读工具**；`propose_*`、`remember_preference`、`request_handoff`、`load_skill` 及 `search_skus`/`recommend_skus`（会写归因回执，外部客户端无曝光上报契约）均返回 `tool_not_available`，未知与不暴露同一答复。每次调用建独立 run 与回执，落同一审计链。 |
+| `POST /api/assistant/conversations/{conversation_id}/mcp` | MCP JSON-RPC 2.0（单次 POST，无会话恢复/无 SSE）：`initialize`（版本协商，支持 2025-06-18／2025-03-26；未知版本回已支持版本并带 `protocolVersionDowngraded` 与 `MCP-Protocol-Version-Downgraded`）、`tools/list`、`tools/call`。`search_knowledge` 与购物同一 `embed_query`。通知返回 202 无响应体。工具集、Schema、权限校验与 Agent 同一份 `REGISTRY`。**仅只读工具**；`propose_*`、`remember_preference`、`request_handoff`、`load_skill` 及 `search_skus`/`recommend_skus`（会写归因回执，外部客户端无曝光上报契约）均返回 `tool_not_available`，未知与不暴露同一答复。每次调用建独立 run 与回执，落同一审计链。 |
 | `POST /api/assistant/conversations/{conversation_id}/proposals` | 登录用户＋CSRF；`{message_id,action_type,parameters}`，动作仅 `order/cancel/refund`；返回运行 `WAIT_USER` 和 `result.proposal`。 |
 | `GET /api/assistant/proposals/{proposal_id}` | 仅本人，返回持久化原参数、版本、确认/执行状态和业务回执。 |
 | `POST /api/assistant/proposals/{proposal_id}/confirm` | 登录用户＋CSRF；`{proposal_version,approved}`，`approved` 默认 `true`，拒绝时显式 `false`；只执行服务器保存的原参数。终态重试直接返回 `{proposal:...}`，其余返回含 `result.proposal` 的运行。 |
@@ -116,7 +116,7 @@ Java 幂等恢复先于报价过期/消费检查，已完成请求返回原支�
 |---|---|
 | `POST /api/assistant/traffic/landing` | `{entry_id}`，1–64 字符；只生成 `NATURAL_VISIT/NATURAL`，身份、scope、发生时间和 touch ID 来自服务端。同一主体/scope/entry 幂等。 |
 | `POST /api/assistant/traffic/bind` | `{}`，登录用户＋当前签名访客 cookie；返回 `bound/conversation_ids/assignment_conflict`。没有访客凭据时 `bound=false`；已绑定其他账号或 scope 时 409 并清除该访客 cookie。 |
-| `GET /api/assistant/recommendations` | query 参数 `query`（≤200）、`max_price_cents`（0–100000000，可省略）、`category_id`（1–64，可省略）、`limit`（1–8，默认4）。返回持久 `recommendation_id/items/assignment/strategy_version/algorithm_version/ranking_mode/diagnostics`；当前算法 `sku-rank-paid-units-v1`，生成列表不等于已曝光。 |
+| `GET /api/assistant/recommendations` | query 参数 `query`（≤200）、`max_price_cents`（0–100000000，可省略）、`category_id`（1–64，可省略）、`limit`（1–8，默认4）。返回持久 `recommendation_id/items/assignment/strategy_version/algorithm_version/ranking_mode/diagnostics`；`algorithm_version` 为排序器内容哈希。treatment 走 `semantic_rerank`，失败回落规则排序，不 500。生成列表不等于已曝光。 |
 | `POST /api/assistant/recommendations/{id}/exposures` | `{positions:[1,…]}`，1–8 个位置，每项1–8；核对本人/绑定访客、scope、24小时内原列表后生成 `REC_IMPRESSION`。 |
 | `POST /api/assistant/recommendations/{id}/clicks` | `{position}`，1–8；同上核验后生成 `REC_CLICK`。原列表决定 product/SKU/assignment/策略，客户端不能替换。 |
 | `POST /internal/attribution/validateBatch` | 内部 token；`{userId,items:[{requestId,productId,skuKey?,position}]}`，1–100项、位置1–20；返回 Java `ResponseVO`。只返回当前24小时内同 scope、可信归属、匹配 SKU 的有效推荐点击，缺 `skuKey` 的旧商品级载体返回空。 |
@@ -130,7 +130,7 @@ Java 幂等恢复先于报价过期/消费检查，已完成请求返回原支�
 |---|---|
 | `/internal/product/commerce/searchOnSale` | 内容/类目/新品三路使用；保留 `keyword/categoryId/limit` 并增加上述名单，limit沿原逻辑限制1–50。 |
 | `/internal/order/commerce/coPurchaseProductIds` | `{productId,limit?,productIds?,excludeProductIds?}`；scope先于LIMIT筛共购结果，limit保留默认5、限制1–20的兼容逻辑。 |
-| `/internal/order/commerce/popularProducts` | `{limit?,productIds?,excludeProductIds?}`，limit严格整数1–20、默认20；`ResponseVO.data=[{productId,paidUnits,basis,observedAt}]`，`paidUnits`为整数件数，`basis=confirmed_payment_units_v1`，`observedAt`为UTC时间。订单接口不接受类目作为筛选条件，显式 `category_id` 仍由推荐最终SKU复验执行。 |
+| `/internal/order/commerce/popularProducts` | `{limit?,productIds?,excludeProductIds?}`，limit严格整数1–20、默认20；`ResponseVO.data=[{productId,paidUnits,basis,observedAt}]`，`paidUnits`为整数件数，`basis=confirmed_payment_units_excluding_refunds`，`observedAt`为UTC时间。订单接口不接受类目作为筛选条件，显式 `category_id` 仍由推荐最终SKU复验执行。 |
 
 上述接口要求内部服务认证，定义见 [OrderCommerceInternalController.java](../backend/smartlect-order/app/src/main/java/com/smartlect/controller/internal/OrderCommerceInternalController.java) 和 [ProductCommerceInternalController.java](../backend/smartlect-product/app/src/main/java/com/smartlect/controller/internal/ProductCommerceInternalController.java)。热门依据是历史已确认付款件数，包含0元付款及后来退款的订单；它不是净销量，也不再使用商品 `totalSale` 作为付款热门证据。推荐卡保留 `popularity_evidence={paidUnits,basis,observedAt}`；缺少或无效付款证据为null、没有销售理由。这些读取和排序不改变Java计价、库存、报价绑定、支付或退款合同。
 
@@ -146,10 +146,10 @@ Java 幂等恢复先于报价过期/消费检查，已完成请求返回原支�
 
 [OrderAttributionService.java](../backend/smartlect-order/app/src/main/java/com/smartlect/biz/OrderAttributionService.java) 本地验签、拒绝重复/额外 JSON 字段和错误类型，核对下单用户以及 `issued_at ≤ orderCreatedAt < expires_at`。建单事务在幂等接纳新订单后通过主键唯一的普通 INSERT 冻结 `order_attribution_context`；不调用 Growth HTTP、不等待模型。缺失/非法/过期凭据或独立 key 不可用均保存 `UNKNOWN_CONTEXT`，合法交易继续。该可选凭据不进入购买意图指纹；重放不能改写既有订单来源。
 
-归因规则版本为 `last_valid_ad_click_v1+sku_click_24h_v1`，只使用订单已冻结引用集合内且指纹复核通过的事实：
+归因规则字段为内容哈希（窗口与“广告必须匹配商品或 SKU”写入配置，默认 7 天广告 / 24 小时推荐），只使用订单已冻结引用集合内且指纹复核通过的事实：
 
-- 广告取 `orderCreatedAt−7天 ≤ occurred_at ≤ orderCreatedAt` 的最后有效 `AD_CLICK`，同时间按 touch ID 排序；匹配可信主体与稳定 scope，可以跨会话/round/run，也可以广告A后买B。
-- 推荐独立取下单前24小时内同 product 和 SKU 的最后有效 `REC_CLICK`；曝光仅记录 `recommendation_assist_id`。迟付款仍用原订单时间；退款继承原已付款明细归因，不查退款时新点击。
+- 广告取窗口内最后一次匹配该商品或 SKU 的 `AD_CLICK`，同时间按 touch ID 排序；匹配可信主体与稳定 scope，可以跨会话/round/run，不再把广告 A 记到商品 B。
+- 推荐独立取窗口内同 product 和 SKU 的最后有效 `REC_CLICK`；曝光仅记录 `recommendation_assist_id`。迟付款仍用原订单时间；退款继承原已付款明细归因，不查退款时新点击。
 - 有广告为 `AD_ATTRIBUTED`；无广告但存在可信来访记录为 `NATURAL_VERIFIED`；只有空快照或推荐互动不能证明自然，仍是 `UNKNOWN_CONTEXT`。v1 付款为 `LEGACY_UNKNOWN`，退款继承付款类别。`traffic_channel` 保留最近来访渠道，可与早先广告点击同时存在；未知不得并入自然。
 - 类别与 `PENDING/FINAL` 计算状态分开。有已验证 context 引用但快照或触点尚未到齐为PENDING；晚到事实仅可补齐原冻结集合。快照哈希、触点实际内容、用户或 scope 不符为未知，不能以同用户/窗口内的新点击补归因。
 

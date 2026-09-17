@@ -15,7 +15,8 @@ create table if not exists product_info
     total_sale    int        default 0 null comment '销量',
     commend_type  tinyint(1) default 0 null comment '0:未推荐 1:已经推荐',
     brand         varchar(100)         null comment '品牌（内容轴，不参与 SKU hash）',
-    content_json  mediumtext           null comment '栏目化详情 JSON，旧 product_desc 仍作 extra_markdown'
+    content_json  mediumtext           null comment '栏目化详情 JSON，旧 product_desc 仍作 extra_markdown',
+    catalog_scope varchar(16) not null default 'store' comment 'store=默认店目录 eval=评测隔离，不靠 product_id 前缀猜测'
 ) comment '商品信息' collate = utf8mb4_general_ci row_format = DYNAMIC;
 
 create table if not exists product_property_value
@@ -188,6 +189,41 @@ SET @sql = IF(
     ),
     'SELECT 1',
     'ALTER TABLE product_info ADD COLUMN content_json mediumtext NULL COMMENT ''structured detail sections'''
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = IF(
+    EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'product_info'
+          AND column_name = 'catalog_scope'
+    ),
+    'SELECT 1',
+    'ALTER TABLE product_info ADD COLUMN catalog_scope varchar(16) NOT NULL DEFAULT ''store'' COMMENT ''store or eval'''
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+UPDATE product_info
+SET catalog_scope = 'eval'
+WHERE catalog_scope = 'store'
+  AND (product_id LIKE '9100%' OR product_id LIKE '9300%');
+
+SET @sql = IF(
+    EXISTS (
+        SELECT 1
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = 'product_info'
+          AND index_name = 'ft_product_search'
+    ),
+    'SELECT 1',
+    'ALTER TABLE product_info ADD FULLTEXT INDEX ft_product_search (product_name, product_desc) WITH PARSER ngram'
 );
 PREPARE stmt FROM @sql;
 EXECUTE stmt;

@@ -6,6 +6,7 @@ from pydantic import Field
 from pymysql.err import OperationalError
 
 from smartlect.agents.merchant import run_merchant
+from smartlect.observability import gen_ai_span
 from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
 from smartlect.events import canonical
 from smartlect.privacy import redact_text
@@ -91,8 +92,18 @@ class MerchantService:
                 await asyncio.to_thread(self.store.renew_lease,lease,ttl_seconds=30)
         heartbeat_task=asyncio.create_task(heartbeat())
         try:
-            await run_merchant(actor=actor,run=run,lease=lease,store=self.store,provider=self.provider,
-                               ads_service=self.ads,mode=run['model_mode'],config=self.config,execute_plan=self.execute_plan)
+            with gen_ai_span(
+                "invoke_agent merchant",
+                kind="invoke_agent",
+                attributes={
+                    "gen_ai.operation.name": "invoke_agent",
+                    "gen_ai.agent.name": "merchant",
+                    "session.id": run.get("conversation_id"),
+                    "agent_run_id": run.get("agent_run_id"),
+                },
+            ):
+                await run_merchant(actor=actor,run=run,lease=lease,store=self.store,provider=self.provider,
+                                   ads_service=self.ads,mode=run['model_mode'],config=self.config,execute_plan=self.execute_plan)
         except asyncio.CancelledError:
             raise  # Durable model-attempt counters and any saved plan survive shutdown.
         except Exception as error:

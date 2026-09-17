@@ -15,13 +15,18 @@ class SessionFocusTests(unittest.TestCase):
         self.assertEqual(compile_search_filter(focus)["corpus"], PRODUCT_AND_STORE)
         self.assertEqual(compile_search_filter(focus)["product_id"], "p1")
 
-    def test_global_ignores_model_product_id(self):
+    def test_product_mode_ignores_model_product_id(self):
+        focus = compile_focus(product_id="p1", focus_mode="PRODUCT")
+        compiled = compile_search_filter(focus, requested_product_id="forged")
+        self.assertEqual(compiled["product_id"], "p1")
+
+    def test_global_honors_model_product_id(self):
         focus = compile_focus(focus_mode="GLOBAL", product_id="p9")
         self.assertEqual(focus["focus_mode"], "GLOBAL")
         self.assertIsNone(focus["focus_product_id"])
         compiled = compile_search_filter(focus, requested_product_id="forged")
-        self.assertEqual(compiled["corpus"], STORE)
-        self.assertIsNone(compiled["product_id"])
+        self.assertEqual(compiled["corpus"], PRODUCT_AND_STORE)
+        self.assertEqual(compiled["product_id"], "forged")
 
     def test_product_without_id_falls_back_to_global(self):
         self.assertEqual(compile_focus(focus_mode="PRODUCT")["focus_mode"], "GLOBAL")

@@ -22,12 +22,18 @@ public class TraceIdFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        String traceId = request.getHeader(InternalApiHeaders.TRACE_ID);
-        if (StringTools.isEmpty(traceId)) {
-            traceId = UUID.randomUUID().toString().replace("-", "");
+        String w3cTraceId = W3cTraceContext.traceIdFromTraceparent(request.getHeader(W3cTraceContext.TRACEPARENT));
+        String correlationId;
+        if (w3cTraceId != null) {
+            correlationId = w3cTraceId;
+        } else if (!StringTools.isEmpty(request.getHeader(InternalApiHeaders.TRACE_ID))) {
+            correlationId = request.getHeader(InternalApiHeaders.TRACE_ID);
+        } else {
+            // 日志关联，不是 OTEL trace_id，也不伪造 traceparent。
+            correlationId = UUID.randomUUID().toString().replace("-", "");
         }
-        MDC.put(InternalApiHeaders.TRACE_ID_MDC, traceId);
-        response.setHeader(InternalApiHeaders.TRACE_ID, traceId);
+        MDC.put(InternalApiHeaders.TRACE_ID_MDC, correlationId);
+        response.setHeader(InternalApiHeaders.TRACE_ID, correlationId);
         try {
             filterChain.doFilter(request, response);
         } finally {

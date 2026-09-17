@@ -30,6 +30,8 @@ if Path(agent).is_file():
 ### 传播与采集
 
 - 浏览器 → nginx → **gateway（javaagent 自动上下文）** → HTTP → **growth（FastAPI 自动提取）** → HTTP → **LLM/Java 内部调用（httpx 自动注入）**；Java→Java/MySQL 由 agent 自动埋点。
+- Java `X-Trace-Id` / MDC：有入站 `traceparent` 时回填官方 32-hex `trace_id`；否则只是日志关联 UUID，**不是** OTEL。Feign 不再发明 UUID，也不手写 `traceparent`（避免和 javaagent 双埋）。
+- Growth 在 exporter + SDK provider 就绪时打 GenAI 语义 span（`invoke_agent` / `chat` / `execute_tool` / `retrieve`）。无 exporter 时 helper 是 no-op，不要讲「默认就有 Agent span 树」。
 - Jaeger all-in-one 进 monitoring compose（`COLLECTOR_OTLP_ENABLED=true`），SSH 隧道看 UI。
 
 ## 怎么验证的

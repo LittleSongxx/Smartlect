@@ -75,11 +75,19 @@ def scope_filter(product_scope):
     return None if included is None else frozenset(included), frozenset(excluded)
 
 
-def in_scope(product_id, product_scope):
+def is_eval_catalog(catalog_scope=None):
+    return str(catalog_scope or '').strip().lower() == 'eval'
+
+
+def in_scope(product_id, product_scope, catalog_scope=None):
     included, excluded = product_scope
     if product_id in excluded:
         return False
     if included is None:
+        if is_eval_catalog(catalog_scope):
+            return False
+        if str(catalog_scope or '').strip().lower() == 'store':
+            return True
         return not is_isolated_product_id(product_id)
     return product_id in included
 
@@ -106,10 +114,11 @@ def eligible_skus(snapshot, stocks, request, *, product_scope, allowed_sku_keys=
             removed['duplicate_sku'] += 1
             continue
         seen.add(key)
-        if not in_scope(product_id, product_scope) or allowed_sku_keys is not None and key not in allowed_sku_keys:
+        product = catalog.get(product_id)
+        catalog_scope = None if not product else product.get('catalogScope') or product.get('catalog_scope')
+        if not in_scope(product_id, product_scope, catalog_scope) or allowed_sku_keys is not None and key not in allowed_sku_keys:
             removed['scope_or_candidate_denied'] += 1
             continue
-        product = catalog.get(product_id)
         if not product or type(product.get('status')) is not int or product['status'] != 1:
             removed['not_on_sale'] += 1
             continue

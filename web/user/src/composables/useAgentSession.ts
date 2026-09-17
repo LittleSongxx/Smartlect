@@ -14,12 +14,13 @@ const pending = ref<{ message_id: string; text: string; product_id?: string; sku
 let generation = 0;
 let stream: AbortController | null = null;
 const cursors = new Map<string, number>();
+const replayedDeltas = new Map<string, string>();
 export const HANDOFF_SYNC_INTERVAL_MS = 10000;
 const storageKey = () => session.value ? `smartlect:conversation:${ownerKey(session.value.actor)}` : '';
 const visibleRuns = computed(() => Object.values(runs.value).filter((run) => !run.parent_run_id));
 
-function reset() {
-  generation++; stream?.abort(); stream = null; cursors.clear();
+export function reset() {
+  generation++; stream?.abort(); stream = null; cursors.clear(); replayedDeltas.clear();
   conversationId.value = ''; messages.value = []; runs.value = {}; history.value = []; handoff.value = null;
   error.value = ''; busy.value = false; pending.value = null; connection.value = '可以开始对话';
 }
@@ -45,7 +46,16 @@ function applyEvent(event: RunEvent, runId: string) {
   }
   // Completed snapshots win over replayed deltas; reconnect cannot duplicate assistant text.
   if (event.event_type === 'message_delta' && ['CREATED', 'RUNNING'].includes(run.state)) {
-    run.result = { ...run.result, answer: (run.result?.answer || '') + (event.data.text || event.data.delta || '') };
+    const piece = event.data.text || event.data.delta || '';
+    const shown = run.result?.answer || '';
+    const streamed = (replayedDeltas.get(runId) || '') + piece;
+    replayedDeltas.set(runId, streamed);
+    if (!shown || shown.startsWith(streamed) || streamed.startsWith(shown)) {
+      run.result = { ...run.result, answer: streamed.length > shown.length ? streamed : shown };
+    }
+  }
+  if (event.event_type === 'message_complete') {
+    run.result = { ...run.result, answer: event.data.text || event.data.answer || run.result?.answer || '' };
   }
 }
 async function events(run: Run, epoch: number) {
@@ -159,7 +169,7 @@ async function newConversation() {
   try {
     const data = await aiPost<Conversation>('/conversations', {});
     if (epoch !== generation) return;
-    stream?.abort(); cursors.clear(); conversationId.value = data.conversation_id;
+    stream?.abort(); cursors.clear(); replayedDeltas.clear(); conversationId.value = data.conversation_id;
     messages.value = []; runs.value = {}; pending.value = null; handoff.value = null;
     localStorage.setItem(storageKey(), data.conversation_id);
     connection.value = '可以开始对话';

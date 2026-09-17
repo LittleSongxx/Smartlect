@@ -295,8 +295,8 @@ public class CouponInternalService {
             discount = coupon.getDiscountAmount() == null ? BigDecimal.ZERO : coupon.getDiscountAmount();
         } else if (CouponTypeEnum.DISCOUNT.getStatus().equals(type)) {
             BigDecimal rate = coupon.getDiscountRate();
-            if (rate == null) {
-                return BigDecimal.ZERO;
+            if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0 || rate.compareTo(BigDecimal.ONE) > 0) {
+                throw new com.smartlect.exception.BusinessException("优惠券折扣配置异常");
             }
             discount = amount.multiply(BigDecimal.ONE.subtract(rate));
         }

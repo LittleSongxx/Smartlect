@@ -42,6 +42,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -79,6 +81,8 @@ class OrderCreationIntegrityTest {
     @Mock
     private com.smartlect.mappers.OrderCouponRelMapper<com.smartlect.entity.po.OrderCouponRel,
             com.smartlect.entity.query.OrderCouponRelQuery> orderCouponRelMapper;
+    @Mock
+    private com.smartlect.component.RemoteCompensateRecorder remoteCompensateRecorder;
     @InjectMocks
     private OrderInfoServiceImpl service;
 
@@ -114,7 +118,7 @@ class OrderCreationIntegrityTest {
         ArgumentCaptor<List<ProductItem>> stockCaptor = listCaptor();
         verify(stockFeignSupport).lockAndVerify(stockCaptor.capture());
         assertEquals(Set.of("trusted-hash-1", "trusted-hash-2"), hashes(stockCaptor.getValue()));
-        verify(stockFeignSupport).changeStockBatch(stockCaptor.capture());
+        verify(stockFeignSupport).changeStockBatch(stockCaptor.capture(), org.mockito.ArgumentMatchers.anyString());
         assertEquals(Set.of("trusted-hash-1", "trusted-hash-2"), hashes(stockCaptor.getValue()));
 
         ArgumentCaptor<List<OrderInfo>> orderCaptor = listCaptor();
@@ -197,7 +201,8 @@ class OrderCreationIntegrityTest {
         verify(stockFeignSupport).lockAndVerify(org.mockito.ArgumentMatchers.anyList());
         verify(orderInfoMapper, never()).insertBatch(org.mockito.ArgumentMatchers.anyList());
         verify(orderItemMapper, never()).insertBatch(org.mockito.ArgumentMatchers.anyList());
-        verify(stockFeignSupport, never()).changeStockBatch(org.mockito.ArgumentMatchers.anyList());
+        verify(stockFeignSupport, never()).changeStockBatch(
+                org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.any());
         org.mockito.Mockito.verifyNoInteractions(payFeignSupport);
     }
 
@@ -240,8 +245,42 @@ class OrderCreationIntegrityTest {
         verify(orderInfoMapper, never()).insertBatch(org.mockito.ArgumentMatchers.anyList());
         verify(orderItemMapper, never()).insertBatch(org.mockito.ArgumentMatchers.anyList());
         verify(orderCouponRelMapper, never()).insert(org.mockito.ArgumentMatchers.any());
-        verify(stockFeignSupport, never()).changeStockBatch(org.mockito.ArgumentMatchers.anyList());
+        verify(stockFeignSupport, never()).changeStockBatch(
+                org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.any());
         org.mockito.Mockito.verifyNoInteractions(payFeignSupport);
+    }
+
+    @Test
+    void lockThenDeductFailureRecordsExplicitOutboxWithoutRestore() {
+        ProductItem line = item("p1", "v1", "ignored");
+        PostOrderDTO request = request(List.of(line));
+        ProductSnapshotBatchVO snapshot = new ProductSnapshotBatchVO();
+        when(userFeignSupport.getAddress("address-1", "user-1")).thenReturn(address());
+        when(productFeignSupport.snapshotBatch(List.of("p1"))).thenReturn(snapshot);
+        when(productFeignSupport.toProductInfoMap(snapshot)).thenReturn(Map.of("p1", product("p1", "Headphones")));
+        when(productFeignSupport.toPropertyValueMap(snapshot)).thenReturn(Map.of("p1v1", property("p1", "v1")));
+        when(productFeignSupport.toSkuMapByPropertyValueIds(snapshot)).thenReturn(Map.of(
+                "p1v1", sku("p1", "v1", "trusted", "10.00")));
+        when(stockFeignSupport.getAvailable("p1", "trusted")).thenReturn(10);
+        when(redisComponent.getLogisticsInfo()).thenReturn(sender());
+        doThrow(new RuntimeException("stock_deduct_failed"))
+                .when(stockFeignSupport).changeStockBatch(
+                        org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyString());
+
+        assertThrows(RuntimeException.class,
+                () -> ReflectionTestUtils.invokeMethod(service, "createOrder", "user-1", request));
+
+        verify(stockFeignSupport).lockAndVerify(org.mockito.ArgumentMatchers.anyList());
+        verify(stockFeignSupport).changeStockBatch(
+                org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyString());
+        verify(remoteCompensateRecorder).recordStockChangeBatch(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.any(Exception.class));
+        verify(stockFeignSupport, org.mockito.Mockito.times(1))
+                .changeStockBatch(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyString());
+        verify(stockFeignSupport, never()).restoreOrderStock(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyList());
     }
 
     private static PostOrderDTO request(List<ProductItem> items) {

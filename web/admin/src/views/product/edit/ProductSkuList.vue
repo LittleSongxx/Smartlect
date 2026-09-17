@@ -19,7 +19,7 @@
           :precision="2"
           :step="1"
           placeholder="价格"
-          :disabled="showType == 1"
+          :disabled="showType == 1 || isTrial"
         ></el-input-number>
       </template>
     </el-table-column>
@@ -37,7 +37,7 @@
           :min="0"
           placeholder="库存"
           :style="{ width: '130px' }"
-          :disabled="route.params.productId != null"
+          :disabled="route.params.productId != null || isTrial"
           v-if="showType === 0"
         ></el-input-number>
         <div class="stock-update-panel" v-if="showType === 1">
@@ -46,11 +46,11 @@
             <el-radio-button label="减少" value="-1" />
           </el-radio-group>
           <el-input clearable placeholder="请输入数量" v-model="row.changeStock" class="stock-input"></el-input>
-          <el-button type="primary" @click="updateSkuStock(row)">确定</el-button>
+          <el-button v-if="!isTrial" type="primary" @click="updateSkuStock(row)">确定</el-button>
         </div>
       </template>
     </el-table-column>
-    <el-table-column label="操作" width="53" v-if="showType == 0">
+    <el-table-column label="操作" width="53" v-if="showType == 0 && !isTrial">
       <template #default="{ $index }">
         <span class="iconfont icon-delete" @click="removeSku($index)"></span>
       </template>
@@ -59,7 +59,7 @@
 </template>
 
 <script setup>
-import { computed, getCurrentInstance } from 'vue'
+import { computed, getCurrentInstance, inject } from 'vue'
 const { proxy } = getCurrentInstance()
 import { useRoute } from 'vue-router'
 const route = useRoute()
@@ -75,6 +75,7 @@ const props = defineProps({
 })
 
 const isMobileAdmin = computed(() => route.path.startsWith('/m/'))
+const isTrial = inject('isTrialAdmin', false)
 
 const removeSku = (index) => {
   if (productEditStore.skuList.length <= 1) {

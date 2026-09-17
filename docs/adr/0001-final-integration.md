@@ -53,8 +53,8 @@ Java 的订单、价格、库存、付款和退款仍是唯一交易事实来源
 | 程序性知识 | Git 版本化 Skills、SOP 和提示词 | 只由开发/审核流程发布；不能由模型、用户文档或网页改写权限 |
 
 六个业务 Skill 为 `shopping_advice`、`support_policy`、`order_service`、`campaign_plan`、
-`performance_review`、`creative_copy`；Shopping 启动即预装用户侧三套并集，Merchant 按阶段加载所需提示词、契约和工具子集，不创建新 Agent。
-Skill 只能缩小 ActorContext 的工具范围。Shopping 例外：启动即预装用户侧三套并集，`load_skill` 只刷新说明，不按任务收窄。上下文初值上限 12k token，工具调用与结果成对保留。
+`performance_review`、`creative_copy`。Shopping 开场只有目录工具（`load_skill` / `search_knowledge` / 记忆 / `request_handoff`），业务工具由 `load_skill` 按已审核 Skill 并入本轮；Merchant 按阶段加载所需提示词、契约和工具子集，不创建新 Agent。
+Skill 只能缩小 ActorContext 的工具范围；管理端热改也只能再缩小已加载 Skill 的 `tools`。上下文初值上限 12k token，工具调用与结果成对保留。
 记忆不存 key、会话 token、完整支付信息或隐藏推理；默认对话/trace 保留 30 天。
 清理记忆撤销相关摘要和索引，不删除交易审计事实；价格和库存始终重新查询 Java。
 
