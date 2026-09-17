@@ -92,7 +92,7 @@ describe('F3 浏览器触点合同（HTTP 与可见性模拟）', () => {
       if (url.endsWith('/conversations/current-visitor-conversation')) return Promise.resolve(json({ conversation_id: 'current-visitor-conversation', messages: [] }));
       return Promise.resolve(json([]));
     }); vi.stubGlobal('fetch', fetch);
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/login', component: LoginView }, { path: '/forgot-password', component: { template: '<div />' } }, { path: '/assistant', component: { template: '<div />' } }] });
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/login', component: LoginView }, { path: '/forgot-password', component: { template: '<div />' } }, { path: '/', component: { template: '<div />' } }, { path: '/assistant', component: { template: '<div />' } }] });
     await router.push('/login'); await router.isReady();
     wrapper = mount(LoginView, { global: { plugins: [router] } }); await flushPromises();
     await wrapper.get('input[type=email]').setValue('synthetic@example.invalid'); await wrapper.get('input[type=password]').setValue('synthetic-only');
@@ -101,7 +101,7 @@ describe('F3 浏览器触点合同（HTTP 与可见性模拟）', () => {
     expect(JSON.parse(bind[1].body as string)).toEqual({});
     expect(chat.conversationId.value).toBe(allowed ? 'current-visitor-conversation' : '');
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/conversations/unrelated-conversation'))).toBe(false);
-    expect(router.currentRoute.value.path).toBe('/assistant');
+    expect(router.currentRoute.value.path).toBe('/');
   });
   it('Catalog仅展示新推荐响应，失败清空列表且不回退旧商品推荐接口', async () => {
     let unavailable = false;
