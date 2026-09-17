@@ -13,7 +13,7 @@ from langgraph.graph import StateGraph, START, END
 from pydantic import Field, ValidationError
 
 from smartlect.answer_guards import unsupported_state_claims
-from smartlect.business_skills import catalog
+from smartlect.business_skills import USER_SKILLS, catalog
 from smartlect.commerce import CommerceError
 from smartlect.events import canonical
 from smartlect.provider import ProviderError
@@ -42,7 +42,7 @@ BOOTSTRAP_TOOLS = frozenset({
 SYSTEM_POLICY_BODY = ('你是Smartlect Shopping Agent，负责选购、店铺咨询和本人订单任务。'
           '先理解用户本轮目标，区分咨询、查询、交易操作及人工转交；复合任务可组合工具逐项处理，'
           '否定、条件和引用不是当前操作请求；只在真正缺少必要参数时澄清。'
-          '开场只有目录与只读工具；需要选购/订单/提案等业务工具时先 load_skill，未加载的工具不可用。'
+          '领域Skills已加载，直接使用权限内工具；也可用 load_skill 再加载一份流程说明。'
           'Java事实决定价格、库存和交易状态，政策断言引用本轮可访问资料；'
           '检索命中不等于结论，缺失或冲突只限制受影响部分，继续完成能完成的任务。'
           '终答用结构化 JSON（不是 finish_answer 工具）如实填 grounding：凡陈述本店怎么做、要求什么、能否办到（包括以隐私或'
@@ -180,9 +180,11 @@ def rejected_search_data(model_query, *, exhausted=False):
 
 
 def allow_retrieval_rewrite(context, *, utterance, model_query):
-    """Second rewrite is an independent query rewrite; coverage is not a veto."""
+    """Second rewrite is independent; coverage is not a veto. Legal empty is not searched again."""
     if context.get('retrieval_calls', 0) < 1:
         return True
+    if context.get('legal_empty_visible') or not context.get('visible_citations'):
+        return False
     return True
 
 
@@ -607,9 +609,9 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
     policy_body, prompt_label = await asyncio.to_thread(
         prompts.resolve_system, getattr(store, 'connect', None), 'shopping', SYSTEM_POLICY_BODY, PROMPT_VERSION)
     context.update(prompt_version=prompt_label, schema_version=SCHEMA_VERSION, skill_versions={})
-    # On-demand skills: catalog only until load_skill. Business tools appear after load.
-    skills = {}
-    context['skill_versions'] = {}
+    skills = {name: await asyncio.to_thread(prompts.resolve_skill, getattr(store, 'connect', None), 'shopping', name)
+              for name in USER_SKILLS}
+    context['skill_versions'] = {name: skill['version'] for name, skill in skills.items()}
     skill_catalog = catalog(domain='shopping')
     evidence, citations, products, orders = [], {}, {}, []
     proposal = None
@@ -978,7 +980,7 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
 
     async def tool_node(state):
         messages = list(state['messages'])
-        for call in state['response']['tool_calls']:
+        for call in state['response'].get('tool_calls') or []:
             try:
                 arguments = json.loads(call['function']['arguments'])
                 # A model that cannot decode a rejection re-sends identical arguments

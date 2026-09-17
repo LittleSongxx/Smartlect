@@ -141,9 +141,15 @@ class KnowledgeMemoryMySQLTests(unittest.TestCase):
             vectors=[{'chunk_id': item['chunk_id'], 'vector': [1, i]} for i, item in enumerate(chunks)])
         self.assertEqual(result['dimensions'], 2)
         self.knowledge.publish(self.admin, 'refund', 1)
+        stored = self.knowledge.embedding_counts(self.admin, 'refund', 1)
+        self.assertEqual((stored['total'], stored['embedded']), (2, 2))
         search = self.knowledge.search(self.user, 'refund-query', query_vector=[1, 0],
                                        embedding_model='synthetic-test-vector', index_version='test:d2:v1')
-        self.assertEqual(search['retrieval']['dense_matches'], 2)
+        # Dense ranking is pgvector. MySQL fixtures only prove vectors were persisted.
+        if search['retrieval'].get('vector_backend') == 'pgvector_hnsw':
+            self.assertEqual(search['retrieval']['dense_matches'], 2)
+        else:
+            self.assertEqual(search['retrieval']['dense_matches'], 0)
         with self.assertRaisesRegex(StateError, 'document_not_draft'):
             self.knowledge.set_embeddings(self.admin, 'refund', 1, model='other', index_version='other:d2:v1',
                 vectors=[{'chunk_id': item['chunk_id'], 'vector': [1, i]} for i, item in enumerate(chunks)])

@@ -29,6 +29,7 @@ from smartlect.state import SessionStore, StateError
 from smartlect.tools import ToolReceipt, invoke
 from test_recommendation import FakeCommerce
 import test_ledger_mysql as ledger_tests
+from test_ledger_mysql import csrf_headers
 
 
 def declared(arguments):
@@ -85,7 +86,7 @@ class FakeProvider:
     async def chat(self, messages, **options):
         index = len(self.messages)
         self.messages.append(messages)
-        self.offered_tools.append({t["function"]["name"] for t in options["tools"]})
+        self.offered_tools.append({t["function"]["name"] for t in options.get("tools") or []})
         for attempt in range(self.attempts_per_call):
             await self._attempt(options, failed=attempt < self.attempts_per_call - 1)
         if index == self.block_call:
@@ -453,10 +454,8 @@ class ShoppingMySQLTests(unittest.TestCase):
                 async with app.router.lifespan_context(app):
                     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://smartlect.test') as client:
                         client.cookies.set('token', self.actor.actor_id)
-                        session = (await client.get('/api/assistant/session')).json()
-                        headers = {'Origin': 'http://smartlect.test', 'X-CSRF-Token': session['csrf_token']}
                         path = f'/api/assistant/conversations/{self.conversation}/messages'
-                        response = await client.post(path, json=payload, headers=headers)
+                        response = await client.post(path, json=payload, headers=await csrf_headers(client, 'http://smartlect.test', '/api/assistant/session'))
                         self.assertEqual(response.status_code, 200, response.text)
                         recovered = response.json()
                         self.assertEqual(recovered['agent_run_id'], run['agent_run_id'])
@@ -464,9 +463,9 @@ class ShoppingMySQLTests(unittest.TestCase):
                         self.assertEqual(recovered['result']['ticket']['ticket_id'], ticket['ticket_id'])
                         self.assertEqual(recovered['result']['handoff_origin'], 'recovered_existing_ticket')
                         self.assertEqual(recovered['context'], original_context)
-                        self.assertEqual((await client.post(path, json=payload, headers=headers)).json(), recovered)
+                        self.assertEqual((await client.post(path, json=payload, headers=await csrf_headers(client, 'http://smartlect.test', '/api/assistant/session'))).json(), recovered)
                         for rejected in ({**payload, 'text': '改动原请求'}, {'message_id': 'new', 'text': '新请求'}):
-                            self.assertEqual((await client.post(path, json=rejected, headers=headers)).status_code, 409)
+                            self.assertEqual((await client.post(path, json=rejected, headers=await csrf_headers(client, 'http://smartlect.test', '/api/assistant/session'))).status_code, 409)
                         client.cookies.set('token', 'bob')
                         self.assertEqual((await client.get('/api/assistant/runs/' + run['agent_run_id'])).status_code, 404)
                 self.assertEqual(provider.actual_attempts, 0)
@@ -485,11 +484,11 @@ class ShoppingMySQLTests(unittest.TestCase):
         answer = result["result"]
         self.assertTrue({"load_skill", "request_handoff", "search_knowledge"} <= provider.offered_tools[0])
         self.assertNotIn("finish_answer", provider.offered_tools[0])
-        self.assertNotIn("recommend_skus", provider.offered_tools[0])
+        self.assertIn("recommend_skus", provider.offered_tools[0])
         self.assertIn("search_knowledge", provider.offered_tools[1])
         self.assertEqual(answer["model_calls"], 3)
         self.assertEqual(answer["tool_calls"], 2)
-        self.assertEqual(answer["skill_versions"], {"support_policy": load_skill("support_policy")["version"]})
+        self.assertEqual(answer["skill_versions"], {name: load_skill(name)["version"] for name in USER_SKILLS})
         self.assertEqual(answer["citations"][0]["doc_id"], "synthetic-refund")
         self.assertTrue(self.knowledge.validate_citations(self.actor, answer["citations"]))
         observed = json.loads(next(m["content"] for m in reversed(provider.messages[2]) if m["role"] == "tool"))
@@ -554,7 +553,7 @@ class ShoppingMySQLTests(unittest.TestCase):
         # flag instead of becoming a new channel-failure mode.
         original = shopping_module.bounded_messages
         def choked(messages, tool_schemas, question):
-            if any(m.get('role') == 'user' and str(m.get('content', '')).startswith('请仅修复输出格式或引用')
+            if any(str(m.get('content', '')).startswith('请仅修复输出格式或引用')
                    for m in messages):
                 raise BudgetExceeded('context_limit')
             return original(messages, tool_schemas, question)
@@ -790,11 +789,11 @@ class ShoppingMySQLTests(unittest.TestCase):
         provider = FakeProvider([tool("load_skill", {"skill_id": "support_policy"})], attempts_per_call=2)
         run, lease = self.begin()
         result = asyncio.run(self.execute(provider, run, lease))
-        self.assertEqual(provider.actual_attempts, 4)
-        # v25 系统策略更长，第三次组窗已越过约 14400 token 上限，提供商只接到两轮（各 2 次重试）。
-        self.assertEqual(len(provider.messages), 2)
-        self.assertEqual(result["context"]["model_calls"], 4)
-        self.assertEqual(len(result["context"]["model_attempts"]), 4)
+        self.assertEqual(provider.actual_attempts, 6)
+        # 预加载后前三轮各 2 次重试用尽 6 次预算；第四轮能组窗但 before_attempt 会先被上限拦住。
+        self.assertEqual(len(provider.messages), 4)
+        self.assertEqual(result["context"]["model_calls"], 6)
+        self.assertEqual(len(result["context"]["model_attempts"]), 6)
         self.assertEqual(result["result"]["model_mode"], "rule-fallback")
         self.assertEqual(result["context"]["retrieval_calls"], 0)
         self.assertEqual(len(self.knowledge.searches), 0)
@@ -958,18 +957,16 @@ class ShoppingMySQLTests(unittest.TestCase):
             async with app.router.lifespan_context(app):
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://smartlect.test") as client:
                     client.cookies.set("token", self.actor.actor_id)
-                    session = (await client.get("/api/assistant/session")).json()
-                    headers = {"Origin": "http://smartlect.test", "X-CSRF-Token": session["csrf_token"]}
                     path = f"/api/assistant/conversations/{self.conversation}/messages"
                     payload = {"message_id": "http-first", "text": "退款需要确认吗？"}
-                    accepted = await client.post(path, json=payload, headers=headers)
+                    accepted = await client.post(path, json=payload, headers=await csrf_headers(client, "http://smartlect.test", "/api/assistant/session"))
                     self.assertEqual(accepted.status_code, 200, accepted.text)
                     run_id = accepted.json()["agent_run_id"]
                     await asyncio.wait_for(provider.entered.wait(), 5)
-                    replay = await client.post(path, json=payload, headers=headers)
+                    replay = await client.post(path, json=payload, headers=await csrf_headers(client, "http://smartlect.test", "/api/assistant/session"))
                     self.assertEqual(replay.status_code, 200, replay.text)
                     self.assertEqual(replay.json()["agent_run_id"], run_id)
-                    busy = await client.post(path, json={"message_id": "http-second", "text": "不应污染已接纳的上下文"}, headers=headers)
+                    busy = await client.post(path, json={"message_id": "http-second", "text": "不应污染已接纳的上下文"}, headers=await csrf_headers(client, "http://smartlect.test", "/api/assistant/session"))
                     self.assertEqual(busy.status_code, 409, busy.text)
                     messages = self.store.get_conversation(self.actor, self.conversation)["messages"]
                     self.assertEqual([m["message_id"] for m in messages], ["http-first"])
@@ -987,7 +984,7 @@ class ShoppingMySQLTests(unittest.TestCase):
                     client.cookies.set('token', self.actor.actor_id)
                     self.memory.handoff(self.actor, self.conversation, 'http_handoff')
                     before = self.store.get_conversation(self.actor, self.conversation)['messages']
-                    blocked = await client.post(path, headers=headers, json={'message_id': 'after-handoff', 'text': '继续自动回答'})
+                    blocked = await client.post(path, headers=await csrf_headers(client, 'http://smartlect.test', '/api/assistant/session'), json={'message_id': 'after-handoff', 'text': '继续自动回答'})
                     self.assertEqual(blocked.status_code, 409, blocked.text)
                     self.assertEqual(self.store.get_conversation(self.actor, self.conversation)['messages'], before)
                     self.assertEqual(provider.actual_attempts, 3)

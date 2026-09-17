@@ -151,7 +151,7 @@ class MemoryStore(SessionStore):
             final_event = "proposal_required" if proposal else "completed"
             cursor.executemany("""INSERT INTO agent_run_event (agent_run_id,sequence,event_type,data_json,created_at)
                 VALUES (%s,%s,%s,%s,UTC_TIMESTAMP(6))""", [
-                (run["agent_run_id"], run["event_sequence"] + 1, "message_complete",
+                (run["agent_run_id"], run["event_sequence"] + 1, "message_delta",
                  _json({"text": result["answer"]})),
                 (run["agent_run_id"], run["event_sequence"] + 2, final_event, result_json)])
             cursor.execute("""UPDATE agent_run SET context_json=%s,result_json=%s,model_mode=%s,state=%s,

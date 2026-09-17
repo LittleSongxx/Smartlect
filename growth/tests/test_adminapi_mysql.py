@@ -15,6 +15,7 @@ from smartlect.provider import Provider
 from smartlect.events import canonical
 from smartlect.state import SessionStore
 import test_ledger_mysql
+from test_ledger_mysql import csrf_headers
 
 
 @unittest.skipUnless(os.getenv("SMARTLECT_RUN_MYSQL_TESTS") == "1", "set SMARTLECT_RUN_MYSQL_TESTS=1 for dedicated MySQL")
@@ -69,8 +70,7 @@ class AdminApiMySQLTests(unittest.TestCase):
 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
             client.cookies.set("adminToken", "boss-" + suffix)
-            session = (await client.get("/admin-api/assistant/session")).json()
-            headers = {"Origin": origin, "X-CSRF-Token": session["csrf_token"]}
+            headers = await csrf_headers(client, origin)
 
             imported = await client.post("/admin-api/assistant/knowledgeImport/products", headers=headers,
                                          json={"productIds": ["p-imp-" + suffix]})
@@ -83,7 +83,8 @@ class AdminApiMySQLTests(unittest.TestCase):
             self.assertEqual(row["status"], "PUBLISHED")
             self.assertEqual(row["source_type"], "PRODUCT_AUTO")
 
-            again = await client.post("/admin-api/assistant/knowledgeImport/products", headers=headers,
+            again = await client.post("/admin-api/assistant/knowledgeImport/products",
+                                      headers=await csrf_headers(client, origin),
                                       json={"productIds": ["p-imp-" + suffix]})
             self.assertEqual(again.json()["imported"], ["p-imp-" + suffix])
             documents = (await client.get("/admin-api/assistant/knowledge")).json()
@@ -123,8 +124,7 @@ class AdminApiMySQLTests(unittest.TestCase):
 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
             client.cookies.set("adminToken", "boss-" + suffix)
-            session = (await client.get("/admin-api/assistant/session")).json()
-            headers = {"Origin": origin, "X-CSRF-Token": session["csrf_token"]}
+            headers = await csrf_headers(client, origin)
             draft = await client.post("/admin-api/assistant/knowledge", headers=headers, json={
                 "doc_id": "ops-doc-" + suffix, "title": "运维测试文档", "body": "退款政策原文：七天内可退。" * 30,
                 "source_uri": "test://ops/" + suffix, "acl": "MERCHANT",
@@ -134,7 +134,7 @@ class AdminApiMySQLTests(unittest.TestCase):
             version = draft.json()["version"]
 
             published = await client.post(f"/admin-api/assistant/knowledge/ops-doc-{suffix}/{version}/publish",
-                                          headers=headers, json={})
+                                          headers=await csrf_headers(client, origin), json={})
             self.assertEqual(published.status_code, 200, published.text)
             job = published.json()
             self.assertIn(job["state"], ("PENDING", "RUNNING"))
@@ -155,7 +155,8 @@ class AdminApiMySQLTests(unittest.TestCase):
             row = next(item for item in documents if item["doc_id"] == "ops-doc-" + suffix)
             self.assertEqual(row["status"], "PUBLISHED")
 
-            probe = await client.post("/admin-api/assistant/knowledgeIndex/searchProbe", headers=headers,
+            probe = await client.post("/admin-api/assistant/knowledgeIndex/searchProbe",
+                                      headers=await csrf_headers(client, origin),
                                       json={"query": "退款政策"})
             self.assertEqual(probe.status_code, 200, probe.text)
             self.assertGreaterEqual(len(probe.json().get("citations", [])), 1)
@@ -216,7 +217,7 @@ class AdminApiMySQLTests(unittest.TestCase):
             client.cookies.set("adminToken", "boss-" + suffix)
             session = (await client.get("/admin-api/assistant/session")).json()
             self.assertEqual(session["actor"]["subject_type"], "merchant")
-            headers = {"Origin": origin, "X-CSRF-Token": session["csrf_token"]}
+            headers = await csrf_headers(client, origin)
 
             listed = (await client.get("/admin-api/assistant/runs")).json()
             seeded_row = next(item for item in listed["items"] if item["agent_run_id"] == run["agent_run_id"])
@@ -240,7 +241,8 @@ class AdminApiMySQLTests(unittest.TestCase):
             body = debugged.json()
             self.assertEqual(body["receipt"]["data"]["productName"], "调试商品")
 
-            write_attempt = await client.post("/admin-api/assistant/tools/invoke", headers=headers,
+            write_attempt = await client.post("/admin-api/assistant/tools/invoke",
+                                              headers=await csrf_headers(client, origin),
                                               json={"name": "propose_order", "arguments": {}})
             self.assertEqual(write_attempt.status_code, 422)
 
@@ -278,8 +280,7 @@ class AdminApiMySQLTests(unittest.TestCase):
 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
             client.cookies.set("adminToken", "boss-" + suffix)
-            session = await client.get("/admin-api/assistant/session")
-            headers = {"Origin": origin, "X-CSRF-Token": session.json()["csrf_token"]}
+            headers = await csrf_headers(client, origin)
 
             keys = (await client.get("/admin-api/assistant/prompts", params={"domain": "shopping"})).json()
             shopping_keys = keys["domains"]["shopping"]
@@ -301,7 +302,7 @@ class AdminApiMySQLTests(unittest.TestCase):
 
             activated = await client.post(
                 f"/admin-api/assistant/prompts/shopping/system_prompt/system/{seeded + 1}/activate",
-                headers=headers, json={})
+                headers=await csrf_headers(client, origin), json={})
             self.assertEqual(activated.json()["status"], "active")
 
             body, label = prompt_registry.resolve_system(self.connect, "shopping", "DEFAULT", PROMPT_VERSION)
@@ -309,7 +310,7 @@ class AdminApiMySQLTests(unittest.TestCase):
             self.assertEqual(label, f"shopping-react-v{seeded + 1}")
 
             bad = await client.post("/admin-api/assistant/prompts/shopping/skill/brand_new",
-                                    headers=headers, json={"body": "{}"})
+                                    headers=await csrf_headers(client, origin), json={"body": "{}"})
             self.assertEqual(bad.status_code, 422)
 
 
@@ -344,8 +345,7 @@ class AdminApiMySQLTests(unittest.TestCase):
 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
             client.cookies.set("adminToken", "boss-" + suffix)
-            session = await client.get("/admin-api/assistant/session")
-            headers = {"Origin": origin, "X-CSRF-Token": session.json()["csrf_token"]}
+            headers = await csrf_headers(client, origin)
 
             analyzed = await client.post("/admin-api/assistant/reviewAnalysis/product/p-rev", headers=headers, json={})
             self.assertEqual(analyzed.status_code, 200, analyzed.text)
@@ -364,7 +364,8 @@ class AdminApiMySQLTests(unittest.TestCase):
             # numbers. Only asserting "payments is present" let a null-only snapshot pass.
             self.seed_scope_payment(suffix)
 
-            report = await client.post("/admin-api/assistant/growthReport/generate", headers=headers, json={})
+            report = await client.post("/admin-api/assistant/growthReport/generate",
+                                      headers=await csrf_headers(client, origin), json={})
             self.assertEqual(report.status_code, 200, report.text)
             body = report.json()
             self.assertEqual(body["data"]["payments"], {"paid_cents": 1000, "refunded_cents": 200,
@@ -420,7 +421,7 @@ if __name__ == "__main__":
 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
             client.cookies.set("adminToken", "boss-" + suffix)
-            headers = {"Origin": origin, "X-CSRF-Token": (await client.get("/admin-api/assistant/session")).json()["csrf_token"]}
+            headers = await csrf_headers(client, origin)
 
             keys = (await client.get("/admin-api/assistant/prompts", params={"domain": "shopping"})).json()
             shopping_keys = keys["domains"]["shopping"]
@@ -442,7 +443,7 @@ if __name__ == "__main__":
 
             activated = await client.post(
                 f"/admin-api/assistant/prompts/shopping/system_prompt/system/{seeded + 1}/activate",
-                headers=headers, json={})
+                headers=await csrf_headers(client, origin), json={})
             self.assertEqual(activated.json()["status"], "active")
 
             body, label = prompt_registry.resolve_system(self.connect, "shopping", "DEFAULT", PROMPT_VERSION)
@@ -451,7 +452,7 @@ if __name__ == "__main__":
 
             # Structural edits stay code-owned: unknown skill ids and broken JSON are rejected.
             bad = await client.post("/admin-api/assistant/prompts/shopping/skill/brand_new",
-                                    headers=headers, json={"body": "{}"})
+                                    headers=await csrf_headers(client, origin), json={"body": "{}"})
             self.assertEqual(bad.status_code, 422)
 
 

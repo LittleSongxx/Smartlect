@@ -27,7 +27,7 @@ class FakeRecommendationService:
         self.calls = []
 
     async def recommend(self, actor, request, *, preferences=(), seed_product_id=None,
-                        subject_key=None, product_scope=None):
+                        subject_key=None, product_scope=None, semantic_rerank=None):
         self.calls.append(dict(actor=actor, request=request, preferences=preferences,
                                seed_product_id=seed_product_id, subject_key=subject_key,
                                product_scope=product_scope))
@@ -94,12 +94,20 @@ class AttributionAppMySQLTests(unittest.IsolatedAsyncioTestCase):
         client.headers.update({'Origin': self.origin, 'X-CSRF-Token': session['csrf_token']})
         return session['actor']
 
+    async def write_response(self, path, payload, client=None, method='post'):
+        client = client or self.client
+        await self.session(client)
+        return await getattr(client, method)(path, json=payload)
+
+    async def write(self, path, payload, status=200, client=None, method='post'):
+        return self.body(await self.write_response(path, payload, client, method), status)
+
     async def test_visitor_receipt_touch_idempotency_and_forged_fields(self):
         actor = await self.session()
         self.assertEqual(actor['subject_type'], 'visitor')
         landing_path = '/api/assistant/traffic/landing'
-        landing = self.body(await self.client.post(landing_path, json={'entry_id': 'entry'}))
-        self.assertEqual(self.body(await self.client.post(landing_path, json={'entry_id': 'entry'})), landing)
+        landing = await self.write(landing_path, {'entry_id': 'entry'})
+        self.assertEqual(await self.write(landing_path, {'entry_id': 'entry'}), landing)
         self.assertEqual((landing['actor_id'], landing['traffic_channel']), (actor['actor_id'], 'NATURAL'))
         receipt = self.body(await self.client.get('/api/assistant/recommendations'))
         recommendation_id = receipt['recommendation_id']
@@ -117,8 +125,8 @@ class AttributionAppMySQLTests(unittest.IsolatedAsyncioTestCase):
         click_path = f'/api/assistant/recommendations/{recommendation_id}/clicks'
         for path, payload, kind in [(exposure_path, {'positions': [1, 1]}, 'REC_IMPRESSION'),
                                     (click_path, {'position': 1}, 'REC_CLICK')]:
-            first = self.body(await self.client.post(path, json=payload))
-            self.assertEqual(self.body(await self.client.post(path, json=payload)), first)
+            first = await self.write(path, payload)
+            self.assertEqual(await self.write(path, payload), first)
             self.assertEqual(len(first['touches']), 1)
             touch = first['touches'][0]
             self.assertEqual((touch['kind'], touch['product_id'], touch['sku_key']),
@@ -129,7 +137,7 @@ class AttributionAppMySQLTests(unittest.IsolatedAsyncioTestCase):
                                  ('execution_scope_id', 'forged'), ('occurred_at', '2000-01-01T00:00:00Z'),
                                  ('price_cents', 1)]:
                 with self.subTest(path=path, field=field):
-                    self.body(await self.client.post(path, json={**payload, field: value}), 422)
+                    await self.write(path, {**payload, field: value}, 422)
         with self.connect() as connection, connection.cursor() as cursor:
             cursor.execute('SELECT COUNT(*) AS count FROM traffic_touch WHERE actor_id=%s', (actor['actor_id'],))
             self.assertEqual(cursor.fetchone()['count'], 3)
@@ -138,7 +146,7 @@ class AttributionAppMySQLTests(unittest.IsolatedAsyncioTestCase):
     async def test_bind_moves_same_conversation_and_rejects_another_account_claim(self):
         visitor = await self.session()
         proof = self.client.cookies.get('smartlect_visitor')
-        conversation = self.body(await self.client.post('/api/assistant/conversations', json={}))['conversation_id']
+        conversation = (await self.write('/api/assistant/conversations', {}))['conversation_id']
         path = '/api/assistant/conversations/' + conversation
         receipt = self.body(await self.client.get('/api/assistant/recommendations'))
         self.client.cookies.set('token', self.alice)
@@ -146,15 +154,15 @@ class AttributionAppMySQLTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((logged_in['actor_id'], logged_in['visitor_id']), (self.alice, visitor['actor_id']))
         bind_path = '/api/assistant/traffic/bind'
         for forged in ({'visitor_id': uuid.uuid4().hex}, {'userId': self.bob}, {'conversation_id': conversation}):
-            self.body(await self.client.post(bind_path, json=forged), 422)
-        bound = self.body(await self.client.post(bind_path, json={}))
+            await self.write(bind_path, forged, 422)
+        bound = await self.write(bind_path, {})
         self.assertEqual((bound['bound'], bound['conversation_ids']), (True, [conversation]))
         owned = self.body(await self.client.get(path))
         self.assertEqual((owned['conversation_id'], owned['subject_type'], owned['actor_id']),
                          (conversation, 'user', self.alice))
         after_login = self.body(await self.client.get('/api/assistant/recommendations'))
         self.assertEqual(after_login['assignment_id'], receipt['assignment_id'])
-        self.assertEqual(self.body(await self.client.post(bind_path, json={}))['conversation_ids'], [])
+        self.assertEqual((await self.write(bind_path, {}))['conversation_ids'], [])
 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(self.app), base_url=self.origin) as other:
             other.cookies.set('smartlect_visitor', proof, domain='smartlect.test', path='/')
@@ -165,7 +173,7 @@ class AttributionAppMySQLTests(unittest.IsolatedAsyncioTestCase):
             other.cookies.set('token', self.bob)
             await self.session(other)
             self.body(await other.get(path), 404)
-            response = await other.post(bind_path, json={})
+            response = await self.write_response(bind_path, {}, client=other)
             self.assertEqual(self.body(response, 409)['error'], 'visitor_already_bound_to_another_account')
             self.assertIn('Max-Age=0', response.headers['set-cookie'])
             self.assertIsNone(other.cookies.get('smartlect_visitor'))
@@ -183,9 +191,9 @@ class AttributionAppMySQLTests(unittest.IsolatedAsyncioTestCase):
                 actor = await self.session()
                 self.assertEqual((actor['subject_type'], actor['actor_id'], actor['visitor_id']), ('user', self.alice, None))
                 self.assertIsNone(self.client.cookies.get('smartlect_visitor'))
-        self.body(await self.client.put('/api/assistant/preferences/avoid', json={'value': ['羊毛']}))
+        await self.write('/api/assistant/preferences/avoid', {'value': ['羊毛']}, method='put')
         for value in (self.alice, [self.alice]):
-            self.body(await self.client.put('/api/assistant/preferences/purpose', json={'value': value}), 422)
+            await self.write('/api/assistant/preferences/purpose', {'value': value}, 422, method='put')
         self.assertEqual(len(self.body(await self.client.get('/api/assistant/preferences'))), 1)
         receipt = self.body(await self.client.get('/api/assistant/recommendations',
                                params={'query': '外套', 'max_price_cents': 5000, 'limit': 2}))
@@ -209,12 +217,12 @@ class AttributionAppMySQLTests(unittest.IsolatedAsyncioTestCase):
                 self.client.cookies.set('token', user)
                 actor = await self.session()
                 self.assertEqual(actor['execution_scope_id'], scope if user == self.alice else 'store')
-                conversation = self.body(await self.client.post('/api/assistant/conversations', json={}))['conversation_id']
+                conversation = (await self.write('/api/assistant/conversations', {}))['conversation_id']
                 path = f'/api/assistant/conversations/{conversation}'
                 payload = {'message_id': 'outside-scope', 'action_type': 'order', 'parameters': {
                     'addressId': 'address', 'orderList': [{'productId': denied_product,
                                                          'propertyValueIds': 'variant', 'buyCount': 1}]}}
-                rejected = self.body(await self.client.post(path + '/proposals', json=payload), 403)
+                rejected = await self.write(path + '/proposals', payload, 403)
                 self.assertEqual(rejected['error'], 'product_scope_denied')
                 saved = self.body(await self.client.get(path))
                 self.assertEqual(saved['proposals'], [])
@@ -232,11 +240,10 @@ class AttributionAppMySQLTests(unittest.IsolatedAsyncioTestCase):
         self.body(await self.client.post(path, json=payload), 401)
         self.body(await self.client.post(path, json=payload, headers={'X-Internal-Token': 'wrong'}), 401)
         headers = {'X-Internal-Token': self.config['SMARTLECT_INTERNAL_TOKEN']}
-        self.body(await self.client.post(f'/api/assistant/recommendations/{recommendation_id}/exposures',
-                                        json={'positions': [1]}))
+        await self.write(f'/api/assistant/recommendations/{recommendation_id}/exposures', {'positions': [1]})
         self.assertEqual(self.body(await self.client.post(path, json=payload, headers=headers))['data'], [])
-        click = self.body(await self.client.post(f'/api/assistant/recommendations/{recommendation_id}/clicks',
-                                                json={'position': 1}))['touches'][0]
+        click = (await self.write(f'/api/assistant/recommendations/{recommendation_id}/clicks',
+                                  {'position': 1}))['touches'][0]
         variants = [item, {**item, 'skuKey': 'other'}, {key: value for key, value in item.items() if key != 'skuKey'},
                     {**item, 'productId': 'other'}, {**item, 'position': 2}]
         valid = self.body(await self.client.post(path, json={**payload, 'items': variants}, headers=headers))

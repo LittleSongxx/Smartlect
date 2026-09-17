@@ -228,9 +228,13 @@ class SessionStore:
                 raise StateError('conversation_busy')
             cursor.execute("SELECT agent_run_id FROM agent_run WHERE conversation_id=%s "
                            "AND state IN ('CREATED','RUNNING') LIMIT 1", (conversation_id,))
-            if cursor.fetchone():
-                raise StateError('conversation_busy')
-            if conversation['lease_run_id']:
+            inflight = cursor.fetchone()
+            if inflight:
+                cursor.execute("UPDATE agent_run SET state='FAILED',version=version+1,result_json=%s "
+                               "WHERE agent_run_id=%s AND state IN ('CREATED','RUNNING')",
+                               (canonical({'error': 'interrupted_run'}), inflight['agent_run_id']))
+                self._unlock(cursor, conversation_id)
+            elif conversation['lease_run_id']:
                 cursor.execute("UPDATE agent_run SET state='FAILED',version=version+1,result_json=%s "
                                "WHERE agent_run_id=%s AND state='RUNNING'",
                                (canonical({'error': 'interrupted_run'}), conversation['lease_run_id']))

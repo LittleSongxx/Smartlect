@@ -119,8 +119,9 @@ class AttributionMySQLTests(unittest.TestCase):
         self.ingest(payment,refund);self.ingest(payment)
         for event in (payment,refund):
             row=self.projected(event)
-            self.assertEqual((row['category'],row['campaign_id'],row['traffic_channel']),('AD_ATTRIBUTED','A','NATURAL'))
-            self.assertEqual(row['ad_click_id'],ad['touch_id'])
+            # Ad A is a different SKU than order B; last-click only claims a matching product/SKU.
+            self.assertEqual((row['category'],row['campaign_id'],row['traffic_channel']),('NATURAL_VERIFIED',None,'NATURAL'))
+            self.assertIsNone(row['ad_click_id'])
             self.assertEqual(row['recommendation_click_id'],click['touch_id'])
             self.assertEqual(row['calculation_status'],'FINAL')
         summary=self.ledger.summary(self.pay)
@@ -180,7 +181,7 @@ class AttributionMySQLTests(unittest.TestCase):
         self.store.bind_visitor(self.user)
         self.now+=timedelta(seconds=2)
         later=self.store.record_ad_click(visitor,click_key=uuid.uuid4().hex,campaign_id='after-logout',creative_id='copy',
-                                         product_id='A',sku_key='sku',origin='f3_fixture')
+                                         product_id='B',sku_key='B-standard',origin='f3_fixture')
         rec=self.recommendation(visitor)
         with self.assertRaises(StateError):self.store.interact(self.user,rec['recommendation_id'],[1],clicked=True)
         _,proof=self.context();event=self.event('PAYMENT',proof);self.ingest(event)

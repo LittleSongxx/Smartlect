@@ -242,7 +242,7 @@ class DecisionCompileTests(unittest.TestCase):
 
     def test_second_retrieval_rejected_on_legal_empty(self):
         context = {'retrieval_calls': 1, 'legal_empty_visible': True, 'visible_citations': []}
-        self.assertTrue(allow_retrieval_rewrite(context, utterance='演示刻字哪天开放', model_query='刻字开放'))
+        self.assertFalse(allow_retrieval_rewrite(context, utterance='演示刻字哪天开放', model_query='刻字开放'))
         covered = {'retrieval_calls': 1, 'legal_empty_visible': False,
                    'visible_citations': [{'content': '政策回答提供文档版本和原文位置。', 'heading': '引用', 'title': '引用'}]}
         self.assertTrue(allow_retrieval_rewrite(covered, utterance='依据的版本和原文', model_query='店铺政策说明'))

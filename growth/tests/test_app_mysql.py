@@ -13,6 +13,7 @@ from smartlect.commerce import AsyncCommerceClient
 from smartlect.config import Settings
 from smartlect.state import SessionStore
 import test_ledger_mysql
+from test_ledger_mysql import csrf_headers
 
 
 @unittest.skipUnless(os.getenv("SMARTLECT_RUN_MYSQL_TESTS") == "1", "set SMARTLECT_RUN_MYSQL_TESTS=1 for dedicated MySQL")
@@ -67,27 +68,27 @@ class AppMySQLTests(unittest.TestCase):
                               identity=IdentityBridge(config, transport=transport),
                               commerce=AsyncCommerceClient(config, transport=transport))
 
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url='http://smartlect.test') as client:
+        origin = 'http://smartlect.test'
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
             client.cookies.set('token', 'alice')
-            session = (await client.get('/api/assistant/session')).json()
-            headers = {'Origin': 'http://smartlect.test', 'X-CSRF-Token': session['csrf_token']}
+            headers = await csrf_headers(client, origin, '/api/assistant/session')
             response = await client.post('/api/assistant/conversations', json={}, headers=headers)
             self.assertEqual(response.status_code, 200, response.text)
             conversation = response.json()['conversation_id']
             path = f'/api/assistant/conversations/{conversation}/proposals'
             body = {'message_id': 'explicit-order', 'action_type': 'order', 'parameters': {
                 'addressId': 'address', 'orderList': [{'productId': 'sku', 'propertyValueIds': 'variant', 'buyCount': 1}]}}
-            response = await client.post(path, json=body, headers=headers)
+            response = await client.post(path, json=body, headers=await csrf_headers(client, origin, '/api/assistant/session'))
             self.assertEqual(response.status_code, 200, response.text)
             run = response.json()
             self.assertEqual(run['state'], 'WAIT_USER')
-            self.assertEqual((await client.post(path, json=body, headers=headers)).json()['agent_run_id'], run['agent_run_id'])
+            self.assertEqual((await client.post(path, json=body, headers=await csrf_headers(client, origin, '/api/assistant/session'))).json()['agent_run_id'], run['agent_run_id'])
             proposal = run['result']['proposal']
             confirm_path = f"/api/assistant/proposals/{proposal['proposal_id']}/confirm"
             confirm = {'proposal_version': proposal['version'], 'approved': True}
             self.assertEqual((await client.post(confirm_path, json=confirm)).status_code, 403)
-            self.assertEqual((await client.post(confirm_path, json={**confirm, 'amount': 1}, headers=headers)).status_code, 422)
-            pending = await client.post(confirm_path, json=confirm, headers=headers)
+            self.assertEqual((await client.post(confirm_path, json={**confirm, 'amount': 1}, headers=await csrf_headers(client, origin, '/api/assistant/session'))).status_code, 422)
+            pending = await client.post(confirm_path, json=confirm, headers=await csrf_headers(client, origin, '/api/assistant/session'))
             self.assertEqual(pending.status_code, 200, pending.text)
             self.assertEqual(pending.json()['state'], 'WAIT_OUTCOME')
             self.assertEqual(pending.json()['result']['proposal']['status'], 'UNKNOWN')
@@ -96,9 +97,7 @@ class AppMySQLTests(unittest.TestCase):
         # New app/Store instance, same persisted proposal/confirmation/idempotency key.
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url='http://smartlect.test') as client:
             client.cookies.set('token', 'alice')
-            session = (await client.get('/api/assistant/session')).json()
-            headers = {'Origin': 'http://smartlect.test', 'X-CSRF-Token': session['csrf_token']}
-            recovered = await client.post(confirm_path, json=confirm, headers=headers)
+            recovered = await client.post(confirm_path, json=confirm, headers=await csrf_headers(client, origin, '/api/assistant/session'))
             self.assertEqual(recovered.status_code, 200, recovered.text)
             result = recovered.json()
             self.assertEqual(result['state'], 'COMPLETED')
@@ -111,9 +110,9 @@ class AppMySQLTests(unittest.TestCase):
             self.assertEqual(replay.status_code, 200, replay.text)
             self.assertIn('event: completed', replay.text)
             self.assertIn('id: 1', replay.text)
-            self.assertEqual((await client.post(confirm_path, json=confirm, headers=headers)).json()['proposal']['status'], 'SUCCEEDED')
+            self.assertEqual((await client.post(confirm_path, json=confirm, headers=await csrf_headers(client, origin, '/api/assistant/session'))).json()['proposal']['status'], 'SUCCEEDED')
             self.assertEqual(len(writes), 1)
-            refund = await client.post(path, headers=headers, json={'message_id': 'explicit-refund',
+            refund = await client.post(path, headers=await csrf_headers(client, origin, '/api/assistant/session'), json={'message_id': 'explicit-refund',
                 'action_type': 'refund', 'parameters': {'orderItemId': 'owned-item', 'refundAmountCents': 1500}})
             self.assertEqual(refund.status_code, 200, refund.text)
             refund_id = refund.json()['result']['proposal']['proposal_id']

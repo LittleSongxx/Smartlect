@@ -20,6 +20,12 @@ from smartlect.migrate import migrate, migration_files
 from test_events import batch, outcome
 
 
+async def csrf_headers(client, origin, path='/admin-api/assistant/session'):
+    """One-time CSRF: every write must mint a fresh token from the session endpoint."""
+    session = (await client.get(path)).json()
+    return {'Origin': origin, 'X-CSRF-Token': session['csrf_token']}
+
+
 @unittest.skipUnless(os.getenv("SMARTLECT_RUN_MYSQL_TESTS") == "1", "set SMARTLECT_RUN_MYSQL_TESTS=1 for dedicated MySQL")
 class LedgerMySQLTests(unittest.TestCase):
     @classmethod

@@ -173,6 +173,10 @@ def _lock_ledger(cursor, *, body=None, fact=None):
             keys = []
     if not keys:
         keys = ["ledger:global"]
+    cursor.execute("""CREATE TABLE IF NOT EXISTS commerce_ledger_lock_key (
+        lock_key VARCHAR(64) PRIMARY KEY,
+        touched_at DATETIME(6) NOT NULL
+    )""")
     for key in sorted(set(keys)):
         cursor.execute(
             """INSERT INTO commerce_ledger_lock_key (lock_key, touched_at)
@@ -219,10 +223,6 @@ class Ledger:
                         if prior:
                             if len(prior) != 1 or any(prior[0][key] != fact[key] for key in ("event_id", "idempotency_key", "fingerprint")):
                                 self._exception(cursor, canonical({"schema_version": batch['schema_version'], "events": [event]}).encode(), "event/idempotency identity conflict")
-                            continue
-                        if fact["status"] == "UNKNOWN":
-                            self._exception(cursor, canonical({"schema_version": batch['schema_version'], "events": [event]}).encode(),
-                                            fact.get("reason") or "unsupported event type")
                             continue
                         names = list(fact)
                         cursor.execute("INSERT INTO commerce_event (" + ",".join(names) + ") VALUES (" + ",".join(["%s"] * len(names)) + ")",
