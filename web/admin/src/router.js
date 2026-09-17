@@ -49,7 +49,9 @@ export const routes = [
       { path: '/ai/runs', name: 'aiRuns', component: () => import('@/views/ai/AgentRunsView.vue'), meta: { itemList: ['AI 资产', '运行浏览器'] } },
       { path: '/ai/tools', name: 'aiTools', component: () => import('@/views/ai/ToolDebugView.vue'), meta: { itemList: ['AI 资产', '工具调试台'] } }
     ]
-  }
+  },
+  // 未知路径落回首页：此前会渲染空白内容区（例如手输错的 #/order）
+  { path: '/:pathMatch(.*)*', redirect: { path: '/home' } }
 ]
 
 export function createAdminRouter(history) {

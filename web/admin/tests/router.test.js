@@ -16,6 +16,16 @@ describe('管理端 hash 路由', () => {
     expect(router.currentRoute.value.name).toBe('退款复核');
   });
 
+  it('未知路径回首页而不是渲染空白内容区', async () => {
+    const router = createAdminRouter(createMemoryHistory());
+    await router.push('/order');            // 真实路由是 /order/orderList
+    await router.isReady();
+    expect(router.currentRoute.value.path).toBe('/home');
+    await router.push('/不存在的页面');
+    await router.isReady();
+    expect(router.currentRoute.value.path).toBe('/home');
+  });
+
   it('hash history 解析 #/ads 与 #/support', async () => {
     const router = createRouter({ history: createWebHashHistory(), routes });
     await router.push('/ads');
