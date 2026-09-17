@@ -286,22 +286,27 @@ class AdminApiMySQLTests(unittest.TestCase):
             self.assertTrue(any(k["kind"] == "system_prompt" and k["active_count"] == 1 for k in shopping_keys))
             self.assertTrue(any(k["key"] == "support_policy" for k in shopping_keys))
 
+            from smartlect.agents.shopping import PROMPT_VERSION
+            from smartlect.prompts import _code_version
+            seeded = _code_version(PROMPT_VERSION)
             versions = (await client.get("/admin-api/assistant/prompts/shopping/system_prompt/system/versions")).json()["items"]
-            self.assertEqual(versions[0]["version"], 24)  # continuity with the code label
-            seeded_body = (await client.get("/admin-api/assistant/prompts/shopping/system_prompt/system/24")).json()["body"]
+            self.assertEqual(versions[0]["version"], seeded)  # continuity with the code label
+            seeded_body = (await client.get(
+                f"/admin-api/assistant/prompts/shopping/system_prompt/system/{seeded}")).json()["body"]
 
             edited = await client.post("/admin-api/assistant/prompts/shopping/system_prompt/system",
                                        headers=headers, json={"body": seeded_body + "\n补充规则：测试追加。"})
             self.assertEqual(edited.status_code, 200, edited.text)
-            self.assertEqual(edited.json()["version"], 25)
+            self.assertEqual(edited.json()["version"], seeded + 1)
 
-            activated = await client.post("/admin-api/assistant/prompts/shopping/system_prompt/system/25/activate",
-                                          headers=headers, json={})
+            activated = await client.post(
+                f"/admin-api/assistant/prompts/shopping/system_prompt/system/{seeded + 1}/activate",
+                headers=headers, json={})
             self.assertEqual(activated.json()["status"], "active")
 
-            body, label = prompt_registry.resolve_system(self.connect, "shopping", "DEFAULT", "shopping-react-v24")
+            body, label = prompt_registry.resolve_system(self.connect, "shopping", "DEFAULT", PROMPT_VERSION)
             self.assertIn("补充规则：测试追加。", body)
-            self.assertEqual(label, "shopping-react-v25")
+            self.assertEqual(label, f"shopping-react-v{seeded + 1}")
 
             bad = await client.post("/admin-api/assistant/prompts/shopping/skill/brand_new",
                                     headers=headers, json={"body": "{}"})
@@ -422,22 +427,27 @@ if __name__ == "__main__":
             self.assertTrue(any(k["kind"] == "system_prompt" and k["active_count"] == 1 for k in shopping_keys))
             self.assertTrue(any(k["key"] == "support_policy" for k in shopping_keys))
 
+            from smartlect.agents.shopping import PROMPT_VERSION
+            from smartlect.prompts import _code_version
+            seeded = _code_version(PROMPT_VERSION)
             versions = (await client.get("/admin-api/assistant/prompts/shopping/system_prompt/system/versions")).json()["items"]
-            self.assertEqual(versions[0]["version"], 24)  # continuity with the code label
-            seeded_body = (await client.get("/admin-api/assistant/prompts/shopping/system_prompt/system/24")).json()["body"]
+            self.assertEqual(versions[0]["version"], seeded)  # continuity with the code label
+            seeded_body = (await client.get(
+                f"/admin-api/assistant/prompts/shopping/system_prompt/system/{seeded}")).json()["body"]
 
             edited = await client.post("/admin-api/assistant/prompts/shopping/system_prompt/system",
                                        headers=headers, json={"body": seeded_body + "\n补充规则：测试追加。"})
             self.assertEqual(edited.status_code, 200, edited.text)
-            self.assertEqual(edited.json()["version"], 25)
+            self.assertEqual(edited.json()["version"], seeded + 1)
 
-            activated = await client.post("/admin-api/assistant/prompts/shopping/system_prompt/system/25/activate",
-                                          headers=headers, json={})
+            activated = await client.post(
+                f"/admin-api/assistant/prompts/shopping/system_prompt/system/{seeded + 1}/activate",
+                headers=headers, json={})
             self.assertEqual(activated.json()["status"], "active")
 
-            body, label = prompt_registry.resolve_system(self.connect, "shopping", "DEFAULT", "shopping-react-v24")
+            body, label = prompt_registry.resolve_system(self.connect, "shopping", "DEFAULT", PROMPT_VERSION)
             self.assertIn("补充规则：测试追加。", body)
-            self.assertEqual(label, "shopping-react-v25")
+            self.assertEqual(label, f"shopping-react-v{seeded + 1}")
 
             # Structural edits stay code-owned: unknown skill ids and broken JSON are rejected.
             bad = await client.post("/admin-api/assistant/prompts/shopping/skill/brand_new",

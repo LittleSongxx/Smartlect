@@ -789,13 +789,11 @@ class ShoppingMySQLTests(unittest.TestCase):
         provider = FakeProvider([tool("load_skill", {"skill_id": "support_policy"})], attempts_per_call=2)
         run, lease = self.begin()
         result = asyncio.run(self.execute(provider, run, lease))
-        self.assertEqual(provider.actual_attempts, 6)
-        # The fourth call never reaches the provider: assembling its bounded window already
-        # crosses the ceiling (the third call sat at 14395 of ~14400 tokens), so the window
-        # precheck denies it before the attempt budget would.
-        self.assertEqual(len(provider.messages), 3)
-        self.assertEqual(result["context"]["model_calls"], 6)
-        self.assertEqual(len(result["context"]["model_attempts"]), 6)
+        self.assertEqual(provider.actual_attempts, 4)
+        # v25 系统策略更长，第三次组窗已越过约 14400 token 上限，提供商只接到两轮（各 2 次重试）。
+        self.assertEqual(len(provider.messages), 2)
+        self.assertEqual(result["context"]["model_calls"], 4)
+        self.assertEqual(len(result["context"]["model_attempts"]), 4)
         self.assertEqual(result["result"]["model_mode"], "rule-fallback")
         self.assertEqual(result["context"]["retrieval_calls"], 0)
         self.assertEqual(len(self.knowledge.searches), 0)
