@@ -16,6 +16,10 @@ describe('原版商城路由', () => {
       expect(router.currentRoute.value.matched.length).toBeGreaterThan(0);
     }
     expect(router.hasRoute('cart')).toBe(true);
+    // 未知路径落回首页，而不是渲染空白页
+    await router.push('/no-such-page');
+    await router.isReady();
+    expect(router.currentRoute.value.path).toBe('/');
     expect(router.resolve('/checkout').matched.length).toBeGreaterThan(0);
     expect(router.resolve('/payment/pay-1').matched.length).toBeGreaterThan(0);
     expect(router.resolve('/account/privacy').matched.length).toBeGreaterThan(0);

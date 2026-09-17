@@ -189,6 +189,8 @@ const router = createRouter({
     // 旧链接：/addresses 与 /address 是同一个页面，保留一条路径（重定向不 404）
     { path: '/addresses', redirect: (to) => ({ path: '/address', query: to.query }) },
     subPage('/browse', () => import('@/views/BrowseView.vue'), { title: '全部商品' }),
+    // 未知路径落回首页（此前会渲染空白页）
+    { path: '/:pathMatch(.*)*', redirect: { path: '/' } }
   ],
   scrollBehavior(_to, _from, savedPosition) {
     if (savedPosition) {
