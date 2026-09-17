@@ -24,18 +24,16 @@ from smartlect import __version__
 from smartlect.auth import IdentityBridge
 from smartlect.commerce import AsyncCommerceClient, CommerceError, CommerceRejected, ORDER_ACTION_STATUS_PATH
 from smartlect.config import Settings
-from prometheus_client import Counter as PrometheusCounter
-
 from smartlect.events import Ledger, canonical
+from smartlect.observability import gen_ai_span, prometheus_counter
 
-RUN_ADMISSION_REJECTIONS = PrometheusCounter("growth_run_admission_rejections_total",
-                                             "New runs rejected by the concurrency admission gates", ["gate"])
+RUN_ADMISSION_REJECTIONS = prometheus_counter("growth_run_admission_rejections_total",
+                                              "New runs rejected by the concurrency admission gates", ["gate"])
 from smartlect import mcp
 from smartlect.state import SessionStore, StateError
 from smartlect.tools import Arguments, invoke
 from smartlect.worker import worker_health
 from smartlect.agents.shopping import run_shopping
-from smartlect.observability import gen_ai_span
 from smartlect.session_focus import compile_focus
 from smartlect.provider import IndexModelAudit, Provider, ProviderError, bounded
 from smartlect.knowledge import KnowledgeStore

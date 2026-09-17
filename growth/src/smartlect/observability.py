@@ -69,6 +69,16 @@ def tracer():
     return _tracer or None
 
 
+def prometheus_counter(name, documentation, labelnames=()):
+    """Reuse a collector if a failed or repeated import already registered it."""
+    from prometheus_client import REGISTRY, Counter
+    try:
+        return Counter(name, documentation, labelnames=list(labelnames))
+    except ValueError:
+        family = name[:-6] if name.endswith("_total") else name
+        return REGISTRY._names_to_collectors[family]
+
+
 def reset_for_tests():
     global _tracer, _langfuse, _langfuse_checked
     _tracer = None

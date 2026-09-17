@@ -81,7 +81,7 @@ describe('Smartlect 管理端业务边界', () => {
   it('reloads protective pause after rejection and retries only the original stable action payload', async () => {
     handler = path => { if (path.endsWith('/ads/actions')) { data.campaigns[0].status = 'PAUSED'; data.campaigns[0].pause_reason = 'stockout'; data.campaigns[0].version = 4; return reply({ detail: 'fresh_positive_stock_required' }, 409); } };
     const wrapper = await render(AdsView); await wrapper.findComponent('.select-grant').setValue('g1'); await flushPromises(); await button(wrapper, '启用活动').trigger('click');
-    await form(wrapper, '核对本次动作').trigger('submit'); await flushPromises(); expect(wrapper.text()).toContain('暂停原因：stockout'); expect(wrapper.text()).toContain('fresh_positive_stock_required');
+    await form(wrapper, '核对本次动作').trigger('submit'); await flushPromises(); expect(wrapper.text()).toContain('暂停原因：库存不足，已保护暂停'); expect(wrapper.text()).toContain('fresh_positive_stock_required');
     await form(wrapper, '核对本次动作').trigger('submit'); await flushPromises();
     const writes = calls.filter(item => item.path.endsWith('/ads/actions')); expect(writes).toHaveLength(2); expect(writes[1].options.body).toBe(writes[0].options.body);
     expect(JSON.parse(writes[1].options.body).actions[0].expected_version).toBe(3);

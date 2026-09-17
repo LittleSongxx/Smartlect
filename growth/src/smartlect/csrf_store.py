@@ -10,13 +10,16 @@ def consume(connect, jti, *, actor_id, session_id):
     if not jti:
         return False
     if connect is None:
-        key = (jti, actor_id, session_id)
-        if key in _memory:
-            return False
-        _memory.add(key)
-        return True
+        return _consume_memory(jti, actor_id, session_id)
     try:
-        with connect() as connection:
+        connection = connect()
+    except Exception:
+        return False
+    if connection is None:
+        # Tests and create_app may attach a no-op connect. That is "no table", not "table down".
+        return _consume_memory(jti, actor_id, session_id)
+    try:
+        with connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """INSERT IGNORE INTO csrf_nonce (jti, actor_id, session_id, consumed_at)
@@ -29,3 +32,11 @@ def consume(connect, jti, *, actor_id, session_id):
     except Exception:
         # Fail closed. A memory fallback would replay a jti the table already consumed.
         return False
+
+
+def _consume_memory(jti, actor_id, session_id):
+    key = (jti, actor_id, session_id)
+    if key in _memory:
+        return False
+    _memory.add(key)
+    return True

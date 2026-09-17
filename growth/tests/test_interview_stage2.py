@@ -89,6 +89,9 @@ class InterviewStage2Tests(unittest.IsolatedAsyncioTestCase):
             verify_visitor_jwt(secret, f"{header}.{expired}.{bad_sig}")
         self.assertTrue(consume(None, 'jti-1', actor_id='a', session_id='s'))
         self.assertFalse(consume(None, 'jti-1', actor_id='a', session_id='s'))
+        self.assertTrue(consume(lambda: None, 'jti-none-connect', actor_id='a', session_id='s'))
+        self.assertFalse(consume(lambda: None, 'jti-none-connect', actor_id='a', session_id='s'))
+        self.assertFalse(consume(lambda: (_ for _ in ()).throw(RuntimeError('down')), 'jti-down', actor_id='a', session_id='s'))
         bridge = IdentityBridge({'SMARTLECT_USER_PORT': '1', 'SMARTLECT_INTERNAL_TOKEN': 't',
                                  'SMARTLECT_VISITOR_SECRET': 's' * 48,
                                  'SMARTLECT_ALLOWED_ORIGINS': 'http://smartlect.test'})

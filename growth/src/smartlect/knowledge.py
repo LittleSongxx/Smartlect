@@ -15,18 +15,17 @@ import unicodedata
 import uuid
 
 import jieba
-from prometheus_client import Counter as PrometheusCounter
 
 from smartlect.algo_version import content_hash
-from smartlect.observability import gen_ai_span
+from smartlect.observability import gen_ai_span, prometheus_counter
 from smartlect.cache import TtlCache
 from smartlect.events import canonical
 from smartlect.knowledge_scope import parse_product_ids, search_document_clause
 from smartlect.state import SessionStore, StateError, _actor, _expiry, _integer, _json, _public, _text
 from smartlect.tokenizer import encoding
 
-KNOWLEDGE_CACHE_REQUESTS = PrometheusCounter("growth_knowledge_cache_requests_total",
-                                             "Knowledge search cache outcomes", ["outcome"])
+KNOWLEDGE_CACHE_REQUESTS = prometheus_counter("growth_knowledge_cache_requests_total",
+                                              "Knowledge search cache outcomes", ["outcome"])
 
 MAX_CHUNKS = 5000
 # Tokenizer tokens (tiktoken cl100k_base), not Python characters. 512 + ~10% overlap

@@ -28,6 +28,10 @@ public final class GatewayTokenResolver {
         if (StringUtils.hasText(cookie)) {
             return cookie;
         }
+        String header = request.getHeaders().getFirst(cookieName);
+        if (StringUtils.hasText(header)) {
+            return header.trim();
+        }
         String authorization = request.getHeaders().getFirst("Authorization");
         if (StringUtils.hasText(authorization) && authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
             String bearer = authorization.substring(7).trim();

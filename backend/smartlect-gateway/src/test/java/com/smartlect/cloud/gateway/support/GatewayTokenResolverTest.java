@@ -28,6 +28,13 @@ class GatewayTokenResolverTest {
                         .build());
         assertEquals("cookie-token", GatewayTokenResolver.resolveWebToken(cookieWins));
 
+        MockServerWebExchange headerOnly = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/orders")
+                        .header("token", " header-token ")
+                        .header("Authorization", "Bearer bearer-token")
+                        .build());
+        assertEquals("header-token", GatewayTokenResolver.resolveWebToken(headerOnly));
+
         MockServerWebExchange bearerOnly = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/orders")
                         .header("Authorization", "Bearer bearer-token")

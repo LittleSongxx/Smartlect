@@ -13,15 +13,15 @@ import uuid
 from urllib.parse import urlsplit
 
 import httpx
-from prometheus_client import Counter
 
 from smartlect.cache import TtlCache
+from smartlect.observability import prometheus_counter
 from smartlect.state import SessionStore, StateError, _actor, _integer, _json, _text
 
-MODEL_BREAKER_REJECTIONS = Counter("growth_model_breaker_rejections_total",
-                                    "Fast-fails served while a model endpoint circuit was open", ["endpoint"])
-EMBEDDING_CACHE_REQUESTS = Counter("growth_embedding_cache_requests_total",
-                                    "Query-embedding cache outcomes", ["outcome"])
+MODEL_BREAKER_REJECTIONS = prometheus_counter("growth_model_breaker_rejections_total",
+                                              "Fast-fails served while a model endpoint circuit was open", ["endpoint"])
+EMBEDDING_CACHE_REQUESTS = prometheus_counter("growth_embedding_cache_requests_total",
+                                              "Query-embedding cache outcomes", ["outcome"])
 
 
 class ProviderError(RuntimeError):
