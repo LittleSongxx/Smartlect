@@ -11,7 +11,7 @@ export default defineConfig({
     '@tokens': fileURLToPath(new URL('../shared/design-tokens.scss', import.meta.url)),
   } },
   css: { preprocessorOptions: { scss: { additionalData: '@use "@tokens" as ds;\n' } } },
-  server: { host: '127.0.0.1', port, strictPort: true, fs: { allow: ['..'] }, proxy: { '/admin-api': { target } } },
-  preview: { host: '127.0.0.1', port, strictPort: true, proxy: { '/admin-api': { target } } },
+  server: { host: '127.0.0.1', port, strictPort: true, allowedHosts: true, fs: { allow: ['..'] }, proxy: { '/admin-api': { target } } },
+  preview: { host: '127.0.0.1', port, strictPort: true, allowedHosts: true, proxy: { '/admin-api': { target } } },
   test: { environment: 'jsdom', include: ['tests/**/*.test.js'] },
 });
