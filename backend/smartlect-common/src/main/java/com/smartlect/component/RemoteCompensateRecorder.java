@@ -66,6 +66,20 @@ public class RemoteCompensateRecorder {
         persist(record);
     }
 
+    public void recordProjectionEnqueue(String productId, Throwable error) {
+        if (StringTools.isEmpty(productId)) {
+            return;
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("productId", productId);
+        MqCompensationRecord record = baseRecord(
+                "remote:projection:enqueue:" + productId,
+                InternalApiHeaders.REMOTE_PRODUCT_PROJECTION,
+                payload,
+                error);
+        persist(record);
+    }
+
     private MqCompensationRecord baseRecord(String idempotencyKey, String routingKey, Object payload, Throwable error) {
         MqCompensationRecord record = new MqCompensationRecord();
         record.setIdempotencyKey(idempotencyKey);

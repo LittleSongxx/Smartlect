@@ -3,6 +3,7 @@ package com.smartlect.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.smartlect.compensation.StockBatchCompensatePort;
 import com.smartlect.utils.JsonUtils;
+import com.smartlect.compensation.ProductProjectionCompensatePort;
 import com.smartlect.compensation.UserCouponStatusCompensatePort;
 import com.smartlect.component.MqCompensationStore;
 import com.smartlect.component.MqIdempotencyGuard;
@@ -52,6 +53,8 @@ public class MqCompensationLogServiceImpl implements MqCompensationLogService {
     @Lazy
     @Resource
     private ObjectProvider<UserCouponStatusCompensatePort> userCouponStatusCompensatePort;
+    @Resource
+    private ObjectProvider<ProductProjectionCompensatePort> productProjectionCompensatePort;
 
     @Override
     public PaginationResultVO<MqCompensationLog> findListByPage(MqCompensationLogQuery param) {
@@ -219,6 +222,13 @@ public class MqCompensationLogServiceImpl implements MqCompensationLogService {
                         intOrNull(payload, "fromStatus"),
                         intOrNull(payload, "toStatus"),
                         null);
+            } else if (InternalApiHeaders.REMOTE_PRODUCT_PROJECTION.equals(routingKey)) {
+                JsonNode payload = JsonUtils.parseTree(existing.getPayloadJson());
+                ProductProjectionCompensatePort projectionPort = productProjectionCompensatePort.getIfAvailable();
+                if (projectionPort == null) {
+                    throw new BusinessException("知识投影补偿能力不可用（缺少 product-app）");
+                }
+                projectionPort.replayProjectionEnqueue(textOrNull(payload, "productId"));
             } else {
                 throw new BusinessException("未知远程补偿类型：" + routingKey);
             }

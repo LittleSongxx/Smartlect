@@ -94,6 +94,43 @@
     </div>
 
     <div class="table-data-card table-gap">
+      <h4 class="card-title">商品投影与索引同步失败（自动重试 {{ opsNote }}）</h4>
+      <el-alert v-if="opsSummaryError" type="info" :title="opsSummaryError" :closable="false" />
+      <template v-else>
+        <p class="muted-note">
+          投影任务失败后每 60 秒自动重投（90 秒退避，至多 {{ projectionMaxAttempts }} 次）；
+          索引任务失败需人工重试。Java 侧入队耗尽会落 MQ 补偿日志自动重放。
+        </p>
+        <el-table v-if="failedProjections.length" :data="failedProjections" stripe size="small" class="table-gap">
+          <el-table-column prop="product_id" label="商品" width="140" />
+          <el-table-column prop="attempt" label="尝试" width="70" />
+          <el-table-column prop="error_type" label="错误" width="180" show-overflow-tooltip />
+          <el-table-column prop="message" label="说明" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="updated_at" label="更新时间" width="180" />
+          <el-table-column label="操作" width="110" fixed="right">
+            <template #default="{ row }">
+              <el-button size="small" @click="retryProjection(row.product_id)">重新入队</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <p v-else class="muted-note">没有失败的投影任务。</p>
+        <el-table v-if="failedIndexJobs.length" :data="failedIndexJobs" stripe size="small" class="table-gap">
+          <el-table-column prop="doc_id" label="文档" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="version" label="版本" width="70" />
+          <el-table-column prop="error_type" label="错误" width="160" show-overflow-tooltip />
+          <el-table-column prop="message" label="说明" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="updated_at" label="更新时间" width="180" />
+          <el-table-column label="操作" width="110" fixed="right">
+            <template #default="{ row }">
+              <el-button size="small" @click="retryIndexJob(row.job_id)">重试索引</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <p v-else class="muted-note">没有失败的索引任务。</p>
+      </template>
+    </div>
+
+    <div class="table-data-card table-gap">
       <h4 class="card-title">服务器文档列表</h4>
       <el-table v-loading="busy" :data="filteredDocuments" stripe size="small">
         <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
@@ -190,7 +227,32 @@ const filteredDocuments = computed(() => sourceFilter.value ? documents.value.fi
 const canWrite = computed(() => hasAdminPermission(session.value?.actor, 'admin:legacy'));
 async function work(task) { if (busy.value) return; busy.value = true; error.value = ''; notice.value = ''; try { await task(); } catch (reason) { error.value = errorText(reason); } finally { busy.value = false; } }
 async function read() { documents.value = await aiGet('/knowledge'); }
-async function refresh() { await work(async () => { await loadSession(); await read(); uncertain.value = false; }); }
+
+// 商品投影 / 知识索引同步失败审计（C9）：只读汇总 + 两条人工重试通道
+const opsSummary = ref(null); const opsSummaryError = ref('');
+const failedProjections = computed(() => opsSummary.value?.projection?.failed || []);
+const failedIndexJobs = computed(() => opsSummary.value?.index?.failed || []);
+const projectionMaxAttempts = computed(() => opsSummary.value?.projection?.max_attempts || 3);
+const opsNote = computed(() => opsSummary.value ? '' : '…');
+async function readOps() {
+  try { opsSummary.value = await aiGet('/knowledgeOps/summary'); opsSummaryError.value = ''; }
+  catch (reason) { opsSummary.value = null; opsSummaryError.value = errorText(reason); }
+}
+async function retryProjection(productId) {
+  await work(async () => {
+    await aiWrite(`/productProjection/${encodeURIComponent(productId)}/retry`);
+    notice.value = `商品 ${productId} 已重新入队`;
+    await readOps();
+  });
+}
+async function retryIndexJob(jobId) {
+  await work(async () => {
+    await aiWrite(`/knowledgeIndex/jobs/${encodeURIComponent(jobId)}/retry`);
+    notice.value = '索引任务已按同一文档版本重新提交';
+    await readOps();
+  });
+}
+async function refresh() { await work(async () => { await loadSession(); await read(); await readOps(); uncertain.value = false; }); }
 async function save() {
   if (uncertain.value) return;
   await work(async () => {

@@ -96,6 +96,17 @@ class IndexingJobStore(SessionStore):
                            "ORDER BY created_at LIMIT 50")
             return [_public(row) for row in cursor.fetchall()]
 
+    def failed_jobs(self, limit=20):
+        with self._transaction() as cursor:
+            cursor.execute("SELECT * FROM knowledge_index_job WHERE state='FAILED' "
+                           "ORDER BY updated_at DESC LIMIT %s", (int(limit),))
+            return [_public(row) for row in cursor.fetchall()]
+
+    def counts_by_state(self):
+        with self._transaction() as cursor:
+            cursor.execute("SELECT state, COUNT(*) AS count FROM knowledge_index_job GROUP BY state")
+            return {row["state"]: int(row["count"]) for row in cursor.fetchall()}
+
 
 class IndexingService:
     def __init__(self, connect, knowledge, provider, *, settings, config):
@@ -202,6 +213,16 @@ class IndexingService:
     async def resume_stale(self):
         for job in await asyncio.to_thread(self.jobs.stale_jobs):
             self._spawn(job["job_id"])
+
+    def ops_summary(self):
+        return {"counts": self.jobs.counts_by_state(), "failed": self.jobs.failed_jobs()}
+
+    async def retry_failed(self, actor, job_id):
+        """手动重试失败索引：同一 (doc_id, version) 重新提交一个全新任务。"""
+        job = self.jobs.get_job(actor, job_id)
+        if job.get("state") != "FAILED":
+            raise StateError("index_job_not_failed", 409)
+        return await self.submit(actor, job["doc_id"], job["version"])
 
     async def drain(self):
         """Wait for running jobs to settle; used by tests and graceful shutdown checks."""

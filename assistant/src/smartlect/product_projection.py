@@ -61,9 +61,10 @@ class ProjectionJobStore(SessionStore):
     def claim(self, job_id):
         job_id = _text(job_id, "job_id", 32)
         with self._transaction() as cursor:
+            # FAILED 也可被重新认领：退避后的自动重试与人工 /retry 都从这里进。
             cursor.execute("""UPDATE product_projection_job
                 SET state='RUNNING',attempt=attempt+1,updated_at=UTC_TIMESTAMP(6)
-                WHERE job_id=%s AND state IN ('PENDING','RUNNING')""", (job_id,))
+                WHERE job_id=%s AND state IN ('PENDING','RUNNING','FAILED')""", (job_id,))
             if cursor.rowcount != 1:
                 raise StateError("projection_job_not_resumable", 409)
             cursor.execute("SELECT * FROM product_projection_job WHERE job_id=%s", (job_id,))
@@ -89,10 +90,30 @@ class ProjectionJobStore(SessionStore):
                 WHERE state IN ('PENDING','RUNNING') ORDER BY created_at LIMIT 50""")
             return [_public(row) for row in cursor.fetchall()]
 
+    def retryable_failed_jobs(self, *, backoff_seconds=90):
+        """FAILED 且未烧完尝试次数、且已过退避窗口的任务，供周期清扫自动重投。"""
+        with self._transaction() as cursor:
+            cursor.execute("""SELECT * FROM product_projection_job
+                WHERE state='FAILED' AND attempt < %s
+                  AND updated_at < UTC_TIMESTAMP(6) - INTERVAL %s SECOND
+                ORDER BY updated_at LIMIT 20""", (MAX_ATTEMPTS, int(backoff_seconds)))
+            return [_public(row) for row in cursor.fetchall()]
+
+    def ops_summary(self):
+        with self._transaction() as cursor:
+            cursor.execute("""SELECT state, COUNT(*) AS count FROM product_projection_job
+                GROUP BY state""")
+            counts = {row["state"]: int(row["count"]) for row in cursor.fetchall()}
+            cursor.execute("""SELECT job_id,product_id,attempt,error_type,message,updated_at
+                FROM product_projection_job WHERE state='FAILED' ORDER BY updated_at DESC LIMIT 20""")
+            failed = [_public(row) for row in cursor.fetchall()]
+        return {"counts": counts, "failed": failed, "max_attempts": MAX_ATTEMPTS}
+
 
 class ProductProjectionService:
     def __init__(self, connect, knowledge, commerce, indexing=None):
         self.jobs = ProjectionJobStore(connect)
+        self._sweeper = None
         self.knowledge = knowledge
         self.commerce = commerce
         self.indexing = indexing
@@ -283,12 +304,28 @@ class ProductProjectionService:
         self.bind_loop()
         for job in await asyncio.to_thread(self.jobs.stale_jobs):
             self._spawn(job["job_id"])
+        if self._sweeper is None or self._sweeper.done():
+            self._sweeper = asyncio.create_task(self._sweep_failed())
+
+    async def _sweep_failed(self):
+        """FAILED 自动重试：90 秒退避，attempt 上限内每分钟扫一批。"""
+        while True:
+            await asyncio.sleep(60)
+            try:
+                for job in await asyncio.to_thread(self.jobs.retryable_failed_jobs):
+                    log.info("product_projection_retry_scheduled job_id=%s product_id=%s attempt=%s",
+                             job["job_id"], job["product_id"], job.get("attempt"))
+                    self._spawn(job["job_id"])
+            except Exception:
+                log.exception("product_projection_sweep_failed")
 
     async def drain(self):
         if self._tasks:
             await asyncio.gather(*list(self._tasks.values()), return_exceptions=True)
 
     def shutdown(self):
+        if self._sweeper is not None:
+            self._sweeper.cancel()
         for task in self._tasks.values():
             task.cancel()
 

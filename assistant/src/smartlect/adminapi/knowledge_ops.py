@@ -44,6 +44,22 @@ def build_router(*, actor_for, indexing, knowledge, provider, config, settings, 
             raise HTTPException(503, "product_projection_unavailable")
         return await asyncio.to_thread(projection.retry, actor, product_id)
 
+    @router.get("/admin-api/assistant/knowledgeOps/summary")
+    async def knowledge_ops_summary(request: Request, response: Response):
+        actor = await actor_for(request, response, realm="merchant")
+        actor.require_any("admin:legacy", "admin:trial")
+        projection_summary = None
+        if projection is not None:
+            projection_summary = await asyncio.to_thread(projection.ops_summary)
+        return {"projection": projection_summary,
+                "index": await asyncio.to_thread(indexing.ops_summary)}
+
+    @router.post("/admin-api/assistant/knowledgeIndex/jobs/{job_id}/retry")
+    async def index_job_retry(job_id: str, request: Request, response: Response):
+        actor = await actor_for(request, response, realm="merchant", write=True)
+        actor.require("admin:legacy")
+        return await indexing.retry_failed(actor, job_id)
+
     @router.get("/admin-api/assistant/knowledgeIndex/jobs")
     async def index_jobs(request: Request, response: Response, limit: int = 20):
         actor = await actor_for(request, response, realm="merchant")

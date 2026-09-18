@@ -1,6 +1,10 @@
 package com.smartlect.integration;
 
+import com.smartlect.compensation.ProductProjectionCompensatePort;
+import com.smartlect.component.RemoteCompensateRecorder;
 import com.smartlect.constants.InternalApiHeaders;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,12 +25,14 @@ import java.util.concurrent.Executors;
  * never wait on Growth or indexing.
  */
 @Component
-public class ProductProjectionClient {
+public class ProductProjectionClient implements ProductProjectionCompensatePort {
 
     private static final Logger log = LoggerFactory.getLogger(ProductProjectionClient.class);
 
     private final RestClient client;
     private final String internalToken;
+    private final RemoteCompensateRecorder remoteCompensateRecorder;
+    private final Counter enqueueExhausted;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(thread -> {
         Thread worker = new Thread(thread, "product-projection-enqueue");
         worker.setDaemon(true);
@@ -35,6 +41,8 @@ public class ProductProjectionClient {
 
     public ProductProjectionClient(
             RestClient.Builder builder,
+            RemoteCompensateRecorder remoteCompensateRecorder,
+            MeterRegistry meterRegistry,
             @Value("${smartlect.assistant.base-url:http://127.0.0.1:18000}") String growthBaseUrl,
             @Value("${smartlect.internal.token:}") String internalToken,
             @Value("${smartlect.assistant.projection-connect-timeout-ms:200}") int connectTimeoutMs,
@@ -47,6 +55,16 @@ public class ProductProjectionClient {
                 .requestFactory(requestFactory)
                 .build();
         this.internalToken = internalToken == null ? "" : internalToken;
+        this.remoteCompensateRecorder = remoteCompensateRecorder;
+        this.enqueueExhausted = Counter.builder("smartlect.product.projection.enqueue.exhausted")
+                .description("商品投影入队三次重试后仍失败的次数")
+                .register(meterRegistry);
+    }
+
+    @Override
+    public void replayProjectionEnqueue(String productId) {
+        // 补偿重放入口（mq_compensation_log 自动重放调用）：与保存钩子同一入队路径。
+        enqueueQuietly(productId);
     }
 
     public void enqueueAfterCommit(String productId) {
@@ -95,5 +113,9 @@ public class ProductProjectionClient {
         }
         log.error("product_projection_enqueue_exhausted product_id={} error={}",
                 productId, last == null ? "unknown" : last.getClass().getSimpleName());
+        enqueueExhausted.increment();
+        // 三次即时重试耗尽：落远程补偿日志，由 auto-replay 任务带退避地重放入队。
+        remoteCompensateRecorder.recordProjectionEnqueue(productId,
+                last == null ? new IllegalStateException("projection enqueue exhausted") : last);
     }
 }
