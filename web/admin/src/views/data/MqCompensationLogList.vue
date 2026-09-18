@@ -11,6 +11,8 @@
         <el-col :span="4">
           <el-form-item label="场景">
             <el-select clearable placeholder="全部" v-model="searchForm.bizScene">
+              <el-option label="库存" value="STOCK" />
+              <el-option label="优惠券" value="COUPON" />
               <el-option label="RAG" value="RAG" />
               <el-option label="通知" value="NOTIFY" />
               <el-option label="足迹" value="BROWSE" />
