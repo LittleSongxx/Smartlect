@@ -12,6 +12,7 @@ import { errorText, session } from '../src/api/client';
 import { addressApi } from '../src/api/modules';
 import { useAgentSession } from '../src/composables/useAgentSession';
 import { loginTarget, safeNext } from '../src/utils/navigation';
+import { DEMO_SHOPPER, isPublishedDemoLogin, TRIAL_VISITOR } from '../src/constants/trial';
 import { canPurchase, coverUrl, stockCap, uniqueCategories } from '../src/utils/productDisplay';
 import { clearProductScopeCache, inProductScope } from '../src/utils/productScope';
 import { orderAllowsRefund, remainingRefundCents, yuanToCents } from '../src/utils/orderRefund';
@@ -54,6 +55,10 @@ describe('封面、库存与登录回跳', () => {
     expect(canPurchase({ subjectType: 'user', addressId: 'a1', selected: { stock: 2 }, quantity: 3 })).toBe(false);
     expect(canPurchase({ subjectType: 'user', addressId: 'a1', selected: { stock: 2 }, quantity: 2 })).toBe(true);
     expect(canPurchase({ subjectType: 'user', addressId: 'a1', selected: { stock: 0 }, quantity: 1 })).toBe(false);
+    expect(canPurchase({ subjectType: 'user', addressId: 'a1', selected: { stock: 2 }, quantity: 1, trial: true })).toBe(false);
+    expect(isPublishedDemoLogin(DEMO_SHOPPER.email, DEMO_SHOPPER.password)).toBe(true);
+    expect(isPublishedDemoLogin(TRIAL_VISITOR.email, TRIAL_VISITOR.password)).toBe(true);
+    expect(isPublishedDemoLogin(DEMO_SHOPPER.email, 'wrong')).toBe(false);
     expect(safeNext('https://evil.example/x')).toBe('/');
     expect(safeNext('//evil.example')).toBe('/');
     expect(safeNext('/login?next=/orders')).toBe('/');

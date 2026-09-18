@@ -77,7 +77,7 @@
           </div>
         </div>
       </header>
-      <p v-if="isTrial" class="trial-banner">作品集展厅：只能查看经营数据，不能改库存、发知识、发券或查看用户隐私。</p>
+      <p v-if="isTrial" class="trial-banner">作品集展厅：只能查看看板、商品、订单和知识库。经营助手、广告投放、评价分析与增长报告已停用；不能改库存、发知识、发券或查看用户隐私。</p>
       <main class="right-body" :class="{ 'is-home': route.path === '/home' }">
         <router-view v-if="sessionReady" v-slot="{ Component }">
           <component :is="Component" :key="scopeKey" />

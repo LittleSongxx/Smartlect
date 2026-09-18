@@ -35,7 +35,7 @@ import { ElMessage } from 'element-plus';
 import { accountApi } from '@/api/modules';
 import { useAuthStore } from '@/stores/auth';
 import { isValidPassword, PASSWORD_FORMAT_HINT } from '@/constants/validation';
-import { TRIAL_USER_DENIED } from '@/constants/trial';
+import { DEMO_SHOPPER_DENIED, TRIAL_USER_DENIED } from '@/constants/trial';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -47,6 +47,10 @@ const savePwd = async () => {
   error.value = '';
   if (authStore.isTrial) {
     error.value = TRIAL_USER_DENIED;
+    return;
+  }
+  if (authStore.isPublishedShopper) {
+    error.value = DEMO_SHOPPER_DENIED;
     return;
   }
   if (!pwd.oldPassword?.trim()) {

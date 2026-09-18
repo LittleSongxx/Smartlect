@@ -23,6 +23,10 @@ class TrialAccessTest {
         visitor.setTrial(true);
         assertTrue(TrialIdentities.isTrialUser(visitor));
         assertFalse(TrialIdentities.isTrialUser("9100000000", "buyer@demo.smartlect.local"));
+        assertFalse(TrialIdentities.isTrialUser(
+                TrialIdentities.SHOPPER_USER_ID, TrialIdentities.SHOPPER_EMAIL));
+        assertTrue(TrialIdentities.isPublishedDemoUser(
+                TrialIdentities.SHOPPER_USER_ID, TrialIdentities.SHOPPER_EMAIL));
 
         AdminPrincipalDTO gallery = new AdminPrincipalDTO();
         gallery.setAccount(TrialIdentities.ADMIN_ACCOUNT);
@@ -30,6 +34,7 @@ class TrialAccessTest {
         gallery.setPermissions(Set.of("admin:trial"));
         assertTrue(TrialIdentities.isTrialAdmin(gallery));
         assertTrue(TrialIdentities.skipLoginCaptcha(TrialIdentities.USER_EMAIL));
+        assertTrue(TrialIdentities.skipLoginCaptcha(TrialIdentities.SHOPPER_EMAIL));
         assertTrue(TrialIdentities.skipLoginCaptcha(TrialIdentities.ADMIN_ACCOUNT));
         assertFalse(TrialIdentities.skipLoginCaptcha("admin"));
 

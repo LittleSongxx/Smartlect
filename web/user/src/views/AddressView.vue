@@ -2,9 +2,9 @@
   <div class="address-page">
     <div class="page-toolbar">
       <p class="toolbar-tip">
-        {{ isSelectMode ? '点击地址即可选中并返回确认订单' : '管理你的收货地址，下单时可直接选用' }}
+        {{ toolbarTip }}
       </p>
-      <el-button type="primary" round @click="openForm()">
+      <el-button v-if="!authStore.isTrial" type="primary" round @click="openForm()">
         <el-icon><Plus /></el-icon>
         新增地址
       </el-button>
@@ -41,7 +41,7 @@
           @click="onCardClick(item)"
         >
           <AddressCardBody :item="item" />
-          <div v-if="!isSelectMode" class="card-actions">
+          <div v-if="!isSelectMode && !authStore.isTrial" class="card-actions">
             <el-button link type="primary" @click.stop="openForm(item)">编辑</el-button>
             <el-button
               v-if="item.defaultType !== 1"
@@ -57,8 +57,9 @@
       </template>
     </div>
 
-    <el-empty v-else description="还没有收货地址" class="address-empty">
-      <el-button type="primary" round @click="openForm()">添加收货地址</el-button>
+    <el-empty v-else :description="emptyDescription" class="address-empty">
+      <el-button v-if="!authStore.isTrial" type="primary" round @click="openForm()">添加收货地址</el-button>
+      <RouterLink v-else class="login-shopper" to="/login">去登录演示买家</RouterLink>
     </el-empty>
 
     <AddressFormPanel v-model="formVisible" :edit-item="editingItem" @saved="onFormSaved" />
@@ -67,7 +68,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { Plus } from '@element-plus/icons-vue';
 import AddressCardBody from '@/components/business/AddressCardBody.vue';
 import AddressFormPanel, { type AddressFormItem } from '@/components/business/AddressFormPanel.vue';
@@ -79,14 +80,24 @@ import { saveCheckoutSelectedAddress, loadCheckoutSelectedAddress } from '@/util
 import { toast } from '@/utils/toast';
 import { safeNext } from '@/utils/navigation';
 import { usePageRefresh } from '@/composables/pullRefresh';
+import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
 const { isDesktop } = useDevice();
 const isSelectMode = computed(() => route.query.from === 'checkout');
 // 待返回页：订单确认卡在"暂无地址"时跳来新增，保存后回到原页面
 const nextPath = computed(() => safeNext(route.query.next, ''));
-const useSwipeActions = computed(() => !isDesktop.value && !isSelectMode.value);
+const useSwipeActions = computed(() => !isDesktop.value && !isSelectMode.value && !authStore.isTrial);
+const toolbarTip = computed(() => {
+  if (authStore.isTrial) {
+    return '只读试用不能改地址。完整购物请用演示买家登录，地址已预置。';
+  }
+  return isSelectMode.value ? '点击地址即可选中并返回确认订单' : '管理你的收货地址，下单时可直接选用';
+});
+const emptyDescription = computed(() =>
+  authStore.isTrial ? '只读试用没有收货地址' : '还没有收货地址');
 const pickedAddressId = ref(loadCheckoutSelectedAddress() || '');
 
 const list = ref<AddressFormItem[]>([]);
@@ -109,6 +120,10 @@ const load = async () => {
 };
 
 const openForm = (item?: AddressFormItem) => {
+  if (authStore.isTrial) {
+    toast.warning('只读试用不能改地址，请用演示买家登录。');
+    return;
+  }
   editingItem.value = item ?? null;
   formVisible.value = true;
 };
@@ -243,6 +258,11 @@ usePageRefresh(load);
     padding-top: 10px;
     border-top: 1px dashed $color-border;
   }
+}
+
+.login-shopper {
+  color: $color-primary;
+  font-size: 14px;
 }
 
 .swipe-act {

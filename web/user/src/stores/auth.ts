@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { accountApi } from '@/api/modules';
+import { DEMO_SHOPPER } from '@/constants/trial';
 import { fetchMemberCenter } from '@/api/memberCenter';
 import { useCartStore } from '@/stores/cart';
 import { clearRecommendationAttributions } from '@/utils/recommendationAttribution';
@@ -52,6 +53,8 @@ export const useAuthStore = defineStore('auth', () => {
   const userInfo = ref<Record<string, any> | null>(null);
   const isLoggedIn = computed(() => !!userInfo.value?.userId);
   const isTrial = computed(() => !!userInfo.value?.trial);
+  const isPublishedShopper = computed(() =>
+    String(userInfo.value?.email || '').trim().toLowerCase() === DEMO_SHOPPER.email);
 
   let sessionPromise: Promise<boolean> | null = null;
   let sessionReady = false;
@@ -255,6 +258,7 @@ export const useAuthStore = defineStore('auth', () => {
     userInfo,
     isLoggedIn,
     isTrial,
+    isPublishedShopper,
     loggingOut,
     memberLevelCode,
     memberLevelName,

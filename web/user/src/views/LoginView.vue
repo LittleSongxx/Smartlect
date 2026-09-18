@@ -4,7 +4,7 @@
       <div class="auth-brand-text">
         <p class="eyebrow">Smartlect · 智选商城</p>
         <h1>{{ mode === 'register' ? '创建账号，开始选购' : '欢迎回来' }}</h1>
-        <p class="brand-tip">{{ mode === 'register' ? '公开演示已关闭自行注册。' : '作品集试用只能逛店和问导购，不能下单或改资料。' }}</p>
+        <p class="brand-tip">{{ mode === 'register' ? '公开演示已关闭自行注册。' : '默认已填演示买家，可问导购并模拟下单；只需逛店请改用只读访客。' }}</p>
       </div>
     </div>
     <div class="auth-form">
@@ -15,11 +15,19 @@
       <p v-if="notice" class="notice" role="status">{{ notice }}</p>
       <p v-if="error" class="notice error" role="alert">{{ error }}</p>
       <button class="submit-btn" type="submit" :disabled="busy || (!usingTrial && !key)">{{ busy ? (mode === 'register' ? '正在注册…' : '正在登录…') : (mode === 'register' ? '注册' : '登录') }}</button>
+      <div v-if="mode === 'login'" class="trial-box shopper">
+        <p class="trial-title">完整购物演示</p>
+        <p>邮箱 <code>{{ DEMO_SHOPPER.email }}</code></p>
+        <p>密码 <code>{{ DEMO_SHOPPER.password }}</code></p>
+        <p class="trial-note">账密已填好。已预置默认收货地址、备用地址、体验券和浏览足迹，可加购、问导购、模拟下单。</p>
+        <button type="button" class="fill-demo" @click="fillShopper">填入演示买家</button>
+      </div>
       <div v-if="mode === 'login'" class="trial-box">
         <p class="trial-title">作品集试用（只读）</p>
         <p>邮箱 <code>{{ TRIAL_VISITOR.email }}</code></p>
         <p>密码 <code>{{ TRIAL_VISITOR.password }}</code></p>
-        <p class="trial-note">账密已填好，点登录即可。不能下单、加购、改密、改地址或注册新号。</p>
+        <p class="trial-note">只能逛店和问导购，不能下单、加购、改密或改地址。</p>
+        <button type="button" class="fill-demo" @click="fillVisitor">填入只读访客</button>
       </div>
       <div class="auth-footer">
         <button v-if="PUBLIC_REGISTER_ENABLED" type="button" class="muted-link" @click="toggleMode">{{ mode === 'register' ? '已有账号？去登录' : '没有账号？注册' }}</button>
@@ -38,12 +46,19 @@ import { bindVisitor } from '@/api/traffic';
 import { safeNext } from '@/utils/navigation';
 import { useOpenAgent } from '@/composables/useOpenAgent';
 import { useAuthStore } from '@/stores/auth';
-import { PUBLIC_REGISTER_ENABLED, TRIAL_VISITOR } from '@/constants/trial';
+import { DEMO_SHOPPER, isPublishedDemoLogin, PUBLIC_REGISTER_ENABLED, TRIAL_VISITOR } from '@/constants/trial';
 const PASSWORD = /^(?=.*\d)(?=.*[a-zA-Z])[\da-zA-Z~!@#$%^&*_]{8,18}$/;
-const email = ref(TRIAL_VISITOR.email); const password = ref<string>(TRIAL_VISITOR.password); const nickName = ref(''); const code = ref(''); const key = ref(''); const captchaImage = ref('');
+const email = ref<string>(DEMO_SHOPPER.email); const password = ref<string>(DEMO_SHOPPER.password); const nickName = ref(''); const code = ref(''); const key = ref(''); const captchaImage = ref('');
 const usingTrial = computed(() => mode.value === 'login'
-  && email.value.trim().toLowerCase() === TRIAL_VISITOR.email
-  && password.value === TRIAL_VISITOR.password);
+  && isPublishedDemoLogin(email.value, password.value));
+function fillShopper() {
+  email.value = DEMO_SHOPPER.email;
+  password.value = DEMO_SHOPPER.password;
+}
+function fillVisitor() {
+  email.value = TRIAL_VISITOR.email;
+  password.value = TRIAL_VISITOR.password;
+}
 const busy = ref(false); const error = ref(''); const notice = ref(''); const mode = ref<'login' | 'register'>('login');
 const router = useRouter(); const route = useRoute(); const authStore = useAuthStore();
 const { conversationId, reset, restore } = useAgentSession();
@@ -287,5 +302,18 @@ h1 {
 
 .trial-note {
   color: $color-text-muted;
+}
+
+.trial-box.shopper {
+  border-style: solid;
+}
+
+.fill-demo {
+  margin-top: 6px;
+  border: 0;
+  background: transparent;
+  color: $color-primary;
+  padding: 0;
+  font-size: 13px;
 }
 </style>

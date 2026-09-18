@@ -47,9 +47,11 @@ public class DemoFixtureController extends ABaseController {
             jdbc.update("INSERT IGNORE INTO smartlect_user.user_info "
                     + "(user_id,nick_name,email,password,sex,join_time,status) VALUES (?,?,?,?,2,NOW(),1)",
                     id, "Smartlect用户" + i, id + "@demo.smartlect.local", hash);
-            jdbc.update("INSERT IGNORE INTO smartlect_user.user_address "
-                    + "(address_id,user_id,address,addressee,phone,default_type) VALUES (?,?,?,?,?,1)",
-                    "SD" + id, id, "Smartlect模拟收货地址", "模拟用户", "13800000000");
+            jdbc.update("INSERT INTO smartlect_user.user_address "
+                    + "(address_id,user_id,address,addressee,phone,default_type) VALUES (?,?,?,?,?,1) AS incoming "
+                    + "ON DUPLICATE KEY UPDATE address=incoming.address, addressee=incoming.addressee, "
+                    + "phone=incoming.phone, default_type=1",
+                    "SD" + id, id, "北京市海淀区中关村大街1号 智选模拟收货处", "模拟用户" + i, "13800000000");
         }
         String[] categories = {"数码", "家居", "运动", "阅读"};
         for (int i = 0; i < categories.length; i++) {

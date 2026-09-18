@@ -290,8 +290,9 @@ public class AccountController extends ABaseController{
     @RateLimit(limitType = RateLimit.LimitType.IP, windowSeconds = 20, maxCount = 1, message = "获取验证码过于频繁，请稍后再试")
     public ResponseVO getEmailCode(@NotEmpty @Email @Size(max = 150) String email,
                                    @NotEmpty String captchaVerification){
-        if (TrialIdentities.isTrialEmail(email)) {
-            throw new BusinessException(TrialIdentities.USER_DENIED);
+        if (TrialIdentities.isPublishedDemoEmail(email)) {
+            throw new BusinessException(TrialIdentities.isShopperEmail(email)
+                    ? TrialIdentities.SHOPPER_DENIED : TrialIdentities.USER_DENIED);
         }
         slideCaptchaVerifier.verify(captchaVerification);
         // 60秒内只能获取一次

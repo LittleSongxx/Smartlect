@@ -65,6 +65,7 @@ import UserAvatar from '@/components/common/UserAvatar.vue';
 import AvatarCropperDialog from '@/components/business/AvatarCropperDialog.vue';
 import { accountApi, fileApi } from '@/api/modules';
 import { useAuthStore } from '@/stores/auth';
+import { DEMO_SHOPPER_DENIED, TRIAL_USER_DENIED } from '@/constants/trial';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -80,11 +81,25 @@ const load = async () => {
   accountEmail.value = info?.email || '';
 };
 
+const denyPublishedIdentity = () => {
+  if (authStore.isTrial) {
+    ElMessage.warning(TRIAL_USER_DENIED);
+    return true;
+  }
+  if (authStore.isPublishedShopper) {
+    ElMessage.warning(DEMO_SHOPPER_DENIED);
+    return true;
+  }
+  return false;
+};
+
 const pickAvatar = () => {
+  if (denyPublishedIdentity()) return;
   fileInputRef.value?.click();
 };
 
 const onAvatarChange = async (e: Event) => {
+    if (denyPublishedIdentity()) return;
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -123,6 +138,7 @@ const onAvatarChange = async (e: Event) => {
   };
 
 const saveInfo = async () => {
+  if (denyPublishedIdentity()) return;
   await accountApi.updateUserInfo(form);
   await authStore.fetchUserInfo();
   ElMessage.success('资料已保存');

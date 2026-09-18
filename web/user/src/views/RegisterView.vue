@@ -11,8 +11,9 @@
       </div>
 
       <div v-if="!PUBLIC_REGISTER_ENABLED" class="trial-lock">
-        <p>公开演示已关闭自行注册，避免试用用户另开可下单账号。</p>
-        <p>请用作品集试用账号登录：<strong>{{ TRIAL_VISITOR.email }}</strong> / <strong>{{ TRIAL_VISITOR.password }}</strong></p>
+        <p>公开演示已关闭自行注册。完整购物请用演示买家，只逛店请用作品集访客。</p>
+        <p>演示买家：<strong>{{ DEMO_SHOPPER.email }}</strong> / <strong>{{ DEMO_SHOPPER.password }}</strong></p>
+        <p>只读访客：<strong>{{ TRIAL_VISITOR.email }}</strong> / <strong>{{ TRIAL_VISITOR.password }}</strong></p>
         <RouterLink class="submit-btn" to="/login">去登录试用账号</RouterLink>
       </div>
       <el-form v-else class="auth-form" label-position="top" @submit.prevent="submit">
@@ -90,7 +91,7 @@ import BrandMark from '@/components/common/BrandMark.vue';
 import SlideCaptchaDialog from '@/components/business/SlideCaptchaDialog.vue';
 import { accountApi } from '@/api/modules';
 import { isValidEmail, isValidPassword, PASSWORD_FORMAT_HINT } from '@/constants/validation';
-import { PUBLIC_REGISTER_ENABLED, TRIAL_VISITOR } from '@/constants/trial';
+import { DEMO_SHOPPER, PUBLIC_REGISTER_ENABLED, TRIAL_VISITOR } from '@/constants/trial';
 import { useEmailCode, type SlideCaptchaDialogExpose } from '@/composables/useEmailCode';
 
 const router = useRouter();

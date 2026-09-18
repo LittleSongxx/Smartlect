@@ -22,7 +22,7 @@
         <div class="form-wrap">
           <header class="form-header">
             <h2>管理员登录</h2>
-            <p>展厅账密已填好，点登录即可浏览</p>
+            <p>展厅账密已填好，点登录即可浏览看板、商品、订单和知识库</p>
           </header>
 
           <el-form
@@ -97,7 +97,7 @@
             <p class="trial-title">作品集展厅（只读）</p>
             <p>账号 <code>{{ TRIAL_GALLERY.account }}</code></p>
             <p>密码 <code>{{ TRIAL_GALLERY.password }}</code></p>
-            <p class="trial-note">账密已填好，点登录即可。只能看经营数据，不能改库存、发知识、发券或查看用户隐私。</p>
+            <p class="trial-note">账密已填好，点登录即可。只能看看板、商品、订单和知识库；经营助手、广告投放、评价分析与增长报告已停用。不能改库存、发知识、发券或查看用户隐私。</p>
           </div>
 
           <p class="form-footer">

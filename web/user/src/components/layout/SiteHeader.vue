@@ -25,7 +25,7 @@
         </nav>
       </div>
     </div>
-    <p v-if="authStore.isTrial" class="trial-banner">作品集试用：只能逛店和问导购，不能下单、加购或改资料。</p>
+      <p v-if="authStore.isTrial" class="trial-banner">只读试用：只能逛店和问导购。完整购物请用演示买家 shopper@smartlect.demo。</p>
 
     <div class="site-search-row">
       <div class="search-row-inner">

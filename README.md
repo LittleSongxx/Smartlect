@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/home.png" alt="智选商城首页：分类、广告位、智选好物" width="100%" />
+  <img src="docs/assets/screenshots/home.png" alt="智选商城首页：分类、确定性推荐、智选好物" width="100%" />
 </p>
 
 ---
@@ -31,12 +31,13 @@
 
 线上可以直接点：[用户端](https://smartlect.cn/) · [管理端](https://smartlect.cn/admin/)。
 
-**对外试用账号是公开的，权限在服务端按身份拒绝。** 不要用仓库或环境里的超管。
+**对外演示账号是公开的，权限在服务端按身份拒绝。** 不要用仓库或环境里的超管。登录页默认填的是可下单的演示买家。
 
 | 端 | 账号 | 密码 | 能做什么 | 不能做什么 |
 | --- | --- | --- | --- | --- |
+| 用户端 | `shopper@smartlect.demo` | `Visit-Smartlect-2026` | 逛店、问导购、加购、模拟下单（已预置收货地址和体验券） | 改密、改资料、注册新号 |
 | 用户端 | `visitor@smartlect.demo` | `Visit-Smartlect-2026` | 逛店、看商品、问导购 | 下单、加购、改密、改地址、注册新号 |
-| 管理端 | `gallery` | `Visit-Smartlect-2026` | 看看板、商品、订单、知识库和经营数据 | 改库存、发知识、发券、发货、管账号、看用户隐私 |
+| 管理端 | `gallery` | `Visit-Smartlect-2026` | 看看板、商品、订单、知识库 | 改库存、发知识、发券、发货、管账号、看用户隐私；经营助手 / 广告投放 / 评价分析 / 增长报告已停用 |
 
 ---
 
@@ -51,8 +52,8 @@
 系统里只有两个领域 Agent，没有总指挥、也没有把检索或记账再包装成 Agent。
 
 - **Shopping** 用有界 ReAct：看这一轮的问题，选工具，读回执，再决定澄清、作答，或生成一张待确认提案。
-- **Merchant** 先看已经发生的点击、费用和净成交，再出有限计划；授权范围内可以执行，越界要再批准一次。
-- **RAG / 推荐 / 账本 / 投放** 是确定性服务。知识要先发布才进检索；推荐只从在售目录里挑；账本按冻结规则记账。
+- **Merchant / 广告投放 / 评价分析 / 增长报告** 已从公开演示中停用，后台菜单标成「已停用」，对应写接口在鉴权后返回 410。
+- **RAG / 推荐 / 账本** 是确定性服务。知识要先发布才进检索；首页滚动位走管理端确定性推荐，不再走付费广告投放。
 
 <p align="center">
   <img src="docs/assets/journey.png" alt="逛店 → 问这件 → 人点确认 → Java 落单 → 入账 → 经营再规划" width="100%" />
@@ -84,7 +85,7 @@
 
 **③ 管店**
 
-后台维护店规和商品资料，看经营助手给出的下一轮计划。授权范围里可以执行，越界要再批准一次。
+后台维护店规和商品资料。经营助手、广告投放、评价分析和增长报告已停用，不再进入公开演示。
 
 </td>
 </tr>
@@ -93,7 +94,7 @@
 <p align="center">
   <img src="docs/assets/screenshots/product-guide.png" alt="商品页导购浮层：正在问本商品" width="100%" />
   <br/>
-  <em>商品页打开导购，浮层写着「正在问本商品」。规格对照和店规问答都绑在这一件上。</em>
+  <em>商品页打开导购，浮层标题是「问这件」，默认钉在当前商品。规格对照和店规问答都绑在这一件上。</em>
 </p>
 
 ---
@@ -111,7 +112,7 @@
 </tr>
 <tr>
 <td width="50%"><img src="docs/assets/screenshots/admin-knowledge.png" alt="管理端知识库" /><br/><b>知识库</b> — 店规写成可发布的文档；撤回后不再被新的客服引用</td>
-<td width="50%"><img src="docs/assets/screenshots/admin-merchant.png" alt="经营助手" /><br/><b>经营助手</b> — 先看点击、费用和净成交，再决定下一轮做不做</td>
+<td width="50%"><img src="docs/assets/screenshots/admin-merchant.png" alt="经营助手已停用" /><br/><b>已停用</b> — 经营助手、广告投放、评价分析、增长报告只保留只读入口说明</td>
 </tr>
 </table>
 

@@ -162,7 +162,9 @@ public class UserInfoServiceImpl implements UserInfoService {
 		if (appConfig.isTrialLockPublicRegister()) {
 			throw new BusinessException(TrialIdentities.REGISTER_LOCKED);
 		}
-		if (TrialIdentities.isTrialEmail(email) || TrialIdentities.USER_NICK.equals(nickName)) {
+		if (TrialIdentities.isPublishedDemoEmail(email)
+				|| TrialIdentities.USER_NICK.equals(nickName)
+				|| TrialIdentities.SHOPPER_NICK.equals(nickName)) {
 			throw new BusinessException(TrialIdentities.REGISTER_LOCKED);
 		}
 		UserInfo userInfo = this.getUserInfoByEmail(email);
@@ -183,8 +185,8 @@ public class UserInfoServiceImpl implements UserInfoService {
 	@Override
     public void updateUserInfo(String userId, String avatar, @NotEmpty String nickName, @NotNull Integer sex) {
 		UserInfo current = this.getUserInfoByUserId(userId);
-		if (current != null && TrialIdentities.isTrialUser(current.getUserId(), current.getEmail())) {
-			throw new BusinessException(TrialIdentities.USER_DENIED);
+		if (current != null && TrialIdentities.isPublishedDemoUser(current.getUserId(), current.getEmail())) {
+			throw new BusinessException(publishedIdentityDenied(current.getUserId(), current.getEmail()));
 		}
 		UserInfo userInfo = new UserInfo();
 		userInfo.setAvatar(avatar);
@@ -198,8 +200,8 @@ public class UserInfoServiceImpl implements UserInfoService {
 	@Override
 	public void updatePassword(String userId, String oldPassword, String password) {
 		UserInfo userInfo = this.getUserInfoByUserId(userId);
-		if (userInfo != null && TrialIdentities.isTrialUser(userInfo.getUserId(), userInfo.getEmail())) {
-			throw new BusinessException(TrialIdentities.USER_DENIED);
+		if (userInfo != null && TrialIdentities.isPublishedDemoUser(userInfo.getUserId(), userInfo.getEmail())) {
+			throw new BusinessException(publishedIdentityDenied(userInfo.getUserId(), userInfo.getEmail()));
 		}
 		if (!passwordService.matches(oldPassword, userInfo.getPassword())) {
 			throw new BusinessException("旧密码输入错误");
@@ -216,8 +218,9 @@ public class UserInfoServiceImpl implements UserInfoService {
 	// 找回密码
 	@Override
 	public void forgetPassword(String email, String newPassword, String checkCode) {
-		if (TrialIdentities.isTrialEmail(email)) {
-			throw new BusinessException(TrialIdentities.USER_DENIED);
+		if (TrialIdentities.isPublishedDemoEmail(email)) {
+			throw new BusinessException(TrialIdentities.isShopperEmail(email)
+					? TrialIdentities.SHOPPER_DENIED : TrialIdentities.USER_DENIED);
 		}
 		// 判断当前用户是否已注册
 		if (this.getUserInfoByEmail(email) == null) {
@@ -236,5 +239,10 @@ public class UserInfoServiceImpl implements UserInfoService {
 		this.userInfoMapper.updateByEmail(userInfo, email);
 		redisComponent.cleanEmailCode(email);
 		redisComponent.cleanAllToken(userInfo.getUserId());
+	}
+
+	private static String publishedIdentityDenied(String userId, String email) {
+		return TrialIdentities.isShopperUserId(userId) || TrialIdentities.isShopperEmail(email)
+				? TrialIdentities.SHOPPER_DENIED : TrialIdentities.USER_DENIED;
 	}
 }
