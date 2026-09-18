@@ -14,9 +14,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import smartlect
-from smartlect.ads.analytics import CampaignMetrics, detect_anomalies, optimize_budget_allocation, to_cents
 from smartlect.app import health
 from smartlect.config import Settings
+from smartlect.money import to_cents
 from smartlect.recommendation.store import DEFAULT_STRATEGIES, bucket_for, strategy_config
 
 
@@ -45,10 +45,6 @@ class FoundationTests(unittest.TestCase):
                         "100000000000000000000000000000.001"):
             with self.assertRaises(ValueError):
                 to_cents(invalid)
-        metric = CampaignMetrics("one", 10000)
-        self.assertEqual(metric.remaining_cents, 10000)
-        self.assertEqual((metric.ctr, metric.cvr, metric.cpo_cents, metric.roas), (None,) * 4)
-        self.assertEqual(detect_anomalies([metric]), [])
 
     def test_http_health_from_outside_project(self):
         with socket.socket() as listener:
@@ -87,39 +83,6 @@ class FoundationTests(unittest.TestCase):
             finally:
                 process.terminate()
                 process.wait(timeout=5)
-
-    def test_budget_regression_preserves_total_and_each_cap(self):
-        # B5: the source fallback produced [180, 60, 60] with a 150 item cap.
-        metrics = [CampaignMetrics(str(i), 10000, spent_cents=100, paid_cents=score, stock=2)
-                   for i, score in enumerate((900, 100, 100))]
-        values = [a.recommended_budget_cents for a in optimize_budget_allocation(metrics, 30000)]
-        self.assertEqual(sum(values), 30000)
-        self.assertTrue(all(5000 <= value <= 15000 for value in values), values)
-        self.assertEqual(max(values), 15000)
-        # Budget is configuration, not the 100 cents spent above.
-        self.assertEqual(optimize_budget_allocation(metrics)[0].current_budget_cents, 10000)
-
-    def test_stockout_and_infeasible_budget(self):
-        metrics = [CampaignMetrics("empty", 10000, spent_cents=100, paid_cents=900, stock=0)]
-        allocation = optimize_budget_allocation(metrics)[0]
-        self.assertEqual(allocation.recommended_budget_cents, 100)
-        self.assertEqual(allocation.reason_code, "stockout_pause")
-        with self.assertRaises(ValueError):
-            optimize_budget_allocation(metrics, 99)
-        with self.assertRaises(ValueError):
-            optimize_budget_allocation(metrics * 2)
-        with self.assertRaises(ValueError):
-            CampaignMetrics("bad", 10, spent_cents=11)
-
-    def test_budget_bounds_ignore_decimal_context(self):
-        for precision, budget in ((2, 12348), (28, 10**28 + 5)):
-            with self.subTest(precision=precision, budget=budget), localcontext() as context:
-                context.prec = precision
-                metrics = [CampaignMetrics("one", budget, stock=1)]
-                upper = optimize_budget_allocation(metrics, budget * 2)[0].recommended_budget_cents
-                lower = optimize_budget_allocation(metrics, (budget + 1) // 2)[0].recommended_budget_cents
-                self.assertEqual(upper, budget * 3 // 2)
-                self.assertEqual(lower, (budget + 1) // 2)
 
     def test_experiment_boundaries_and_config_isolation(self):
         config = strategy_config(DEFAULT_STRATEGIES['rules-v1'])

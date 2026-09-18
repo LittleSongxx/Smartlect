@@ -15,7 +15,6 @@ import pymysql
 from smartlect.attribution import AttributionStore
 from smartlect.auth import ActorContext
 from smartlect.events import Ledger, NONFINANCIAL_SCOPE_VERSION, canonical, parse_event
-from smartlect.merchant.store import MerchantStore
 from smartlect.migrate import migrate, migration_files
 from test_events import batch, outcome
 
@@ -77,14 +76,13 @@ class LedgerMySQLTests(unittest.TestCase):
             cursor.execute('SELECT * FROM commerce_attribution_meta WHERE event_id=%s', (event_id,))
             return cursor.fetchone()
 
-    def test_v1_cancel_and_view_freeze_registered_scope_for_merchant_observation(self):
+    def test_v1_cancel_and_view_freeze_registered_scope_for_scoped_summary(self):
         scope, other_scope = 'scope-' + uuid.uuid4().hex, 'scope-' + uuid.uuid4().hex
         owner, other = 'user-' + uuid.uuid4().hex, 'user-' + uuid.uuid4().hex
-        store = MerchantStore(self.connect)
+        store = AttributionStore(self.connect)
         store.register_scope(scope, scenario_run_id=scope, branch_id='contract', users=[owner], products=['product-' + scope])
         store.register_scope(other_scope, scenario_run_id=other_scope, branch_id='contract', users=[other], products=['product-' + other_scope])
         merchant = ActorContext(subject_type='merchant', actor_id='admin', session_id='synthetic', permissions=('admin:legacy',), execution_scope_id=scope)
-        before = store.observation(merchant)
         cancel = outcome('CANCEL', userId=owner, source='ORDER', productId='product-' + scope,
             payload={'orderStatus': 'CANCELLED', 'reasonCode': 'USER_CANCEL', 'executionScopeId': other_scope})
         view = outcome('VIEW', userId=owner, source='PRODUCT', productId='product-' + scope, payload={})
@@ -100,15 +98,16 @@ class LedgerMySQLTests(unittest.TestCase):
             self.assertEqual(row['raw_json'], canonical(event))
             self.assertEqual(row['fingerprint'], hashlib.sha256(canonical(event).encode()).hexdigest())
             self.assertIsNone(row['amount_cents'])
-        observation = store.observation(merchant)
-        self.assertNotEqual(observation['watermark'], before['watermark'])
-        self.assertEqual((observation['summary']['cancelled_orders'], observation['summary']['payment_failures'],
-                          observation['summary']['paid_cents'], observation['summary']['refunded_cents']), (1, 0, 0, 0))
-        fact = next(f for f in observation['facts'] if f['metric'] == 'cancelled_orders')
-        self.assertEqual(fact['source_ids'], [cancel['eventId']])
-        self.assertEqual(store.observation(merchant.model_copy(update={'execution_scope_id': other_scope}))['summary']['cancelled_orders'], 0)
+        report = store.summary(merchant)
+        cancelled = [e for e in report['events'] if e['event_type'] == 'CANCEL']
+        self.assertEqual([e['event_id'] for e in cancelled], [cancel['eventId']])
+        self.assertTrue(all(e['status'] == 'APPLIED' for e in cancelled))
+        self.assertEqual(store.totals(merchant), {'paid_cents': 0, 'refunded_cents': 0, 'net_cents': 0,
+                                                  'payment_conversions': 0})
+        other_view = store.summary(merchant.model_copy(update={'execution_scope_id': other_scope}))
+        self.assertEqual([e for e in other_view['events'] if e['event_type'] == 'CANCEL'], [])
         self.ledger.ingest(batch(cancel, view))
-        self.assertEqual(store.observation(merchant), observation)
+        self.assertEqual(store.summary(merchant)['events'], report['events'])
 
     def test_default_nonfinancial_scope_does_not_follow_later_registration_or_replay(self):
         owner, scope = 'late-' + uuid.uuid4().hex, 'late-scope-' + uuid.uuid4().hex
@@ -116,17 +115,17 @@ class LedgerMySQLTests(unittest.TestCase):
         self.ledger.ingest(batch(original))
         before = self.scope_metadata(original['eventId'])
         self.assertEqual(before['execution_scope_id'], 'store')
-        store = MerchantStore(self.connect)
+        store = AttributionStore(self.connect)
         store.register_scope(scope, scenario_run_id=scope, branch_id='late', users=[owner], products=['product-' + scope])
         self.ledger.ingest(batch(original))
         self.assertEqual(self.scope_metadata(original['eventId']), before)
         merchant = ActorContext(subject_type='merchant', actor_id='admin', session_id='synthetic', permissions=('admin:legacy',), execution_scope_id=scope)
-        self.assertEqual(store.observation(merchant)['summary']['cancelled_orders'], 0)
+        self.assertEqual(store.summary(merchant)['events'], [])
         new = outcome('CANCEL', userId=owner, source='ORDER', payload={})
         self.ledger.ingest(batch(new))
         self.assertEqual(self.scope_metadata(new['eventId'])['execution_scope_id'], scope)
-        fact = next(f for f in store.observation(merchant)['facts'] if f['metric'] == 'cancelled_orders')
-        self.assertEqual((fact['value'], fact['source_ids']), (1, [new['eventId']]))
+        self.assertEqual([(e['event_type'], e['event_id']) for e in store.summary(merchant)['events']],
+                         [('CANCEL', new['eventId'])])
 
     def test_out_of_order_refund_and_duplicates_reconcile_to_one_payment(self):
         refund = outcome("REFUND", self.pay, self.item)

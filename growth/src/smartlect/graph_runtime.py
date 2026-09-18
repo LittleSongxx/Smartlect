@@ -14,11 +14,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from smartlect.postgres import dsn_from_env
 
 shopping_session: contextvars.ContextVar[Any] = contextvars.ContextVar("shopping_session")
-merchant_session: contextvars.ContextVar[Any] = contextvars.ContextVar("merchant_session")
 
 _checkpointer = None
 _shopping_graph = None
-_merchant_graph = None
 _postgres_setup_done = False
 
 
@@ -54,10 +52,9 @@ def ensure_postgres_tables():
 
 
 def reset_for_tests(saver=None):
-    global _checkpointer, _shopping_graph, _merchant_graph, _postgres_setup_done
+    global _checkpointer, _shopping_graph, _postgres_setup_done
     _checkpointer = saver
     _shopping_graph = None
-    _merchant_graph = None
     _postgres_setup_done = False
 
 
@@ -67,14 +64,6 @@ def shopping_graph():
         from smartlect.agents.shopping import build_shopping_graph
         _shopping_graph = build_shopping_graph().compile(checkpointer=checkpointer())
     return _shopping_graph
-
-
-def merchant_graph():
-    global _merchant_graph
-    if _merchant_graph is None:
-        from smartlect.agents.merchant import build_merchant_graph
-        _merchant_graph = build_merchant_graph().compile(checkpointer=checkpointer())
-    return _merchant_graph
 
 
 def invoke_config(conversation_id, run_id):

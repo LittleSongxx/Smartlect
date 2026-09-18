@@ -13,10 +13,10 @@ versions start at the code version number (v24/v19) so trace labels stay continu
 import json
 import re
 
-from smartlect.business_skills import MERCHANT_SKILLS, USER_SKILLS, load_skill
+from smartlect.business_skills import USER_SKILLS, load_skill
 from smartlect.state import SessionStore, StateError, _actor, _integer, _public, _text
 
-SYSTEM_LABEL_PREFIX = {"shopping": "shopping-react", "merchant": "merchant-plan"}
+SYSTEM_LABEL_PREFIX = {"shopping": "shopping-react"}
 SKILL_KEYS = ("skill_id", "version", "intents", "knowledge", "tools",
               "output_contract", "instructions", "stop_conditions")
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
@@ -152,7 +152,7 @@ class PromptStore(SessionStore):
 
 
 def _validate_skill_body(domain, key, body):
-    allowed = set(USER_SKILLS if domain == "shopping" else MERCHANT_SKILLS)
+    allowed = set(USER_SKILLS) if domain == "shopping" else set()
     if key not in allowed:
         # Documents cannot install code: editing is limited to the packaged skill set.
         raise StateError("skill_not_editable", 422)

@@ -7,7 +7,7 @@ import uuid
 from urllib.request import Request, urlopen
 
 from smartlect.commerce import CommerceClient, CommerceError
-from smartlect.ads.analytics import to_cents
+from smartlect.money import to_cents
 from runtime import ROOT, ENV_FILE, parse_env
 
 

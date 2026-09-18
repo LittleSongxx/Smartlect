@@ -35,9 +35,6 @@ class AdminApiMySQLTests(unittest.TestCase):
     def test_prompt_templates_seed_edit_activate_and_resolve(self):
         asyncio.run(self.exercise_prompts())
 
-    def test_review_analysis_and_growth_report_snapshots(self):
-        asyncio.run(self.exercise_analytics())
-
     async def exercise_import(self):
         suffix = uuid.uuid4().hex
         origin = "http://smartlect.test"
@@ -313,53 +310,6 @@ class AdminApiMySQLTests(unittest.TestCase):
                                     headers=await csrf_headers(client, origin), json={"body": "{}"})
             self.assertEqual(bad.status_code, 422)
 
-
-    async def exercise_analytics(self):
-        suffix = uuid.uuid4().hex
-        origin = "http://smartlect.test"
-        config = {"SMARTLECT_USER_PORT": "18105", "SMARTLECT_ORDER_PORT": "18104",
-                  "SMARTLECT_INTERNAL_TOKEN": "synthetic", "SMARTLECT_VISITOR_SECRET": "s" * 48,
-                  "SMARTLECT_ALLOWED_ORIGINS": origin}
-
-        def java(request):
-            path = request.url.path
-            if path == "/internal/identity/introspect":
-                data = {"subjectType": "merchant", "actorId": "boss-" + suffix, "sessionId": "s",
-                        "permissions": ["admin:legacy", "shopping:read"]}
-            else:
-                raise AssertionError(path)
-            return httpx.Response(200, json={"status": "success", "data": data})
-
-        transport = httpx.MockTransport(java)
-
-        def app():
-            return create_app(Settings(model_mode="mock"), config=config, store=SessionStore(self.connect),
-                              identity=IdentityBridge(config, transport=transport),
-                              commerce=AsyncCommerceClient(config, transport=transport))
-
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
-            denied = await client.post("/admin-api/assistant/reviewAnalysis/product/p-rev", json={})
-            self.assertEqual(denied.status_code, 401, denied.text)
-
-            client.cookies.set("adminToken", "boss-" + suffix)
-            headers = await csrf_headers(client, origin)
-
-            analyzed = await client.post("/admin-api/assistant/reviewAnalysis/product/p-rev", headers=headers, json={})
-            self.assertEqual(analyzed.status_code, 410, analyzed.text)
-            self.assertEqual(analyzed.json()["error"], "review_analysis_disabled")
-
-            listed = await client.get("/admin-api/assistant/reviewAnalysis")
-            self.assertEqual(listed.status_code, 410, listed.text)
-            self.assertEqual(listed.json()["error"], "review_analysis_disabled")
-
-            report = await client.post("/admin-api/assistant/growthReport/generate",
-                                      headers=await csrf_headers(client, origin), json={})
-            self.assertEqual(report.status_code, 410, report.text)
-            self.assertEqual(report.json()["error"], "growth_report_disabled")
-
-            view = await client.get("/admin-api/assistant/growthReport")
-            self.assertEqual(view.status_code, 410, view.text)
-            self.assertEqual(view.json()["error"], "growth_report_disabled")
 
     def seed_scope_payment(self, suffix):
         """One attributed payment plus an unrelated refund in the default `store` scope."""

@@ -75,7 +75,7 @@ def message_app(actors, *, per_actor, total):
                       config={"SMARTLECT_GROWTH_RUNS_PER_ACTOR": str(per_actor),
                               "SMARTLECT_GROWTH_RUNS_GLOBAL": str(total)},
                       store=store, memory=memory, identity=Identity(actors), provider=MagicMock(),
-                      attribution=SimpleNamespaceProxy(), merchant=None)
+                      attribution=SimpleNamespaceProxy())
 
 
 class SimpleNamespaceProxy(MagicMock):

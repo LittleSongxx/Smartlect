@@ -1,6 +1,6 @@
 # Smartlect 质量评测合同（quality-v2）
 
-日期：2026-09-13（**v6.2 修订：P3 仲裁落地**——claims 分级判级原则成文（见"政策客服"节：essential=删去后被问出的问题落空或被误导性部分回答，附两条操作款），`allow_handoff` 新增（曾发布现已失效资料的双诚实收口），禁句否定提示词集扩为 不/没/未/非/别/无/勿/莫，客服 dev 62→63 题（软问法 MERCHANT sup-d-63）。**v6.1 修订：广告 script 剧本增补**。**v6 修订：公开表头名实对齐**——导购第二公开指标从 `Precision@4` 改为 `Precision@4/ceiling` 贴满率（NDCG/IDCG 式对可达上限的正规化：同槽位、同分母，只除以本题满分；raw `Precision@4` 与 `Precision@4_ceiling` 保留为诊断列，demand-fill 超顶截断在 1.0）；广告公开分从模拟 `CTR`/`CVR`（确定性校验伪装成效果比率）改为单指标 `Attribution_integrity` 归因完整性（断言级分母：四桶计数+两率算术+禁捷径共 8 条断言/剧本；`CTR`/`CVR` 降诊断列）。理由是名实对齐与正规化先例，非刷分——新指标只会更严。v5：多次试验与置信区间。v4：claims 分级 essential/peripheral。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。三条主线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
+日期：2026-09-18（**v7 修订：广告投放线退役**——ads 服务与剧本随经营线整体删除，公开表头移除 `Attribution_integrity`，历史成绩见 artifacts 存证；导购/客服两线定义不变。原 v6.2 及更早修订：P3 仲裁落地**——claims 分级判级原则成文（见"政策客服"节：essential=删去后被问出的问题落空或被误导性部分回答，附两条操作款），`allow_handoff` 新增（曾发布现已失效资料的双诚实收口），禁句否定提示词集扩为 不/没/未/非/别/无/勿/莫，客服 dev 62→63 题（软问法 MERCHANT sup-d-63）。**v6.1 修订：广告 script 剧本增补**。**v6 修订：公开表头名实对齐**——导购第二公开指标从 `Precision@4` 改为 `Precision@4/ceiling` 贴满率（NDCG/IDCG 式对可达上限的正规化：同槽位、同分母，只除以本题满分；raw `Precision@4` 与 `Precision@4_ceiling` 保留为诊断列，demand-fill 超顶截断在 1.0）；广告公开分从模拟 `CTR`/`CVR`（确定性校验伪装成效果比率）改为单指标 `Attribution_integrity` 归因完整性（断言级分母：四桶计数+两率算术+禁捷径共 8 条断言/剧本；`CTR`/`CVR` 降诊断列）。理由是名实对齐与正规化先例，非刷分——新指标只会更严。v5：多次试验与置信区间。v4：claims 分级 essential/peripheral。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。三条主线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
 
 一题三种结局：`pass` / `unscored`（分母缺失记 `null`）/ `setup_failed`。`setup_failed` 不进均值，仅限 provider/预算/基础设施故障，禁止重采样刷绿；每次复跑记入 `artifacts/quality-v2/rerun-ledger.jsonl`。
 
@@ -14,7 +14,7 @@
 
 ## 多次试验与置信区间（v5 生效，全部主线共用）
 
-- **`--trials N`**：同题独立跑 N 次，每次全新场景（新 actor 会话、目录 overlay 各自应用并恢复、独立 run_id）；模型采样不播种——要测的正是这个采样方差。导购/客服适用；广告为确定性模拟，只跑单次。
+- **`--trials N`**：同题独立跑 N 次，每次全新场景（新 actor 会话、目录 overlay 各自应用并恢复、独立 run_id）；模型采样不播种——要测的正是这个采样方差。导购/客服适用。
 - **逐题报告**：`per_case_trials` 列每题 k 次试验的结局、通过次数与通过率；翻转题（同题既有 pass 又有 fail）在 `flip_cases` 显式列出，不得让均值吞掉翻转。
 - **`pass^k`** = 全部 k 次试验都通过的题数 / k 次全部有效计分的题数（HumanEval 语义在 n=k 时的形式）。任何一次 `setup_failed` 的题不进该指标分母，按复跑台账补齐后重算。
 - **主数语义不变**：line 级指标仍是按题均值（macro，每题等权——该题取其试验均值）；k=1 的输出与 v4 完全一致，可与 v6 基线直接对话。
@@ -134,26 +134,6 @@ v6.2 起按此原则回标：essential claims 65→57（10 条翻转），与 v1
 ### LLM judge 抽检（第三层，仅开发集）
 
 `scripts/eval_quality_v2.py judge --output <run目录>`：固定种子抽样，直连模型（不经被测栈），对每条 claim 判 `supported/absent/contradicted/unsupported` 并列 `hallucination_list`，与规则分对照写 `judge/judge-report.json`。**不进任何公开表头**；规则判不了的分歧留给人工复核。
-
----
-
-## 广告投放
-
-公开主报（v6）：单指标 **`Attribution_integrity`（归因完整性）** = 通过断言数 / 断言总数（分母是断言、不是剧本）。每剧本 8 条确定性断言：四桶计数（`impressions`/`clicks`/`payment_conversions`/`unknown_payments`，含归因归桶与 unknown 桶）+ 两率算术（含空值语义）+ 两条禁捷径（不得用 `summary` 合计、不得借用推荐点击）。`Pass@1` 保留为剧本级门（= integrity 为 1.0）；`failed_assertions` 逐条列名供归因。模拟 `CTR`/`CVR` 降为诊断列。
-
-模拟流量记账比率不是效果、显著性或增收。`causal_conclusion_supported=false`。报告必须带分母和「模拟、非因果」。
-
-- `CTR = clicks / impressions`。`impressions=0` → `null`，禁止补 0。`impressions>0` 且无点击 → `0.0`。
-- `CVR = payment_conversions / clicks`。`clicks=0` → `null`。`clicks>0` 且无归因支付 → **`0.0`（不是 null）**。
-- 分子只用该活动 `campaign.metrics.payment_conversions`。禁止 `summary.payment_conversions`。
-- `unknown_payments`（PAYMENT 且 `campaign_id` 为空）单独计数，**不得进任何活动的 CVR 分子**；剧本 `organic_payment` 专门覆盖。
-- 推荐点击不可与广告 CTR/CVR 加总。点 A 买 B 仍可能记该活动；剧本 `ads-d-04` 覆盖（买 `other_sku`）。
-- 管理端 ads 快照顶层计数是 scope 合计，不要用来算按活动 CTR。
-- 低 CTR 门（约 100 曝光 / 0.5%）是经营成熟度，不是本轮通过线。
-
-五类剧本：仅曝光（CTR=`0.0`，CVR=`null`）；曝光+点击不支付（CVR=`0.0`）；同 SKU 归因支付（CVR>0）；点 A 买 B 仍归因；无活动付款进 `unknown_payments`（两率均 `null`）。
-
-**v6.1 增补（2026-09-13，T4 扩容）**：剧本 5→11，新增六本 **script 剧本**（疲劳/配速/预算耗尽机制族，`ads-d-06…11`）。`Attribution_integrity` 定义不变（断言级分母）；script 剧本的断言数 = 基础 8 条 + 脚本期望数：排序断言 `rank:N.first`/`rank:N.items`（`ad-fatigue-pacing-v1` 下的确定性次序：同 SKU 双活动 relevance 打平，槽位前缀 id 使平手按脚本方向破）、拒绝断言 `reject:N.<op>.<error>`（预算门 409）、状态断言 `status:N.<slot>`（预算扣满时 click 事务自动转 `EXHAUSTED/budget_exhausted`，后续操作 409 `ads_not_active` 且活动从推荐候选消失）。约束：script 剧本不得同时定义 `traffic`；计数必须由脚本推导（AnnotationError）；双活动剧本必须 `same_sku`（排序确定性的前提）。观众隔离（user_b 无疲劳史）与素材粒度疲劳分别由 `ads-d-07`/`ads-d-11` 覆盖。
 
 ---
 

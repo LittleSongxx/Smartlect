@@ -43,13 +43,7 @@ from smartlect.documents import parse_document, MAX_INPUT_BYTES
 from smartlect.attribution import AttributionStore
 from smartlect.recommendation.service import RecommendationService, RecommendationRequest
 from smartlect.recommendation.store import StrategyStore
-from smartlect.ads.service import (AdsService, CampaignRequest, CreativeRequest, GrantRequest,
-                                  ActionRequest, RevokeRequest, AdExposureRequest, AdClickRequest)
-from smartlect.ads.store import AdsStore
-from smartlect.merchant.store import MerchantStore
-from smartlect.merchant.service import (MerchantService, MerchantRunRequest, PlanExecuteRequest,
-                                        ExperienceApproveRequest, ScopeSelectRequest)
-from smartlect.disabled_features import reject as reject_disabled
+from smartlect.adminscope import AdminScopeStore, ScopeSelectRequest
 
 
 async def db(function, *args, **kwargs):
@@ -200,7 +194,7 @@ async def execute_proposal(proposal, actor, commerce, attribution=None):
 
 
 def create_app(settings=None, *, config=None, store=None, ledger=None, identity=None, commerce=None,
-               knowledge=None, memory=None, provider=None, attribution=None, recommendations=None, ads=None, merchant=None):
+               knowledge=None, memory=None, provider=None, attribution=None, recommendations=None, adminscope=None):
     settings = settings or Settings.from_env()
     config = dict(os.environ) if config is None else config
     if settings.events_enabled:
@@ -217,8 +211,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
     provider = provider or Provider(config, runtime_loader=ModelConfigStore(store.connect).loader() if store else None)
     attribution = attribution or (AttributionStore(store.connect, secret=config.get('SMARTLECT_ATTRIBUTION_SECRET')) if store else None)
     recommendations = recommendations or (RecommendationService(commerce, StrategyStore(store.connect)) if store else None)
-    ads = ads or (AdsService(commerce, AdsStore(store.connect)) if store else None)
-    merchant = merchant or (MerchantService(MerchantStore(store.connect),ads,provider,config) if store else None)
+    adminscope = adminscope or (AdminScopeStore(store.connect) if store else None)
     tasks = {}
     task_owners = {}  # run_id -> (subject_type, actor_id); admission counts live executors, not stale DB rows
     indexing = None
@@ -228,13 +221,10 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
 
     from smartlect import prompts as prompt_registry
     from smartlect.agents.shopping import PROMPT_VERSION as SHOPPING_PROMPT_VERSION, SYSTEM_POLICY_BODY
-    from smartlect.agents.merchant import MERCHANT_POLICY_BODY, PROMPT_VERSION as MERCHANT_PROMPT_VERSION
-    from smartlect.business_skills import MERCHANT_SKILLS, USER_SKILLS, load_skill
+    from smartlect.business_skills import USER_SKILLS, load_skill
     prompt_registry.register_default('shopping', 'system_prompt', 'system', SYSTEM_POLICY_BODY,
                                      version=prompt_registry._code_version(SHOPPING_PROMPT_VERSION))
-    prompt_registry.register_default('merchant', 'system_prompt', 'system', MERCHANT_POLICY_BODY,
-                                     version=prompt_registry._code_version(MERCHANT_PROMPT_VERSION))
-    for domain, names in (('shopping', USER_SKILLS), ('merchant', MERCHANT_SKILLS)):
+    for domain, names in (('shopping', USER_SKILLS),):
         for skill_id in names:
             skill = load_skill(skill_id, domain=domain)
             prompt_registry.register_default(domain, 'skill', skill_id,
@@ -335,8 +325,8 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         actor = await identity.authenticate(request, response, realm=realm)
         if attribution is not None:
             actor = await db(attribution.resolve_actor, actor)
-        if merchant is not None and actor.subject_type=='merchant':
-            actor = await db(merchant.store.selected_actor,actor)
+        if adminscope is not None and actor.subject_type=='merchant':
+            actor = await db(adminscope.selected_actor,actor)
         if user:
             if actor.subject_type != "user":
                 raise HTTPException(401, "login_required")
@@ -427,110 +417,26 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         actor = await actor_for(request, response, realm="merchant")
         return {"actor": actor.model_dump(), "csrf_token": identity.csrf_token(actor)}
 
-    async def ads_merchant(request, response, *, write=False):
+    async def admin_actor(request, response, *, write=False):
         actor = await actor_for(request, response, realm='merchant', write=write)
         if write:
             actor.require('admin:legacy')
         else:
             actor.require_any('admin:legacy', 'admin:trial')
-        if ads is None:
-            raise HTTPException(503, 'ads_not_configured')
         return actor
-
-    @app.get('/admin-api/assistant/ads')
-    async def ad_snapshot(request: Request, response: Response):
-        actor = await ads_merchant(request, response)
-        return await db(ads.store.snapshot, actor)
 
     @app.get('/admin-api/assistant/scopes')
     async def merchant_scopes(request: Request,response: Response):
-        actor=await ads_merchant(request,response)
-        return await db(merchant.store.scopes,actor)
+        actor=await admin_actor(request,response)
+        return await db(adminscope.scopes,actor)
 
     @app.post('/admin-api/assistant/scopes/select')
     async def merchant_select_scope(payload: ScopeSelectRequest,request: Request,response: Response):
-        actor=await ads_merchant(request,response)
+        actor=await admin_actor(request,response)
         actor.require('admin:legacy')
         identity.require_csrf(request,actor)
-        selected=await db(merchant.store.select_scope,actor,payload.execution_scope_id)
+        selected=await db(adminscope.select_scope,actor,payload.execution_scope_id)
         return {'actor':selected.model_dump(),'csrf_token':identity.csrf_token(selected)}
-
-    @app.get('/admin-api/assistant/ads/catalog')
-    async def ad_catalog(request: Request,response: Response):
-        return await merchant.catalog(await ads_merchant(request,response))
-
-    @app.get('/admin-api/assistant/merchant')
-    async def merchant_snapshot(request: Request,response: Response):
-        await ads_merchant(request,response)
-        reject_disabled('merchant_planner')
-
-    @app.post('/admin-api/assistant/merchant/runs')
-    async def merchant_create_run(payload: MerchantRunRequest,request: Request,response: Response):
-        await ads_merchant(request,response,write=True)
-        reject_disabled('merchant_planner')
-
-    @app.get('/admin-api/assistant/merchant/runs/{run_id}')
-    async def merchant_get_run(run_id: str,request: Request,response: Response):
-        await ads_merchant(request,response)
-        reject_disabled('merchant_planner')
-
-    @app.post('/admin-api/assistant/merchant/plans/{plan_id}/execute')
-    async def merchant_execute(plan_id: str,payload: PlanExecuteRequest,request: Request,response: Response):
-        await ads_merchant(request,response,write=True)
-        reject_disabled('merchant_planner')
-
-    @app.post('/admin-api/assistant/merchant/memories/{memory_id}/approve')
-    async def merchant_approve_memory(memory_id: str,payload: ExperienceApproveRequest,request: Request,response: Response):
-        await ads_merchant(request,response,write=True)
-        reject_disabled('merchant_planner')
-
-    @app.post('/admin-api/assistant/ads/campaigns')
-    async def ad_campaign(payload: CampaignRequest, request: Request, response: Response):
-        await ads_merchant(request, response, write=True)
-        reject_disabled('ads')
-
-    @app.post('/admin-api/assistant/ads/creatives')
-    async def ad_creative(payload: CreativeRequest, request: Request, response: Response):
-        await ads_merchant(request, response, write=True)
-        reject_disabled('ads')
-
-    @app.post('/admin-api/assistant/ads/grants')
-    async def ad_grant(payload: GrantRequest, request: Request, response: Response):
-        await ads_merchant(request, response, write=True)
-        reject_disabled('ads')
-
-    @app.post('/admin-api/assistant/ads/grants/{grant_id}/revoke')
-    async def ad_revoke(grant_id: str, payload: RevokeRequest, request: Request, response: Response):
-        await ads_merchant(request, response, write=True)
-        reject_disabled('ads')
-
-    @app.post('/admin-api/assistant/ads/actions')
-    async def ad_action(payload: ActionRequest, request: Request, response: Response):
-        await ads_merchant(request, response, write=True)
-        reject_disabled('ads')
-
-    @app.get('/admin-api/assistant/ads/actions/{action_id}')
-    async def ad_action_receipt(action_id: str, request: Request, response: Response):
-        await ads_merchant(request, response)
-        reject_disabled('ads')
-
-    @app.get('/api/assistant/ads/recommendations')
-    async def ad_recommendations(request: Request, response: Response, limit: int = 2):
-        actor = await actor_for(request, response)
-        actor.require('shopping:read')
-        reject_disabled('ads')
-
-    @app.post('/api/assistant/ads/exposures')
-    async def ad_exposure(payload: AdExposureRequest, request: Request, response: Response):
-        actor = await actor_for(request, response, write=True)
-        actor.require('shopping:read')
-        reject_disabled('ads')
-
-    @app.post('/api/assistant/ads/clicks')
-    async def ad_click(payload: AdClickRequest, request: Request, response: Response):
-        actor = await actor_for(request, response, write=True)
-        actor.require('shopping:read')
-        reject_disabled('ads')
 
     @app.post("/api/assistant/conversations")
     async def create_conversation(request: Request, response: Response, payload: Arguments):
@@ -1001,7 +907,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         projection = ProductProjectionService(store.connect, knowledge, commerce, indexing=indexing)
         adminapi.register(app, actor_for=actor_for, store=store, commerce=commerce, knowledge=knowledge,
                           attribution=attribution, provider=provider, config=config, settings=settings,
-                          shopping_retrieve=ShoppingRetrieve(commerce), indexing=indexing, ads=ads,
+                          shopping_retrieve=ShoppingRetrieve(commerce), indexing=indexing,
                           projection=projection)
 
     return app

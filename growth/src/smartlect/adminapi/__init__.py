@@ -5,10 +5,10 @@ app.py; create_app stays the single composition root. Everything here requires a
 merchant actor with admin:legacy and (for writes) the shared CSRF check, exactly like
 the existing admin endpoints in app.py.
 """
-from . import analytics, knowledge_ops, models, prompts_ops, runs, tools
+from . import knowledge_ops, models, prompts_ops, runs, tools
 
 
-def register(app, *, actor_for, store, commerce, knowledge, attribution, provider, config, settings, shopping_retrieve, indexing, ads=None, projection=None):
+def register(app, *, actor_for, store, commerce, knowledge, attribution, provider, config, settings, shopping_retrieve, indexing=None, projection=None):
     app.include_router(runs.build_router(actor_for=actor_for, connect=store.connect))
     app.include_router(tools.build_router(
         actor_for=actor_for, store=store, commerce=commerce, knowledge=knowledge,
@@ -21,6 +21,3 @@ def register(app, *, actor_for, store, commerce, knowledge, attribution, provide
     app.include_router(models.build_router(actor_for=actor_for, connect=store.connect,
                                            provider=provider, config=config))
     app.include_router(prompts_ops.build_router(actor_for=actor_for, connect=store.connect))
-    app.include_router(analytics.build_router(actor_for=actor_for, store=store, commerce=commerce,
-                                              attribution=attribution, provider=provider,
-                                              settings=settings, ads=ads))

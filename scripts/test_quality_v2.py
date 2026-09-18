@@ -6,12 +6,12 @@ from pathlib import Path
 
 from eval_quality_v2 import business_closeout_after_budget, handoff_ends_conversation
 import quality_v2
-from quality_v2 import (ADS_PLAYBOOKS, CONTRACT_JSON, SHOPPING_CATALOG, SHOPPING_DEV, SUPPORT_DEV,
-                        AnnotationError, ads_grant_envelope, aggregate_line, append_rerun_ledger,
+from quality_v2 import (CONTRACT_JSON, SHOPPING_CATALOG, SHOPPING_DEV, SUPPORT_DEV,
+                        AnnotationError, aggregate_line, append_rerun_ledger,
                         campaign_rates, catalog_index, catalog_overlay_plan, context_precision_at_k,
                         handoff_f1, last_real_search, live_support_cases, load_json, load_jsonl,
                         mrr_at_k, recall_at_1_strict, recall_at_k, refuse_holdout, remap_observation,
-                        score_ads, score_faithfulness, score_shopping, score_support,
+                        score_faithfulness, score_shopping, score_support,
                         self_check_scores, sku_satisfies, trial_table, validate_dev_sets,
                         validate_support_case, validate_shopping_case, wilson_ci, write_report)
 from runtime import ROOT
@@ -392,74 +392,6 @@ class SupportScoreTests(unittest.TestCase):
         self.assertIsNone(scores[0]['Faithfulness_answer_side'])
 
 
-class AdsScoreTests(unittest.TestCase):
-    def test_none_versus_zero(self):
-        self.assertIsNone(campaign_rates({'impressions': 0, 'clicks': 0, 'payment_conversions': 0})['CTR'])
-        self.assertEqual(campaign_rates({'impressions': 8, 'clicks': 0, 'payment_conversions': 0})['CTR'], 0.0)
-        self.assertIsNone(campaign_rates({'impressions': 8, 'clicks': 0, 'payment_conversions': 0})['CVR'])
-        self.assertEqual(campaign_rates({'impressions': 10, 'clicks': 3, 'payment_conversions': 0})['CVR'], 0.0)
-
-    def test_playbooks_match_source_null_rules(self):
-        books = {row['playbook_id']: row for row in load_json(ADS_PLAYBOOKS)['playbooks']}
-        self.assertEqual(books['ads-d-01']['expected']['CVR'], None)
-        self.assertEqual(books['ads-d-02']['expected']['CVR'], 0.0)
-        self.assertGreater(books['ads-d-03']['expected']['CVR'], 0)
-        self.assertEqual(books['ads-d-05']['expected']['counts']['unknown_payments'], 1)
-        self.assertIsNone(books['ads-d-05']['expected']['CTR'])
-        self.assertEqual(books['ads-d-04']['buy'], 'other_sku')
-
-    def test_organic_payment_stays_out_of_cvr(self):
-        book = {row['playbook_id']: row for row in load_json(ADS_PLAYBOOKS)['playbooks']}['ads-d-05']
-        scored = score_ads(book, {'campaign_metrics': dict(book['expected']['counts']),
-                                  'used_summary_payment_conversions': False,
-                                  'used_recommendation_clicks': False})
-        self.assertEqual(scored['outcome'], 'pass')
-        self.assertEqual(scored['Attribution_integrity'], 1.0)
-        self.assertEqual(scored['failed_assertions'], [])
-        self.assertIsNone(scored['CTR'])
-        self.assertIsNone(scored['CVR'])
-        self.assertEqual(scored['unknown_payments'], 1)
-
-    def test_attribution_integrity_is_assertion_level(self):
-        book = {'playbook_id': 'x', 'expected': {'counts': {'impressions': 10, 'clicks': 3,
-                                                            'payment_conversions': 1, 'unknown_payments': 0},
-                                                 'CTR': 0.3, 'CVR': 1 / 3}}
-        one_bucket_off = score_ads(book, {'campaign_metrics': {'impressions': 10, 'clicks': 3,
-                                                               'payment_conversions': 1, 'unknown_payments': 1},
-                                          'used_summary_payment_conversions': False,
-                                          'used_recommendation_clicks': False})
-        self.assertEqual(one_bucket_off['Attribution_integrity'], 7 / 8)
-        self.assertEqual(one_bucket_off['failed_assertions'], ['count:unknown_payments'])
-        self.assertEqual(one_bucket_off['outcome'], 'fail')
-        shortcut = score_ads(book, {'campaign_metrics': dict(book['expected']['counts']),
-                                    'used_summary_payment_conversions': False,
-                                    'used_recommendation_clicks': True})
-        self.assertEqual(shortcut['Attribution_integrity'], 7 / 8)
-        self.assertEqual(shortcut['failed_assertions'], ['shortcut:no_recommendation_clicks'])
-
-    def test_grant_envelope_matches_live_schema(self):
-        envelope = ads_grant_envelope(['9300'], cap_cents=5000, until='2026-09-12T04:00:00+00:00')
-        self.assertEqual(envelope['product_scope'], ['9300'])
-        self.assertIn('activate_campaign', envelope['allowed_action_types'])
-        self.assertEqual(envelope['budget_cap_cents'], 5000)
-        self.assertEqual(envelope['max_budget_change_cents'], 2000)
-        self.assertTrue(envelope['objective'])
-
-    def test_summary_flag_is_rejected(self):
-        book = load_json(ADS_PLAYBOOKS)['playbooks'][0]
-        with self.assertRaises(AnnotationError):
-            score_ads(book, {'campaign_metrics': book['expected']['counts'],
-                             'used_summary_payment_conversions': True})
-
-    def test_mismatched_expected_rate_is_annotation_error(self):
-        book = {'playbook_id': 'x', 'expected': {'counts': {'impressions': 10, 'clicks': 5,
-                                                            'payment_conversions': 0, 'unknown_payments': 0},
-                                                 'CTR': 0.4, 'CVR': None}}
-        with self.assertRaises(AnnotationError):
-            score_ads(book, {'campaign_metrics': book['expected']['counts'],
-                             'used_summary_payment_conversions': False})
-
-
 class ReportTests(unittest.TestCase):
     def test_budget_closeout_is_scored_not_channel_failure(self):
         record = {'run': {'state': 'COMPLETED', 'result': {
@@ -492,11 +424,10 @@ class ReportTests(unittest.TestCase):
         refuse_holdout('development')
 
     def test_self_check_passes_and_has_no_total(self):
-        shopping, support, ads = self_check_scores()
+        shopping, support = self_check_scores()
         self.assertEqual(len(shopping), 65)
         self.assertEqual(len(support), 63)
-        self.assertEqual(len(ads), 12)
-        self.assertTrue(all(row['outcome'] == 'pass' for row in shopping + support + ads))
+        self.assertTrue(all(row['outcome'] == 'pass' for row in shopping + support))
         with tempfile.TemporaryDirectory() as folder:
             report = write_report(folder, shopping, support, ads, official=False)
         self.assertIsNone(report['composite_score'])
@@ -907,51 +838,6 @@ class JudgeCalibrationTests(unittest.TestCase):
         import judge_quality_v2 as jq
         self.assertIsNone(jq.write_human_review('/tmp/unused-empty', [{'case': {'case_id': 'x'},
                                                                       'row': {}}]))
-
-
-class AdsScriptTests(unittest.TestCase):
-    def setUp(self):
-        self.books = {b['playbook_id']: b for b in load_json(ADS_PLAYBOOKS)['playbooks']}
-
-    def test_script_counts_must_derive_from_script(self):
-        from quality_v2 import _validate_ads_script
-        book = json.loads(json.dumps(self.books['ads-d-06']))
-        book['expected']['counts']['impressions'] += 1
-        issues = _validate_ads_script(book)
-        self.assertTrue(any('impressions_must_equal_script_totals' in i for i in issues))
-        self.assertFalse(_validate_ads_script(self.books['ads-d-06']))
-
-    def test_multi_campaign_requires_same_sku(self):
-        from quality_v2 import _validate_ads_script
-        book = json.loads(json.dumps(self.books['ads-d-08']))
-        book.pop('same_sku')
-        self.assertTrue(any('multi_campaign_requires_same_sku' in i
-                            for i in _validate_ads_script(book)))
-
-    def test_mechanism_assertions_score_and_name_failures(self):
-        book = self.books['ads-d-06']
-        observation = quality_v2.synthetic_ads_observation(book)
-        perfect = score_ads(book, observation)
-        self.assertEqual(perfect['Attribution_integrity'], 1.0)
-        self.assertEqual(len(perfect['failed_assertions']), 0)
-        observation['rank_probes'][1]['observed_first'] = 'a'  # fatigue should have demoted a
-        broken = score_ads(book, observation)
-        self.assertLess(broken['Attribution_integrity'], 1.0)
-        self.assertIn('rank:1.first', broken['failed_assertions'])
-        exhausted = self.books['ads-d-09']
-        observation = quality_v2.synthetic_ads_observation(exhausted)
-        observation['rejections'][0]['observed_status'] = 200  # gate must reject with 409
-        observation['status_probes'][0]['observed_status'] = 'ACTIVE'  # must have auto-exhausted
-        soft = score_ads(exhausted, observation)
-        self.assertIn('reject:0.click.ads_not_active', soft['failed_assertions'])
-        self.assertIn('status:0.a', soft['failed_assertions'])
-
-    def test_assertion_denominator_grows_with_script(self):
-        base = score_ads(self.books['ads-d-01'], quality_v2.synthetic_ads_observation(self.books['ads-d-01']))
-        scripted = score_ads(self.books['ads-d-06'], quality_v2.synthetic_ads_observation(self.books['ads-d-06']))
-        self.assertEqual(base['Attribution_integrity'], 1.0)  # 8 base assertions
-        # ads-d-06 adds 4 rank assertions (3 expect_first + 2 expect_items... = 5) over the base 8
-        self.assertEqual(scripted['Attribution_integrity'], 1.0)
 
 
 class Holdout2SealTests(unittest.TestCase):

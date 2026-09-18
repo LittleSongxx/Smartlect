@@ -12,7 +12,7 @@ from decimal import Decimal, InvalidOperation
 import pika
 import pymysql
 
-from smartlect.ads.analytics import to_cents
+from smartlect.money import to_cents
 
 QUEUE = "smartlect.growth.commerce.queue"
 BEHAVIORS = {"REPEAT_PURCHASE", "ADD_TO_CART", "REVIEW", "CANCEL", "VIEW", "PAYMENT_ATTEMPT"}

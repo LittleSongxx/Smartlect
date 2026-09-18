@@ -19,20 +19,14 @@ SHOPPING_MANIFEST = CONTRACT_DIR / 'shopping/manifest.json'
 SUPPORT_DEV = CONTRACT_DIR / 'support/dev.jsonl'
 SUPPORT_HOLDOUT = CONTRACT_DIR / 'support/holdout.jsonl'
 SUPPORT_MANIFEST = CONTRACT_DIR / 'support/manifest.json'
-ADS_PLAYBOOKS = CONTRACT_DIR / 'ads/playbooks.json'
-ADS_HOLDOUT_PLAYBOOKS = CONTRACT_DIR / 'ads/holdout-playbooks.json'
-ADS_MANIFEST = CONTRACT_DIR / 'ads/manifest.json'
 # holdout-2：独立密封留出（holdout-1 已烧毁，其文件仅存证不改动）。
 SHOPPING_HOLDOUT2 = CONTRACT_DIR / 'shopping/holdout2.jsonl'
 SUPPORT_HOLDOUT2 = CONTRACT_DIR / 'support/holdout2.jsonl'
-ADS_HOLDOUT2_PLAYBOOKS = CONTRACT_DIR / 'ads/holdout2-playbooks.json'
 # holdout-3：v15 基线后的下一份密封留出（holdout-1/2 均已烧毁）。
 SHOPPING_HOLDOUT3 = CONTRACT_DIR / 'shopping/holdout3.jsonl'
 SUPPORT_HOLDOUT3 = CONTRACT_DIR / 'support/holdout3.jsonl'
-ADS_HOLDOUT3_PLAYBOOKS = CONTRACT_DIR / 'ads/holdout3-playbooks.json'
 HOLDOUT_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout-manifest.json',
-                     'support': CONTRACT_DIR / 'support/holdout-manifest.json',
-                     'ads': CONTRACT_DIR / 'ads/holdout-manifest.json'}
+                     'support': CONTRACT_DIR / 'support/holdout-manifest.json'}
 ARTIFACTS_DIR = ROOT / 'artifacts/quality-v2'
 LEDGER_PATH = ARTIFACTS_DIR / 'rerun-ledger.jsonl'
 
@@ -180,17 +174,6 @@ def catalog_overlay_plan(manifest, catalog=None):
             'extra_hashes': [row['propertyValueIdHash'] for row in extras],
         })
     return {'categories': categories, 'products': plan}
-
-
-def ads_grant_envelope(product_ids, *, cap_cents=5000, max_budget_change_cents=2000, until=None):
-    return {
-        'objective': 'quality-v2 simulated ads traffic; not causal',
-        'product_scope': list(product_ids),
-        'allowed_action_types': ['activate_campaign', 'activate_creative'],
-        'budget_cap_cents': cap_cents,
-        'max_budget_change_cents': max_budget_change_cents,
-        'valid_until': until or (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
-    }
 
 
 def live_support_cases(cases=None):
@@ -514,84 +497,6 @@ def score_support(case, observation):
             'must_not_claim_hit': must_not_claim_hit}
 
 
-def campaign_rates(metrics):
-    if not isinstance(metrics, dict):
-        raise ValueError('campaign_metrics_required')
-    impressions = metrics.get('impressions')
-    clicks = metrics.get('clicks')
-    conversions = metrics.get('payment_conversions')
-    if any(type(value) is not int or value < 0 for value in (impressions, clicks, conversions)):
-        raise ValueError('campaign_counts_must_be_nonnegative_int')
-    ctr = clicks / impressions if impressions else None
-    cvr = conversions / clicks if clicks else None
-    return {'CTR': ctr, 'CVR': cvr, 'impressions': impressions, 'clicks': clicks,
-            'payment_conversions': conversions}
-
-
-ADS_COUNT_KEYS = ('impressions', 'clicks', 'payment_conversions', 'unknown_payments')
-
-
-def score_ads(playbook, observation):
-    if observation.get('setup_failed'):
-        return {'line': 'ads', 'case_id': playbook['playbook_id'], 'outcome': 'setup_failed',
-                'Attribution_integrity': None, 'CTR': None, 'CVR': None,
-                'reason': observation.get('setup_reason') or 'setup_failed'}
-    if observation.get('used_summary_payment_conversions'):
-        raise AnnotationError('forbid_summary_payment_conversions')
-    metrics = dict(observation['campaign_metrics'])
-    expected_counts = playbook['expected']['counts']
-    for key in ADS_COUNT_KEYS:
-        metrics.setdefault(key, 0)
-        expected_counts.setdefault(key, 0)
-    rates = campaign_rates(metrics)
-    documented = campaign_rates(expected_counts)
-    if documented['CTR'] != playbook['expected']['CTR'] or documented['CVR'] != playbook['expected']['CVR']:
-        raise AnnotationError('playbook_expected_rates_must_match_counts:' + playbook['playbook_id'])
-    # Attribution integrity is the single public ads metric: every deterministic
-    # contract of the funnel — bucket counts (incl. attributed conversions and
-    # unknown_payments), rate arithmetic with its null semantics, and the no-shortcut
-    # rules — is one assertion; the denominator is assertions, not playbooks.
-    # The simulated CTR/CVR stay as diagnostic columns, never a causal claim.
-    assertions = [(name, metrics[key] == expected_counts[key]) for name, key in
-                  (('count:' + key, key) for key in ADS_COUNT_KEYS)]
-    assertions += [('rate:CTR', rates['CTR'] == documented['CTR']),
-                   ('rate:CVR', rates['CVR'] == documented['CVR']),
-                   ('shortcut:no_summary_conversions', not observation.get('used_summary_payment_conversions')),
-                   ('shortcut:no_recommendation_clicks', not observation.get('used_recommendation_clicks'))]
-    # Script playbooks add mechanism assertions (rank ordering under fatigue/pacing,
-    # budget-exhaustion rejections). Same denominator discipline: each scripted
-    # expectation is one assertion, named for attribution.
-    probes = observation.get('rank_probes') or []
-    rejections = observation.get('rejections') or []
-    status_probes = observation.get('status_probes') or []
-    script = playbook.get('script') or []
-    probe_steps = [step for step in script if step.get('op') == 'probe_rank']
-    reject_steps = [step for step in script if step.get('op') == 'reject']
-    status_steps = [step for step in script if step.get('op') == 'probe_status']
-    for index, step in enumerate(probe_steps):
-        observed = probes[index] if index < len(probes) else {}
-        assertions.append((f'rank:{index}.first', observed.get('observed_first') == step.get('expect_first')))
-        if type(step.get('expect_items')) is int:
-            assertions.append((f'rank:{index}.items', observed.get('observed_items') == step['expect_items']))
-    for index, step in enumerate(reject_steps):
-        observed = rejections[index] if index < len(rejections) else {}
-        assertions.append((f'reject:{index}.{step.get("http")}.{step.get("error")}',
-                           observed.get('observed_status') == 409
-                           and step.get('error') in str(observed.get('observed_error') or '')))
-    for index, step in enumerate(status_steps):
-        observed = status_probes[index] if index < len(status_probes) else {}
-        assertions.append((f'status:{index}.{step.get("slot")}',
-                           observed.get('observed_status') == step.get('expect_status')
-                           and observed.get('observed_pause_reason') == step.get('expect_pause_reason')))
-    integrity = sum(1 for _, ok in assertions if ok) / len(assertions)
-    passed = integrity == 1.0
-    return {'line': 'ads', 'case_id': playbook['playbook_id'], 'outcome': 'pass' if passed else 'fail',
-            'Attribution_integrity': integrity,
-            'failed_assertions': [name for name, ok in assertions if not ok],
-            **rates, 'unknown_payments': metrics['unknown_payments'],
-            'simulated_not_causal': True, 'Pass@1': 1 if passed else 0}
-
-
 def mean(values):
     numbers = [value for value in values if value is not None]
     if not numbers:
@@ -683,120 +588,19 @@ def validate_support_case(case, problems, split='development'):
                 problems.append(f'{cid}: empty_{field}')
 
 
-def validate_ads_playbooks(books, problems):
-    kinds = {book.get('kind') for book in books}
-    required = {'impressions_only', 'clicks_no_payment', 'attributed_payment'}
-    if not required <= kinds:
-        problems.append('ads_missing_required_kinds:' + ','.join(sorted(required - kinds)))
-    for book in books:
-        pid = book.get('playbook_id')
-        counts = book['expected']['counts']
-        for key in ADS_COUNT_KEYS:
-            counts.setdefault(key, 0)
-        rates = campaign_rates(counts)
-        if rates['CTR'] != book['expected']['CTR'] or rates['CVR'] != book['expected']['CVR']:
-            problems.append(f'{pid}: expected_rates_must_match_counts')
-        if counts['clicks'] > counts['impressions']:
-            problems.append(f'{pid}: clicks_exceed_impressions')
-        if not counts['clicks'] and counts['payment_conversions']:
-            problems.append(f'{pid}: conversions_without_clicks')
-        if counts['payment_conversions'] > max(counts['clicks'], counts['unknown_payments']):
-            problems.append(f'{pid}: conversions_exceed_clicks_and_unknown')
-        if book.get('buy') not in {None, 'ad_sku', 'other_sku'}:
-            problems.append(f'{pid}: unknown_buy_target')
-        if counts['payment_conversions'] and not book.get('buy'):
-            problems.append(f'{pid}: attributed_payments_need_buy_target')
-        if book.get('kind') == 'organic_payment' and counts['unknown_payments'] < 1:
-            problems.append(f'{pid}: organic_payment_needs_unknown_payments')
-        if 'script' in book:
-            problems.extend(_validate_ads_script(book))
-
-
-def _validate_ads_script(book):
-    """Script playbooks (fatigue/pacing/budget mechanics): the script itself must
-    be internally consistent — counts derive from the script, ops reference real
-    slots, and dual-campaign books require same_sku (the relevance-tie precondition
-    that makes ordering deterministic)."""
-    pid = book['playbook_id']
-    issues = []
-    if 'traffic' in book:
-        issues.append(f'{pid}: script_playbook_cannot_also_define_traffic')
-    campaigns = book.get('campaigns') or []
-    if not campaigns:
-        issues.append(f'{pid}: script_playbook_needs_campaigns')
-    creative_slots = set()
-    for spec in campaigns:
-        slot = spec.get('slot')
-        budget, cpc = spec.get('budget_cents'), spec.get('cpc_cents')
-        if slot in {None, ''} or (isinstance(slot, str) and not slot.strip()):
-            issues.append(f'{pid}: campaign_slot_missing')
-            continue
-        if slot in creative_slots:
-            issues.append(f'{pid}: duplicate_campaign_slot:{slot}')
-        for creative in spec.get('creatives') or [slot]:
-            if creative in creative_slots:
-                issues.append(f'{pid}: duplicate_creative_slot:{creative}')
-            creative_slots.add(creative)
-        if type(budget) is not int or type(cpc) is not int or budget < cpc or cpc < 1:
-            issues.append(f'{pid}: campaign_budget_must_cover_cpc:{slot}')
-    if len(campaigns) > 1 and not book.get('same_sku'):
-        issues.append(f'{pid}: multi_campaign_requires_same_sku')
-    campaign_slots = {spec.get('slot') for spec in campaigns}
-    derived = {'impressions': 0, 'clicks': 0, 'payment_conversions': 0, 'unknown_payments': 0}
-    for index, step in enumerate(book.get('script') or []):
-        op = step.get('op')
-        label = f'{pid}.script[{index}]'
-        if op in ('expose', 'click'):
-            if step.get('slot') not in creative_slots:
-                issues.append(f'{label}: unknown_creative_slot:{step.get("slot")}')
-            if type(step.get('count')) is not int or not 1 <= step['count'] <= 50:
-                issues.append(f'{label}: count_out_of_range')
-            else:
-                derived['impressions' if op == 'expose' else 'clicks'] += step['count']
-        elif op == 'probe_rank':
-            expect = step.get('expect_first', '')
-            if expect is not None and expect not in creative_slots:
-                issues.append(f'{label}: expect_first_not_a_slot:{expect}')
-            if step.get('as_actor') not in {None, 'user_a', 'user_b'}:
-                issues.append(f'{label}: unsupported_probe_actor')
-            if type(step.get('expect_items')) is int and not 0 <= step['expect_items'] <= 4:
-                issues.append(f'{label}: expect_items_out_of_range')
-        elif op == 'reject':
-            if step.get('http') not in {'click', 'exposure'}:
-                issues.append(f'{label}: reject_http_unknown')
-            if step.get('slot') not in creative_slots:
-                issues.append(f'{label}: unknown_creative_slot:{step.get("slot")}')
-            if step.get('error') not in {'ads_not_active', 'ads_budget_exhausted'}:
-                issues.append(f'{label}: reject_error_unsupported')
-        elif op == 'probe_status':
-            if step.get('slot') not in campaign_slots:
-                issues.append(f'{label}: unknown_campaign_slot:{step.get("slot")}')
-            if step.get('expect_status') not in {'ACTIVE', 'EXHAUSTED'}:
-                issues.append(f'{label}: expect_status_unsupported')
-            if not isinstance(step.get('expect_pause_reason'), str) or not step['expect_pause_reason'].strip():
-                issues.append(f'{label}: expect_pause_reason_missing')
-        else:
-            issues.append(f'{label}: unknown_op:{op}')
-    expected = book['expected']['counts']
-    for key in ADS_COUNT_KEYS:
-        if expected[key] != derived[key]:
-            issues.append(f'{pid}: {key}_must_equal_script_totals:{expected[key]}!={derived[key]}')
-    return issues
-
-
 def dataset_paths(split='development'):
     if split == 'development':
-        return {'shopping': SHOPPING_DEV, 'support': SUPPORT_DEV, 'ads': ADS_PLAYBOOKS}
+        return {'shopping': SHOPPING_DEV, 'support': SUPPORT_DEV}
     if split == 'holdout':
-        return {'shopping': SHOPPING_HOLDOUT, 'support': SUPPORT_HOLDOUT, 'ads': ADS_HOLDOUT_PLAYBOOKS}
+        return {'shopping': SHOPPING_HOLDOUT, 'support': SUPPORT_HOLDOUT}
     if split == 'holdout2':
-        return {'shopping': SHOPPING_HOLDOUT2, 'support': SUPPORT_HOLDOUT2, 'ads': ADS_HOLDOUT2_PLAYBOOKS}
+        return {'shopping': SHOPPING_HOLDOUT2, 'support': SUPPORT_HOLDOUT2}
     if split == 'holdout3':
-        return {'shopping': SHOPPING_HOLDOUT3, 'support': SUPPORT_HOLDOUT3, 'ads': ADS_HOLDOUT3_PLAYBOOKS}
+        return {'shopping': SHOPPING_HOLDOUT3, 'support': SUPPORT_HOLDOUT3}
     raise ValueError('unknown_split:' + split)
 
 
-def validate_dev_sets(lines=('shopping', 'support', 'ads'), split='development'):
+def validate_dev_sets(lines=('shopping', 'support'), split='development'):
     """Upfront annotation consistency. A wrong dataset fails the run, never the case."""
     problems = []
     paths = dataset_paths(split)
@@ -807,14 +611,12 @@ def validate_dev_sets(lines=('shopping', 'support', 'ads'), split='development')
     if 'support' in lines:
         for case in load_jsonl(paths['support']):
             validate_support_case(case, problems, split)
-    if 'ads' in lines:
-        validate_ads_playbooks(load_json(paths['ads'])['playbooks'], problems)
     if problems:
         raise AnnotationError(f'{split}_set_annotation_error\n' + '\n'.join(problems))
     return True
 
 
-def holdout_ready(lines=('shopping', 'support', 'ads')):
+def holdout_ready(lines=('shopping', 'support')):
     missing = [line for line in lines if not HOLDOUT_MANIFESTS[line].exists()]
     if missing:
         raise ValueError('holdout_questions_not_authored:' + ','.join(missing))
@@ -822,16 +624,14 @@ def holdout_ready(lines=('shopping', 'support', 'ads')):
 
 
 HOLDOUT2_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout2-manifest.json',
-                      'support': CONTRACT_DIR / 'support/holdout2-manifest.json',
-                      'ads': CONTRACT_DIR / 'ads/holdout2-manifest.json'}
+                      'support': CONTRACT_DIR / 'support/holdout2-manifest.json'}
 
 
 HOLDOUT3_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout3-manifest.json',
-                      'support': CONTRACT_DIR / 'support/holdout3-manifest.json',
-                      'ads': CONTRACT_DIR / 'ads/holdout3-manifest.json'}
+                      'support': CONTRACT_DIR / 'support/holdout3-manifest.json'}
 
 
-def holdout3_ready(lines=('shopping', 'support', 'ads')):
+def holdout3_ready(lines=('shopping', 'support')):
     """Seal gate for holdout-3: runable only after every line's manifest is stamped.
     Draft stage validates offline but never runs — first test is final test."""
     missing = [line for line in lines if not HOLDOUT3_MANIFESTS[line].exists()]
@@ -840,7 +640,7 @@ def holdout3_ready(lines=('shopping', 'support', 'ads')):
     return True
 
 
-def holdout2_ready(lines=('shopping', 'support', 'ads')):
+def holdout2_ready(lines=('shopping', 'support')):
     """Seal gate for holdout-2: runable only after every line's manifest is stamped.
 
     Draft stage (questions authored, user review pending) can validate offline
@@ -992,38 +792,15 @@ def synthetic_support_observation(case):
     return {'result': result, 'tool_calls': tools}
 
 
-def synthetic_ads_observation(playbook):
-    counts = dict(playbook['expected']['counts'])
-    for key in ADS_COUNT_KEYS:
-        counts.setdefault(key, 0)
-    # A perfect scripted trajectory: every probe sees its expected ordering and
-    # every expected rejection came back as the designed 409.
-    probes = [{'expect_first': step.get('expect_first'),
-               'observed_first': step.get('expect_first'),
-               'observed_items': step.get('expect_items', 2)}
-              for step in playbook.get('script') or [] if step.get('op') == 'probe_rank']
-    rejections = [{'op': step.get('http'), 'observed_status': 409,
-                   'observed_error': 'StateError:' + step.get('error', '')}
-                  for step in playbook.get('script') or [] if step.get('op') == 'reject']
-    status_probes = [{'slot': step.get('slot'),
-                      'observed_status': step.get('expect_status'),
-                      'observed_pause_reason': step.get('expect_pause_reason')}
-                     for step in playbook.get('script') or [] if step.get('op') == 'probe_status']
-    return {'campaign_metrics': counts, 'used_summary_payment_conversions': False,
-            'used_recommendation_clicks': False,
-            'rank_probes': probes, 'rejections': rejections, 'status_probes': status_probes}
-
-
 def self_check_scores():
     validate_dev_sets()
     shopping = [score_shopping(case, synthetic_shopping_observation(case)) for case in load_jsonl(SHOPPING_DEV)]
     support = [score_support(case, synthetic_support_observation(case)) for case in load_jsonl(SUPPORT_DEV)]
-    ads = [score_ads(book, synthetic_ads_observation(book)) for book in load_json(ADS_PLAYBOOKS)['playbooks']]
-    return shopping, support, ads
+    return shopping, support
 
 
 def _iter_case_rows(summary):
-    for line in ('shopping', 'support', 'ads'):
+    for line in ('shopping', 'support'):
         for row in (summary.get('cases') or {}).get(line) or []:
             yield row
 
@@ -1090,7 +867,7 @@ def append_rerun_ledger(output_dir, report, *, artifacts_dir=None):
     return entries
 
 
-def write_report(output_dir, shopping, support, ads, *, official=False, partial=False, synthetic=False,
+def write_report(output_dir, shopping, support, *, official=False, partial=False, synthetic=False,
                  trials=1):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1106,23 +883,21 @@ def write_report(output_dir, shopping, support, ads, *, official=False, partial=
         'synthetic': synthetic,
         'trials': trials,
         'composite_score': None,
-        'note': '三条主线分开展示，不合成总分。模拟广告比率不是效果或因果。'
+        'note': '主线分开展示，不合成总分。'
                 + (' 本 run 仅重跑部分案例，不是完整开发集成绩。' if partial else '')
                 + (' 合成观测自检，只验证评分链路，不是系统成绩。' if synthetic else '')
                 + (f' 导购/客服每题独立 {trials} 次试验（各自 fresh scenario）；'
-                   f'pass^k=全部 k 次试验都通过的题占比；ads 为确定性模拟跑单次。' if trials > 1 else ''),
+                   f'pass^k=全部 k 次试验都通过的题占比。' if trials > 1 else ''),
         'provenance': provenance(),
         'shopping': aggregate_line('shopping', shopping, ('Precision@4/ceiling', 'Precision@4',
                                                         'Precision@4_ceiling', 'Pass@1'),
                                    trial_level_names=('violation_free@1', 'empty_set_honesty')),
         'support': support_summary,
-        'ads': aggregate_line('ads', ads, ('Attribution_integrity', 'CTR', 'CVR', 'Pass@1')),
-        'cases': {'shopping': shopping, 'support': support, 'ads': ads},
+        'cases': {'shopping': shopping, 'support': support},
     }
     if trials > 1:
         report['per_case_trials'] = {name: trial_table(rows)
-                                     for name, rows in (('shopping', shopping), ('support', support),
-                                                        ('ads', ads))
+                                     for name, rows in (('shopping', shopping), ('support', support))
                                      if any(row.get('trial') is not None for row in rows)}
     path = output_dir / 'summary.json'
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')

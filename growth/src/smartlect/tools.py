@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from smartlect.commerce import CommerceError, CommerceRejected, ORDER_ACTION_STATUS_PATH
 from smartlect import prompts
-from smartlect.ads.analytics import to_cents
+from smartlect.money import to_cents
 from smartlect.business_skills import load_skill
 from smartlect.knowledge import compose_search_query
 from smartlect.provider import ProviderError

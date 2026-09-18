@@ -63,7 +63,7 @@ def login_merchant(client, config):
 
 
 def cents(value):
-    from smartlect.ads.analytics import to_cents
+    from smartlect.money import to_cents
     return to_cents(str(value))
 
 

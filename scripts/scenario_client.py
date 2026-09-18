@@ -18,7 +18,7 @@ from eval_support import cents, login_merchant, proposal_from
 from runtime import ROOT, ENV_FILE, model_env, parse_env
 from smartlect.commerce import CommerceClient
 from smartlect.events import Ledger, connect_from_env
-from smartlect.merchant.store import MerchantStore
+from smartlect.adminscope import AdminScopeStore
 
 
 def now():
@@ -45,7 +45,7 @@ class ScenarioClient:
         for key, value in self.config.items():
             if key.startswith(('SMARTLECT_GROWTH_MYSQL_', 'SMARTLECT_MYSQL_')):
                 os.environ[key] = value
-        self.java, self.store, self.ledger = CommerceClient(self.config), MerchantStore(), Ledger()
+        self.java, self.store, self.ledger = CommerceClient(self.config), AdminScopeStore(), Ledger()
         self.clients = ExitStack()
         self.user = self.clients.enter_context(httpx.Client(base_url=self.base, timeout=35, trust_env=False))
         self.merchant = self.clients.enter_context(httpx.Client(base_url=self.base, timeout=60, trust_env=False))
@@ -349,26 +349,3 @@ class ScenarioClient:
                    'Repeated confirmation restores neither money nor stock twice')
         self.evidence.update(refund_confirmation=refund, ledger=financial, attribution=report, final_stock=final_stock)
         self.save()
-
-    def merchant_run(self, objective):
-        request = {'request_id': uuid.uuid4().hex, 'objective': objective, 'mode': self.mode,
-                   'product_scope': self.manifest['products'], 'planned_budget_cents': 400}
-        record = {'domain': 'merchant', 'request': request, 'started_at': now()}
-        self.evidence['model_runs'].append(record)
-        self.save()
-        created = self.request('merchant/runs', request, merchant=True)
-        self.check(bool(created.get('agent_run_id')), 'New Merchant observation creates a bounded run')
-        record['agent_run_id'] = created['agent_run_id']
-        def read():
-            record['run'] = self.request('merchant/runs/' + created['agent_run_id'], merchant=True)
-            self.save()
-            return record['run']
-        run = self.wait(read, lambda r: r['state'] not in {'CREATED', 'RUNNING'}, 'Merchant bounded planning completes', timeout=95)
-        self.require_model_mode(run)
-        snapshot = self.request('merchant', merchant=True)
-        plan = next(p for p in snapshot['plans'] if p['agent_run_id'] == created['agent_run_id'])
-        record.update(plan=plan, observation=next(o for o in snapshot['observations'] if o['observation_id'] == plan['observation_id']),
-                      completed_at=now())
-        self.check(len(plan['spec']['actions']) <= 8, 'Merchant plan remains within its finite action limit')
-        self.save()
-        return record

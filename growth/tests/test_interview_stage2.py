@@ -157,14 +157,11 @@ class InterviewStage2Tests(unittest.IsolatedAsyncioTestCase):
         from smartlect.tools import invoke
         from smartlect.knowledge import KnowledgeStore
         from smartlect import app
-        from smartlect.merchant import service as merchant_service
         self.assertIn("gen_ai_span", inspect.getsource(Provider._request))
         self.assertIn("execute_tool", inspect.getsource(invoke))
         self.assertIn("retrieve knowledge", inspect.getsource(KnowledgeStore.search))
         app_src = Path(app.__file__).read_text()
-        merchant_src = Path(merchant_service.__file__).read_text()
         self.assertIn("invoke_agent shopping", app_src)
-        self.assertIn("invoke_agent merchant", merchant_src)
 
     def test_checkpointer_is_memory_without_dsn(self):
         reset_for_tests()

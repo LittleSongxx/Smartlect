@@ -5,7 +5,7 @@ import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from smartlect.ads.analytics import to_cents
+from smartlect.money import to_cents
 from smartlect.state import StateError
 
 

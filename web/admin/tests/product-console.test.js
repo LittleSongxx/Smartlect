@@ -7,11 +7,14 @@ describe('商家后台商品与经营入口', () => {
     expect(routes.some((route) => route.name === 'Layout' && route.children?.some((child) => child.name === 'product'))).toBe(true);
   });
 
-  it('经营四页仍可进入', async () => {
+  it('知识库与人工客服页仍可进入，退役经营页已从路由表移除', async () => {
     const router = createAdminRouter(createMemoryHistory());
-    for (const name of ['merchant', 'ads', 'knowledge', 'support', 'reviewAnalysis', 'growthReport']) {
+    for (const name of ['knowledge', 'support']) {
       await router.push({ name });
       expect(router.currentRoute.value.name).toBe(name);
+    }
+    for (const name of ['merchant', 'ads', 'reviewAnalysis', 'growthReport']) {
+      expect(routes.some((route) => route.children?.some((child) => child.name === name))).toBe(false);
     }
   });
 });

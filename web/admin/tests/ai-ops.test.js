@@ -243,29 +243,6 @@ it('prompt skill view edits a draft and activates a rollback with confirmation',
 
 const editValue = (wrapper) => wrapper.find('textarea').element.value
 
-it('retired analytics pages stay reachable and marked disabled', async () => {
-  const { default: DisabledFeatureView } = await import('../src/views/common/DisabledFeatureView.vue')
-  const { createMemoryHistory } = await import('vue-router')
-  const { createAdminRouter } = await import('../src/router.js')
-  const router = createAdminRouter(createMemoryHistory())
-  await router.push('/reviewAnalysis')
-  const review = mount(DisabledFeatureView, {
-    global: { plugins: [ElementPlus, router], components: sharedComponents },
-  })
-  await flushPromises()
-  expect(review.text()).toContain('此功能已停用')
-  expect(review.text()).toContain('评价分析已停用')
-  review.unmount()
-
-  await router.push('/growthReport')
-  const growth = mount(DisabledFeatureView, {
-    global: { plugins: [ElementPlus, router], components: sharedComponents },
-  })
-  await flushPromises()
-  expect(growth.text()).toContain('增长报告已停用')
-  growth.unmount()
-})
-
 it('growth 业务错误码给中文提示，不把机器码摆给管理员', async () => {
   const { errorText } = await import('../src/api/client')
   expect(errorText(new Error('no_comments'))).toBe('这件商品还没有评价，先有评价才能生成分析。')

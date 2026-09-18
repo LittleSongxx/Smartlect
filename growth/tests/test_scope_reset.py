@@ -79,7 +79,7 @@ class ResetCoordinatorTests(unittest.TestCase):
 
 
 class ScopeResetHttpTests(unittest.IsolatedAsyncioTestCase):
-    async def test_retired_business_writes_and_new_recommendations_are_blocked_but_history_and_csrf_scope_exit_work(self):
+    async def test_retired_business_writes_and_new_recommendations_are_blocked_but_csrf_scope_exit_works(self):
         from smartlect.app import create_app
         origin='http://smartlect.test'; selected=['retired']
         config={'SMARTLECT_USER_PORT':'18105','SMARTLECT_INTERNAL_TOKEN':'synthetic-only','SMARTLECT_VISITOR_SECRET':'v'*48,'SMARTLECT_ALLOWED_ORIGINS':origin}
@@ -91,23 +91,19 @@ class ScopeResetHttpTests(unittest.IsolatedAsyncioTestCase):
         attribution=SimpleNamespace(resolve_actor=lambda actor:actor.model_copy(update={'execution_scope_id':'retired'}),
             assert_scope_writable=Mock(side_effect=StateError('execution_scope_retired',410)))
         def select(actor,scope):selected[0]=scope;return actor.model_copy(update={'execution_scope_id':scope})
-        merchant=SimpleNamespace(store=SimpleNamespace(selected_actor=lambda actor:actor.model_copy(update={'execution_scope_id':selected[0]}),select_scope=Mock(side_effect=select)))
-        ads=SimpleNamespace(store=SimpleNamespace(snapshot=Mock(return_value={'history':'retained'})),create_campaign=AsyncMock())
+        adminscope=SimpleNamespace(selected_actor=lambda actor:actor.model_copy(update={'execution_scope_id':selected[0]}),select_scope=Mock(side_effect=select))
         recommendations=SimpleNamespace(recommend=AsyncMock())
         app=create_app(Settings(),config=config,store=SimpleNamespace(connect=lambda:None),identity=bridge,
-                       attribution=attribution,ads=ads,merchant=merchant,recommendations=recommendations)
+                       attribution=attribution,adminscope=adminscope,recommendations=recommendations)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app),base_url=origin) as client:
             client.cookies.set('adminToken','synthetic-admin');client.cookies.set('token','synthetic-user')
             session=(await client.get('/admin-api/assistant/session')).json()
             headers={'Origin':origin,'X-CSRF-Token':session['csrf_token']}
-            body={'campaign_id':'c','name':'retired','product_id':'p','sku_key':'s','budget_cents':10,'cpc_cents':1}
-            self.assertEqual((await client.post('/admin-api/assistant/ads/campaigns',json=body,headers=headers)).status_code,410)
-            ads.create_campaign.assert_not_awaited()
-            self.assertEqual((await client.get('/admin-api/assistant/ads')).json(),{'history':'retained'})
+            self.assertEqual((await client.post('/admin-api/assistant/merchant/runs',json={},headers=headers)).status_code,404)
             self.assertEqual((await client.get('/api/assistant/recommendations')).status_code,410)
             recommendations.recommend.assert_not_awaited()
             self.assertEqual((await client.post('/admin-api/assistant/scopes/select',json={'execution_scope_id':'store'})).status_code,403)
-            merchant.store.select_scope.assert_not_called()
+            adminscope.select_scope.assert_not_called()
             fresh=(await client.get('/admin-api/assistant/session')).json()
             headers={'Origin':origin,'X-CSRF-Token':fresh['csrf_token']}
             switched=await client.post('/admin-api/assistant/scopes/select',json={'execution_scope_id':'store'},headers=headers)

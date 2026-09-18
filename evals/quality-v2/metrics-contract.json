@@ -5,8 +5,7 @@
     "Pass@1",
     "Precision@4/ceiling",
     "Recall@8",
-    "Faithfulness",
-    "Attribution_integrity"
+    "Faithfulness"
   ],
   "no_composite_score": true,
   "case_outcomes": [
@@ -91,7 +90,16 @@
     "faithfulness_empty_claims": null,
     "faithfulness_on_citation_cleared": null,
     "must_not_claim_consumed": "uncued hit in final answer fails the case",
-    "negation_cues": ["不", "没", "未", "非", "别", "无", "勿", "莫"],
+    "negation_cues": [
+      "不",
+      "没",
+      "未",
+      "非",
+      "别",
+      "无",
+      "勿",
+      "莫"
+    ],
     "negation_window_chars": 8,
     "forbidden_claims_consumed": "verbatim hit in final answer fails the case",
     "handoff_is_aux_pass": true,
@@ -144,64 +152,6 @@
       "enters_public_score": false,
       "judge_prompt_version": "qv2-judge-answer-side-v1"
     }
-  },
-  "ads": {
-    "metrics": [
-      "CTR",
-      "CVR"
-    ],
-    "ctr": "clicks / impressions",
-    "cvr": "campaign.metrics.payment_conversions / clicks",
-    "impressions_zero_ctr": null,
-    "clicks_zero_cvr": null,
-    "clicks_without_payment_cvr": 0.0,
-    "unknown_payments_counted": true,
-    "unknown_payments_enter_cvr": false,
-    "forbid_summary_payment_conversions": true,
-    "simulated_not_causal": true,
-    "playbook_kinds": [
-      "impressions_only",
-      "clicks_no_payment",
-      "attributed_payment",
-      "organic_payment",
-      "fatigue_reorder",
-      "fatigue_viewer_isolation",
-      "pacing_partial_spend",
-      "budget_exhaustion_gate",
-      "pacing_near_exhaustion",
-      "fatigue_creative_granularity"
-    ],
-    "buy_targets": [
-      "ad_sku",
-      "other_sku"
-    ],
-    "attribution_integrity": {
-      "definition": "passed deterministic assertions / total assertions; denominator is assertions, not playbooks",
-      "assertions": [
-        "count:impressions",
-        "count:clicks",
-        "count:payment_conversions",
-        "count:unknown_payments",
-        "rate:CTR",
-        "rate:CVR",
-        "shortcut:no_summary_conversions",
-        "shortcut:no_recommendation_clicks"
-      ],
-      "playbook_gate": "Pass@1 requires integrity == 1.0",
-      "script_playbooks": {
-        "note": "v6.1 additive: mechanism playbooks ads-d-06..11 add assertions on top of the base 8",
-        "assertions": [
-          "rank:N.first",
-          "rank:N.items",
-          "reject:N.<op>.<error>",
-          "status:N.<slot>"
-        ],
-        "counts_derive_from_script": "AnnotationError on mismatch",
-        "multi_campaign_requires_same_sku": true,
-        "exhaustion_semantics": "final in-budget click auto-transitions campaign to EXHAUSTED/budget_exhausted; later ops 409 ads_not_active and the campaign leaves delivery candidates"
-      }
-    },
-    "ctr_cvr_are_diagnostics": true
   },
   "headline_revision_v6": {
     "reason": "名实对齐与正规化，非刷分：导购 P@4 换 NDCG 式贴满率（同槽位同分母，仅除以可达 ceiling，raw P@4 与 ceiling 保留诊断列）；广告公开分从模拟 CTR/CVR（确定性校验伪装成效果比率）改为归因完整性（断言级分母），CTR/CVR 降为诊断列。",
