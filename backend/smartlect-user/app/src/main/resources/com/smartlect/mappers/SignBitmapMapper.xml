@@ -4,7 +4,7 @@
 <mapper namespace="com.smartlect.mappers.SignBitmapMapper">
 
     <insert id="insertBitIfAbsent">
-        insert ignore into sign_bitmap (user_id, year_month, bits)
+        insert ignore into sign_bitmap (user_id, `year_month`, bits)
         values (#{userId}, #{yearMonth}, #{mask})
     </insert>
 
@@ -12,7 +12,7 @@
         update sign_bitmap
         set bits = bits | #{mask}
         where user_id = #{userId}
-          and year_month = #{yearMonth}
+          and `year_month` = #{yearMonth}
           and (bits &amp; #{mask}) = 0
     </update>
 
