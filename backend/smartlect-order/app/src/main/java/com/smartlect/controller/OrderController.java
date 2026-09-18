@@ -22,6 +22,8 @@ import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderItemService;
 import com.smartlect.biz.OrderLogisticsInfoService;
 import com.smartlect.biz.OrderRequestIdempotencyService;
+import com.smartlect.state.OrderStateEvent;
+import com.smartlect.state.OrderStateMachine;
 import com.smartlect.integration.RecommendationAttributionClient;
 import com.smartlect.utils.OrderPayAmountUtil;
 import com.smartlect.utils.StringTools;
@@ -42,6 +44,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 @RequestMapping("/order")
@@ -50,6 +53,9 @@ public class OrderController extends ABaseController{
 
     @Resource
     private OrderInfoService orderInfoService;
+
+    @Resource
+    private OrderStateMachine orderStateMachine;
 
     @Resource
     private OrderItemService orderItemService;
@@ -200,9 +206,13 @@ public class OrderController extends ABaseController{
 				!OrderStatusEnum.REFUNDED.getStatus().equals(orderInfo.getOrderStatus()) ){
             throw new BusinessException("当前订单状态无法删除！");
         }
-        // 删除订单
-        orderInfo.setOrderStatus(OrderStatusEnum.DELETE.getStatus());
-        orderInfoService.updateOrderInfoByOrderId(orderInfo,orderId);
+        // 删除订单（状态机 CAS：终态→DELETE；0 行说明并发下状态已变，拒绝而非盲目覆写）
+        if (orderStateMachine.transition(orderId,
+                Set.of(OrderStatusEnum.COMPLETED, OrderStatusEnum.CANCELLED,
+                        OrderStatusEnum.CLOSED, OrderStatusEnum.REFUNDED),
+                OrderStateEvent.DELETE) == 0) {
+            throw new BusinessException("当前订单状态无法删除！");
+        }
         return getSuccessResponseVO(null);
     }
 

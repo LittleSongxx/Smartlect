@@ -17,6 +17,8 @@ import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderLogisticsInfoRecordService;
 import com.smartlect.biz.OrderLogisticsInfoService;
 import com.smartlect.support.MqIdempotencyKeys;
+import com.smartlect.state.OrderStateEvent;
+import com.smartlect.state.OrderStateMachine;
 import com.smartlect.utils.StringTools;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
@@ -72,6 +74,9 @@ public class RabbitMQPayOrderDeadListenerComponent {
 
     @Resource
     private OrderInfoService orderInfoService;
+
+    @Resource
+    private OrderStateMachine orderStateMachine;
     @Resource
     private OrderLogisticsInfoService orderLogisticsInfoService;
     @Resource
@@ -260,8 +265,11 @@ public class RabbitMQPayOrderDeadListenerComponent {
                 orderLogisticsInfo.setLogisticsCompany("顺丰");
                 orderLogisticsInfo.setLogisticsNo(
                         "SF" + StringTools.getRandomNumber(Constants.LENGTH_30));
-                orderInfo.setOrderStatus(OrderStatusEnum.SHIPPED.getStatus());
-                orderInfoService.updateOrderInfoByOrderId(orderInfo, orderId);
+                // 状态机 CAS：PAID→SHIPPED。0 行说明并发下已被发货（如管理员手工发货），
+                // 保持旧逻辑的推进语义：不报错、不重复写状态，继续后续物流推进。
+                if (orderStateMachine.transition(orderId, OrderStatusEnum.PAID, OrderStateEvent.SHIP) == 0) {
+                    log.info("模拟物流发货被并发抢先 orderId={}，按已发货继续推进", orderId);
+                }
                 OrderLogisticsInfoQuery logisticsQuery = new OrderLogisticsInfoQuery();
                 logisticsQuery.setOrderId(orderId);
                 orderLogisticsInfoService.updateByParam(orderLogisticsInfo, logisticsQuery);

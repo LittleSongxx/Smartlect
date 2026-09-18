@@ -36,11 +36,21 @@ class OrderLogisticsOutboxTest {
     @Mock
     private OrderInfoService orderInfoService;
     @Mock
+    private com.smartlect.mappers.OrderInfoMapper<com.smartlect.entity.po.OrderInfo,
+            com.smartlect.entity.query.OrderInfoQuery> orderInfoMapper;
+    @Mock
     private TransactionalMqSender transactionalMqSender;
     @Mock
     private OrderNotificationPublisher orderNotificationPublisher;
     @InjectMocks
     private OrderLogisticsInfoServiceImpl service;
+
+    @org.junit.jupiter.api.BeforeEach
+    void wireStateMachine() {
+        com.smartlect.state.OrderStateMachine machine = new com.smartlect.state.OrderStateMachine();
+        org.springframework.test.util.ReflectionTestUtils.setField(machine, "orderInfoMapper", orderInfoMapper);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "orderStateMachine", machine);
+    }
 
     @Test
     void deliveryRegistersConfirmAndNotificationMessagesInOutbox() {
@@ -49,8 +59,8 @@ class OrderLogisticsOutboxTest {
         logistics.setLogisticsNo("L123");
         logistics.setSenderAddress("上海");
         when(mapper.updateByParam(any(), any())).thenReturn(1);
-        when(orderInfoService.updateByParam(any(OrderInfo.class), any(OrderInfoQuery.class)))
-                .thenReturn(1);
+        when(orderInfoMapper.updateByParam(any(com.smartlect.entity.po.OrderInfo.class),
+                any(com.smartlect.entity.query.OrderInfoQuery.class))).thenReturn(1);
         OrderInfo shipped = new OrderInfo();
         shipped.setUserId("u1");
         when(orderInfoService.getOrderInfoByOrderId("o1")).thenReturn(shipped);

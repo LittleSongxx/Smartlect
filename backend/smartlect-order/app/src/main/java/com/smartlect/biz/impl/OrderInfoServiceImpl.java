@@ -26,6 +26,8 @@ import com.smartlect.entity.po.*;
 import com.smartlect.entity.query.*;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.exception.BusinessException;
+import com.smartlect.state.OrderStateEvent;
+import com.smartlect.state.OrderStateMachine;
 import com.smartlect.exception.PayOrderLifecycleBusyException;
 import com.smartlect.mappers.OrderCouponRelMapper;
 import com.smartlect.mappers.OrderInfoMapper;
@@ -54,6 +56,9 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 
 	@Resource
 	private OrderInfoMapper<OrderInfo, OrderInfoQuery> orderInfoMapper;
+
+	@Resource
+	private OrderStateMachine orderStateMachine;
 
 	@Resource
 	private StockFeignSupport stockFeignSupport;
@@ -713,17 +718,9 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		if (!OrderStatusEnum.WAIT_PAYMENT.getStatus().equals(orderInfo.getOrderStatus())) {
 			throw new BusinessException("当前订单状态不能取消");
 		}
-		OrderInfo updateBean = new OrderInfo();
-		if (userId != null) {
-			updateBean.setOrderStatus(OrderStatusEnum.CANCELLED.getStatus());
-		} else {
-			updateBean.setOrderStatus(OrderStatusEnum.CLOSED.getStatus());
-		}
-		OrderInfoQuery statusQuery = new OrderInfoQuery();
-		statusQuery.setOrderId(orderId);
-		statusQuery.setOrderStatus(OrderStatusEnum.WAIT_PAYMENT.getStatus());
-		Integer rows = orderInfoMapper.updateByParam(updateBean, statusQuery);
-		if (rows == null || rows == 0) {
+		OrderStateEvent cancelEvent = userId != null ? OrderStateEvent.USER_CANCEL : OrderStateEvent.SYSTEM_CANCEL;
+		int rows = orderStateMachine.transition(orderId, OrderStatusEnum.WAIT_PAYMENT, cancelEvent);
+		if (rows == 0) {
 			if (userId != null) {
 				throw new BusinessException("当前订单状态不能取消");
 			}
@@ -757,13 +754,9 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 			throw new BusinessException("支付单内子订单状态不一致，请联系客服处理");
 		}
 
-		OrderInfo updateBean = new OrderInfo();
-		updateBean.setOrderStatus(OrderStatusEnum.CANCELLED.getStatus());
-		OrderInfoQuery statusQuery = new OrderInfoQuery();
-		statusQuery.setPayOrderId(payOrderId);
-		statusQuery.setOrderStatus(OrderStatusEnum.WAIT_PAYMENT.getStatus());
-		Integer rows = orderInfoMapper.updateByParam(updateBean, statusQuery);
-		if (rows == null || rows != waitingOrders.size()) {
+		int rows = orderStateMachine.transitionPayOrder(payOrderId, OrderStatusEnum.WAIT_PAYMENT,
+				OrderStateEvent.USER_CANCEL);
+		if (rows != waitingOrders.size()) {
 			throw new BusinessException("支付单取消失败，子订单状态已变化");
 		}
 
@@ -799,13 +792,9 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 				return;
 			}
 		}
-		OrderInfo updateBean = new OrderInfo();
-		updateBean.setOrderStatus(OrderStatusEnum.CLOSED.getStatus());
-		OrderInfoQuery statusQuery = new OrderInfoQuery();
-		statusQuery.setPayOrderId(payOrderId);
-		statusQuery.setOrderStatus(OrderStatusEnum.WAIT_PAYMENT.getStatus());
-		Integer rows = orderInfoMapper.updateByParam(updateBean, statusQuery);
-		if (rows == null || rows == 0) {
+		int rows = orderStateMachine.transitionPayOrder(payOrderId, OrderStatusEnum.WAIT_PAYMENT,
+				OrderStateEvent.PAYMENT_TIMEOUT);
+		if (rows == 0) {
 			log.info("支付超时关单无待付款子单 payOrderId={}", payOrderId);
 			return;
 		}
@@ -934,15 +923,13 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 				orderLogisticsInfoMapper.updateByParam(orderLogisticsInfo, orderLogisticsInfoQuery);
 			}
 		}
-		OrderInfoQuery updateQuery = new OrderInfoQuery();
-		updateQuery.setOrderStatus(OrderStatusEnum.WAIT_PAYMENT.getStatus());
 		int updatedCount = 0;
 		for (OrderInfo orderInfo : orderInfoList) {
-			updateQuery.setOrderId(orderInfo.getOrderId());
 			orderInfo.setChannelOrderId(payOrderNotifyDTO.getChannelOrderId());
 			orderInfo.setOrderStatus(OrderStatusEnum.PAID.getStatus());
-			Integer rows = orderInfoMapper.updateByParam(orderInfo, updateQuery);
-			if (rows != null && rows > 0) {
+			int rows = orderStateMachine.transition(orderInfo.getOrderId(), OrderStatusEnum.WAIT_PAYMENT,
+					OrderStateEvent.PAY_SUCCESS, orderInfo);
+			if (rows > 0) {
 				updatedCount++;
 				PayOrderMessageDTO dto = new PayOrderMessageDTO();
 				dto.setOrderId(orderInfo.getOrderId());
@@ -992,17 +979,9 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 	}
 
 	private void cancelCouponRushOrder(String orderId, String userId) {
-		OrderInfo updateBean = new OrderInfo();
-		if (userId != null) {
-			updateBean.setOrderStatus(OrderStatusEnum.CANCELLED.getStatus());
-		} else {
-			updateBean.setOrderStatus(OrderStatusEnum.CLOSED.getStatus());
-		}
-		OrderInfoQuery statusQuery = new OrderInfoQuery();
-		statusQuery.setOrderId(orderId);
-		statusQuery.setOrderStatus(OrderStatusEnum.WAIT_PAYMENT.getStatus());
-		Integer rows = orderInfoMapper.updateByParam(updateBean, statusQuery);
-		if (rows == null || rows == 0) {
+		OrderStateEvent cancelEvent = userId != null ? OrderStateEvent.USER_CANCEL : OrderStateEvent.SYSTEM_CANCEL;
+		int rows = orderStateMachine.transition(orderId, OrderStatusEnum.WAIT_PAYMENT, cancelEvent);
+		if (rows == 0) {
 			return;
 		}
 		OrderInfo orderInfo = orderInfoMapper.selectByOrderId(orderId);
@@ -1037,13 +1016,11 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		}
 		int updatedCount = 0;
 		for (OrderInfo orderInfo : orderInfoList) {
-			OrderInfoQuery updateQuery = new OrderInfoQuery();
-			updateQuery.setOrderId(orderInfo.getOrderId());
-			updateQuery.setOrderStatus(OrderStatusEnum.WAIT_PAYMENT.getStatus());
 			orderInfo.setChannelOrderId(payOrderNotifyDTO.getChannelOrderId());
 			orderInfo.setOrderStatus(OrderStatusEnum.COMPLETED.getStatus());
-			Integer rows = orderInfoMapper.updateByParam(orderInfo, updateQuery);
-			if (rows == null || rows == 0) {
+			int rows = orderStateMachine.transition(orderInfo.getOrderId(), OrderStatusEnum.WAIT_PAYMENT,
+					OrderStateEvent.COUPON_RUSH_PAY_SUCCESS, orderInfo);
+			if (rows == 0) {
 				continue;
 			}
 			updatedCount++;
@@ -1427,16 +1404,10 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		if (OrderStatusEnum.COMPLETED.getStatus().equals(existing.getOrderStatus())) {
 			return false;
 		}
-		OrderInfoQuery statusQuery = new OrderInfoQuery();
-		statusQuery.setOrderId(orderId);
-		statusQuery.setOrderStatusList(new Integer[]{
-				OrderStatusEnum.SHIPPED.getStatus(),
-				OrderStatusEnum.PARTIALLY_REFUNDED.getStatus()
-		});
-		OrderInfo updateBean = new OrderInfo();
-		updateBean.setOrderStatus(OrderStatusEnum.COMPLETED.getStatus());
-		Integer rows = orderInfoMapper.updateByParam(updateBean, statusQuery);
-		if (rows == null || rows == 0) {
+		int rows = orderStateMachine.transition(orderId,
+				Set.of(OrderStatusEnum.SHIPPED, OrderStatusEnum.PARTIALLY_REFUNDED),
+				OrderStateEvent.CONFIRM_RECEIPT);
+		if (rows == 0) {
 			return false;
 		}
 		enqueueOrderGrowth(existing);

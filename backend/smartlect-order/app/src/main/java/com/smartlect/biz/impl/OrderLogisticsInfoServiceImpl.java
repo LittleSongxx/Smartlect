@@ -16,6 +16,8 @@ import com.smartlect.entity.po.OrderLogisticsInfoRecord;
 import com.smartlect.entity.query.OrderInfoQuery;
 import com.smartlect.entity.query.OrderLogisticsInfoRecordQuery;
 import com.smartlect.exception.BusinessException;
+import com.smartlect.state.OrderStateEvent;
+import com.smartlect.state.OrderStateMachine;
 import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderLogisticsInfoRecordService;
 import com.smartlect.support.MqIdempotencyKeys;
@@ -44,6 +46,9 @@ public class OrderLogisticsInfoServiceImpl implements OrderLogisticsInfoService 
 
 	@Resource
 	private OrderInfoService orderInfoService;
+
+	@Resource
+	private OrderStateMachine orderStateMachine;
 
 	@Resource
 	private OrderNotificationPublisher orderNotificationPublisher;
@@ -152,13 +157,9 @@ public class OrderLogisticsInfoServiceImpl implements OrderLogisticsInfoService 
 		if (count != 1) {
 			throw new BusinessException("该订单已经发货过了");
 		}
-		// 修改订单状态为已发货
-		OrderInfoQuery orderInfoQuery = new OrderInfoQuery();
-		orderInfoQuery.setOrderId(orderLogisticsInfo.getOrderId());
-		orderInfoQuery.setOrderStatus(OrderStatusEnum.PAID.getStatus());
-		OrderInfo orderInfo = new OrderInfo();
-		orderInfo.setOrderStatus(OrderStatusEnum.SHIPPED.getStatus());
-		count = orderInfoService.updateByParam(orderInfo, orderInfoQuery);
+		// 修改订单状态为已发货（状态机 CAS：PAID→SHIPPED，0 行即已被并发发货）
+		count = orderStateMachine.transition(orderLogisticsInfo.getOrderId(), OrderStatusEnum.PAID,
+				OrderStateEvent.SHIP);
 		if (count != 1) {
 			throw new BusinessException("该订单已经发货过了");
 		}

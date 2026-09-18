@@ -16,9 +16,12 @@ import com.smartlect.exception.BusinessException;
 import com.smartlect.mappers.OrderInfoMapper;
 import com.smartlect.mappers.OrderItemMapper;
 import com.smartlect.mappers.RefundRequestMapper;
+import com.smartlect.state.OrderStateEvent;
+import com.smartlect.state.OrderStateMachine;
 import com.smartlect.support.MqIdempotencyKeys;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,9 +29,11 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
+@Slf4j
 public class RefundSagaTransactionService {
 
     @Resource
@@ -45,6 +50,8 @@ public class RefundSagaTransactionService {
     private OrderAttributionService orderAttributionService;
     @Resource
     private OrderNotificationPublisher orderNotificationPublisher;
+    @Resource
+    private OrderStateMachine orderStateMachine;
 
     @Value("${refund.saga.retry-seconds:60}")
     private int retrySeconds;
@@ -270,10 +277,15 @@ public class RefundSagaTransactionService {
         }
 
         Integer normalCount = orderItemMapper.countNormalByOrderId(order.getOrderId());
-        order.setOrderStatus(normalCount == null || normalCount == 0
-                ? OrderStatusEnum.REFUNDED.getStatus()
-                : OrderStatusEnum.PARTIALLY_REFUNDED.getStatus());
-        orderInfoMapper.updateByOrderId(order, order.getOrderId());
+        // 状态机 CAS：按剩余正常项数选择 FULL/PARTIAL_REFUND，前置态限定 PAID/SHIPPED/PARTIALLY_REFUNDED，
+        // 0 行说明并发退款已推进过聚合状态——幂等跳过，不再盲目覆写。
+        OrderStateEvent aggregateEvent = normalCount == null || normalCount == 0
+                ? OrderStateEvent.FULL_REFUND : OrderStateEvent.PARTIAL_REFUND;
+        if (orderStateMachine.transition(order.getOrderId(),
+                Set.of(OrderStatusEnum.PAID, OrderStatusEnum.SHIPPED, OrderStatusEnum.PARTIALLY_REFUNDED),
+                aggregateEvent, order) == 0) {
+            log.info("退款聚合状态已被并发推进 orderId={}，跳过", order.getOrderId());
+        }
     }
 
     private static void validateRefundable(OrderInfo order, OrderItem item) {

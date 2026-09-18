@@ -65,6 +65,13 @@ class OrderAggregateCancellationTest {
     @InjectMocks
     private OrderInfoServiceImpl service;
 
+    @org.junit.jupiter.api.BeforeEach
+    void wireStateMachine() {
+        com.smartlect.state.OrderStateMachine machine = new com.smartlect.state.OrderStateMachine();
+        org.springframework.test.util.ReflectionTestUtils.setField(machine, "orderInfoMapper", orderInfoMapper);
+        org.springframework.test.util.ReflectionTestUtils.setField(this.service, "orderStateMachine", machine);
+    }
+
     @BeforeEach
     void executeLifecycleLockBody() {
         lenient().doAnswer(invocation -> {
