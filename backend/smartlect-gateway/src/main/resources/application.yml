@@ -86,7 +86,7 @@ spring:
                   factor: 2
                   basedOnPreviousValue: false
           routes:
-            # Growth and Java Feign call 127.0.0.1 / lb:// directly.
+            # Assistant and Java Feign call 127.0.0.1 / lb:// directly.
             # Public /internal/** used to let a leaked token impersonate any user.
             - id: admin-user
               uri: lb://smartlect-user

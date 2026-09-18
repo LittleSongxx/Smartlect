@@ -163,7 +163,7 @@ public class ProductCommerceInternalController extends ABaseController {
     }
 
     /**
-     * Batch variant of getDetail for the growth-side knowledge import: one call per import
+     * Batch variant of getDetail for the assistant-side knowledge import: one call per import
      * batch instead of one HTTP round-trip per product. Same sanitized fields and shape as
      * getDetail; products that do not exist are simply absent from the list.
      */
@@ -266,9 +266,9 @@ public class ProductCommerceInternalController extends ABaseController {
     }
 
     /**
-     * Authoritative SKU offer facts for the growth service.  This endpoint deliberately
+     * Authoritative SKU offer facts for the assistant service.  This endpoint deliberately
      * returns a selected in-stock SKU and its base price; user coupons are
-     * estimated by the Coupon service in a separate internal call.  The growth service
+     * estimated by the Coupon service in a separate internal call.  The assistant service
      * never reads product or stock tables directly.
      */
     @PostMapping("/offerSnapshots")
