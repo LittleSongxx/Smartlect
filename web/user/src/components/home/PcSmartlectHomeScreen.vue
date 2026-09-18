@@ -37,29 +37,15 @@
 
     <div class="sl-stage" @mouseenter="hoverCategory = null">
       <div class="sl-banner">
-        <AdSlot
-          v-if="bannerProduct?.promotion"
-          :key="bannerProduct.promotion.creative_id"
-          :item="bannerProduct.promotion"
+        <button
+          v-if="bannerProduct"
+          type="button"
           class="sl-banner-btn"
-          @charged="goPaid(bannerProduct)"
+          @click="goBannerProduct(bannerProduct)"
         >
           <ProductImage :product="bannerProduct" fit="cover" width="100%" height="100%" class="sl-banner-bg" :lazy="false" />
           <ProductImage :product="bannerProduct" fit="contain" width="100%" height="100%" class="sl-banner-fg" :lazy="false" />
-          <span class="sl-banner-ad">广告</span>
-          <div class="sl-banner-meta">
-            <span class="sl-banner-name">{{ bannerProduct.productName }}</span>
-            <span class="sl-banner-price">¥{{ formatPrice(bannerProduct) }}</span>
-          </div>
-        </AdSlot>
-        <button
-          v-else-if="bannerProduct"
-          type="button"
-          class="sl-banner-btn"
-          @click="goDetail(bannerProduct)"
-        >
-          <ProductImage :product="bannerProduct" fit="cover" width="100%" height="100%" class="sl-banner-bg" />
-          <ProductImage :product="bannerProduct" fit="contain" width="100%" height="100%" class="sl-banner-fg" />
+          <span v-if="bannerProduct.kind === 'recommend'" class="sl-banner-ad">推荐</span>
           <div class="sl-banner-meta">
             <span class="sl-banner-name">{{ bannerProduct.productName }}</span>
             <span class="sl-banner-price">¥{{ formatPrice(bannerProduct) }}</span>
@@ -159,16 +145,14 @@ import {
   Ticket,
   Wallet
 } from '@element-plus/icons-vue';
-import AdSlot from '@/components/home/AdSlot.vue';
 import BrandMark from '@/components/common/BrandMark.vue';
 import ProductImage from '@/components/common/ProductImage.vue';
 import { useOpenAgent } from '@/composables/useOpenAgent';
-import { promotionProductPath } from '@/composables/usePromotionCharge';
+import { recommendationTouch, reportClick } from '@/api/traffic';
 import { useAuthStore } from '@/stores/auth';
 import { PUBLIC_REGISTER_ENABLED } from '@/constants/trial';
-import { mixHomeAds } from '@/utils/homeAds';
+import { mixHomeRecommendations, recommendationProductPath } from '@/utils/homeRecommendations';
 import { resolveAvatarUrl } from '@/utils/image';
-import type { Promotion } from '@/api/traffic';
 
 const props = defineProps<{
   categories: Array<{
@@ -177,7 +161,7 @@ const props = defineProps<{
     children?: Array<{ categoryId: string; categoryName: string }>;
   }>;
   hotProducts: any[];
-  promotions?: Promotion[];
+  recommendations?: Record<string, any>[];
 }>();
 
 const router = useRouter();
@@ -202,7 +186,7 @@ const formatPrice = (p: Record<string, any>) => {
   return val != null ? Number(val).toFixed(2) : '--';
 };
 
-const bannerList = computed(() => mixHomeAds(props.hotProducts, props.promotions || [], 2, 5));
+const bannerList = computed(() => mixHomeRecommendations(props.hotProducts, props.recommendations || [], 4, 5));
 const bannerProduct = computed(() => bannerList.value[carouselIndex.value] || bannerList.value[0]);
 const stripProducts = computed(() => props.hotProducts.slice(0, 4));
 
@@ -254,9 +238,14 @@ const goDetail = (p: any) => {
   if (p?.productId) router.push(`/product/${p.productId}`);
 };
 
-const goPaid = (p: any) => {
-  if (p?.promotion) router.push(promotionProductPath(p.promotion));
-  else goDetail(p);
+const goBannerProduct = async (p: any) => {
+  if (p?.kind === 'recommend') {
+    const touch = recommendationTouch(p);
+    if (touch) await reportClick(touch);
+    router.push(recommendationProductPath(p));
+    return;
+  }
+  goDetail(p);
 };
 
 const onServiceClick = (item: { path: string }) => {

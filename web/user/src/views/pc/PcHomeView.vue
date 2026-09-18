@@ -1,6 +1,6 @@
 <template>
   <div class="sl-home-page ignore">
-    <PcSmartlectHomeScreen :categories="rootCategories" :hot-products="hotProducts" :promotions="ads" />
+    <PcSmartlectHomeScreen :categories="rootCategories" :hot-products="hotProducts" :recommendations="recommended" />
 
     <section class="sl-home-feed">
       <h2 class="sl-feed-title">猜你喜欢</h2>
@@ -42,12 +42,12 @@ import ProductImage from '@/components/common/ProductImage.vue';
 import PcSmartlectHomeScreen from '@/components/home/PcSmartlectHomeScreen.vue';
 import { productApi } from '@/api/modules';
 import { usePageRefresh } from '@/composables/pullRefresh';
-import { usePromotions } from '@/composables/usePromotions';
+import { useHomeRecommendations } from '@/composables/useHomeRecommendations';
 import { storefrontCategoryTree } from '@/utils/category';
 import { filterStorefrontProducts, splitStorefrontPage } from '@/utils/product';
 
 const router = useRouter();
-const { ads, owner, load: loadAds } = usePromotions(2);
+const { items: recommended, owner, load: loadRecommendations } = useHomeRecommendations(4);
 const categories = ref<any[]>([]);
 const hotProductsList = ref<any[]>([]);
 const products = ref<any[]>([]);
@@ -176,9 +176,9 @@ onUnmounted(() => {
   }
 });
 
-watch(owner, (value) => { void (value ? loadAds() : Promise.resolve(ads.value = [])); }, { immediate: true });
+watch(owner, (value) => { void (value ? loadRecommendations() : Promise.resolve(recommended.value = [])); }, { immediate: true });
 
 usePageRefresh(async () => {
-  await Promise.all([load(), loadAds()]);
+  await Promise.all([load(), loadRecommendations()]);
 });
 </script>

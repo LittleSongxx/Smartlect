@@ -34,6 +34,7 @@ const descriptions: Record<string, string> = {
   proposal_expired: '提案已过期，请重新生成。', conversation_busy: '当前会话正在处理，请稍后刷新查看。',
   commerce_outcome_unknown: '交易结果暂未核实，请刷新原操作查询结果。',
   recommendation_unavailable: '推荐暂时不可用，请稍后刷新。',
+  ads_disabled: '广告投放已停用。',
   product_scope_denied: '该商品不在当前店铺可售范围内，请换一件再下单。',
   user_required: '请先登录后再操作。',
   conversation_not_found: '当前会话已失效，请刷新页面后重试。',

@@ -1,4 +1,4 @@
-"""Prepare the default store so the live UI can show ads, answer policy, and demo a purchase.
+"""Prepare the default store so the live UI can show recommendations, answer policy, and demo a purchase.
 
 This writes only execution_scope_id=store. It never seeds isolated eval scenarios,
 registers a scope, or approves set_recommendation_policy.
@@ -415,115 +415,35 @@ def main():
         evidence['coupon'] = seed_plaza_rush_coupon(merchant)
         save_artifact(evidence)
 
-        def ads_get():
-            return http(merchant, 'GET', '/admin-api/assistant/ads')
-
-        def ads_post(path, payload):
-            return http(merchant, 'POST', '/admin-api/assistant/ads/' + path, json=payload, headers=merchant_headers)
-
         shopper.cookies.set('token', user['token'])
         shopper_session = http(shopper, 'GET', '/api/assistant/session')
         assert shopper_session['actor']['execution_scope_id'] == 'store', shopper_session['actor']
         shopper_headers = origin_headers(shopper, shopper_session['csrf_token'])
 
-        stage('Pick in-stock catalog SKUs and save DRAFT ads')
+        stage('Pick in-stock catalog SKUs for demo personas')
         catalog = http(merchant, 'GET', '/admin-api/assistant/ads/catalog')
-        snapshot = ads_get()
         skus = pick_catalog_skus(catalog.get('items') or [])
-        planned = planned_resources(skus, snapshot)
-        missing = [row for row in planned if row['campaign_id'] not in {c['campaign_id'] for c in snapshot.get('campaigns', [])}]
-        needed_cap = budget_cap_cents(snapshot, extra=CAMPAIGN_BUDGET_CENTS * len(missing))
-        product_ids = [row['product_id'] for row in planned]
-
-        def approve_grant(state):
-            cap = max(needed_cap, budget_cap_cents(state))
-            campaigns, creatives = grant_versions(state, product_ids, merchant_id)
-            request = {
-                'grant_id': uuid.uuid4().hex,
-                'initial_plan_id': uuid.uuid4().hex,
-                'initial_plan_version': 1,
-                'expected_campaign_versions': campaigns,
-                'expected_creative_versions': creatives,
-                'envelope': grant_envelope(product_ids, cap),
-            }
-            if state.get('account'):
-                request['replaces_grant_id'] = state['account']['grant_id']
-            grant = ads_post('grants', request)
-            evidence['grant_id'] = grant['grant_id']
-            return grant
-
-        if snapshot.get('account') and (snapshot['account'].get('budget_cap_cents') or 0) < needed_cap:
-            stage('Raise store budget cap before creating catalog campaigns')
-            approve_grant(snapshot)
-
-        for row in planned:
-            campaign = ads_post('campaigns', {
-                'campaign_id': row['campaign_id'], 'name': row['name'],
-                'product_id': row['product_id'], 'sku_key': row['sku_key'],
-                'budget_cents': row['budget_cents'], 'cpc_cents': row['cpc_cents']})
-            creative = ads_post('creatives', {
-                'creative_id': row['creative_id'], 'campaign_id': row['campaign_id'],
-                'copy_text': row['copy_text']})
-            assert campaign['campaign_id'] == row['campaign_id']
-            assert creative['creative_id'] == row['creative_id']
-
-        snapshot = ads_get()
-        if not playbook_delivery_ready(snapshot, planned, merchant_id):
-            stage('Approve store grant and enable catalog campaigns')
-            if not grant_is_current(snapshot, product_ids):
-                approve_grant(snapshot)
-                snapshot = ads_get()
-            grant_id = snapshot['account']['grant_id']
-            evidence['grant_id'] = grant_id
-
-            def apply(kind, campaign_id, version, creative_id=None):
-                item = {'action_type': kind, 'campaign_id': campaign_id, 'expected_version': version}
-                if creative_id:
-                    item['creative_id'] = creative_id
-                key = uuid.uuid4().hex
-                result = ads_post('actions', {
-                    'action_id': key, 'idempotency_key': key, 'grant_id': grant_id,
-                    'plan_id': key, 'plan_version': 1, 'reason_code': 'store_playbook_bootstrap',
-                    'evidence_ids': [], 'actions': [item]})
-                assert result['status'] == 'APPLIED', result
-                return result
-
-            for row in planned:
-                snapshot = ads_get()
-                campaign = next(item for item in snapshot['campaigns'] if item['campaign_id'] == row['campaign_id'])
-                if campaign['status'] == 'DRAFT':
-                    apply('activate_campaign', row['campaign_id'], campaign['version'])
-                elif campaign['status'] in {'PAUSED', 'EXHAUSTED'}:
-                    apply('resume_campaign', row['campaign_id'], campaign['version'])
-                snapshot = ads_get()
-                creative = next(item for item in snapshot['creatives'] if item['creative_id'] == row['creative_id'])
-                if creative['status'] == 'DRAFT':
-                    apply('activate_creative', row['campaign_id'], creative['version'], row['creative_id'])
-                elif creative['status'] in {'PAUSED', 'EXHAUSTED'}:
-                    apply('resume_creative', row['campaign_id'], creative['version'], row['creative_id'])
-            snapshot = ads_get()
-            assert playbook_delivery_ready(snapshot, planned, merchant_id), snapshot
-
+        planned = planned_resources(skus)
         evidence['campaigns'] = [{
             'campaign_id': row['campaign_id'], 'creative_id': row['creative_id'],
             'product_id': row['product_id'], 'sku_key': row['sku_key'],
             'property_value_ids': row['property_value_ids'], 'product_name': row['product_name'],
         } for row in planned]
-        evidence['grant_id'] = (snapshot.get('account') or {}).get('grant_id')
+        evidence['grant_id'] = None
         save_artifact(evidence)
 
         stage('Seed browse history and mock orders for demo shoppers')
         evidence['personas'] = seed_demo_behavior(java, config, catalog.get('items') or [])
         save_artifact(evidence)
 
-        stage('Guest homepage recommendations must show playbook ads')
+        stage('Guest homepage shows deterministic recommendations')
         guest_session = http(guest, 'GET', '/api/assistant/session')
         assert guest_session['actor']['execution_scope_id'] == 'store', guest_session['actor']
-        recommended = http(guest, 'GET', '/api/assistant/ads/recommendations', params={'limit': 2})
-        creative_ids = {row['creative_id'] for row in planned}
-        shown = [item for item in recommended.get('items') or [] if item.get('creative_id') in creative_ids]
+        recommended = http(guest, 'GET', '/api/assistant/recommendations', params={'limit': 4})
+        shown = [item for item in recommended.get('items') or [] if item.get('productId')]
         assert shown, recommended
-        evidence['guest_recommendations'] = [item['creative_id'] for item in shown]
+        evidence['guest_recommendations'] = [item['productId'] for item in shown]
+        evidence['guest_ranking_mode'] = recommended.get('ranking_mode')
         save_artifact(evidence)
 
         live_ticket = None
@@ -549,20 +469,19 @@ def main():
             }
 
         if do_purchase:
-            stage('Charge one catalog click, confirm the order, and mock-pay')
-            shopper_ads = http(shopper, 'GET', '/api/assistant/ads/recommendations', params={'limit': 2})
-            card = next(item for item in shopper_ads.get('items') or [] if item.get('creative_id') in creative_ids)
-            sku = next(row for row in planned if row['creative_id'] == card['creative_id'])
-            exposure = {'exposure_id': uuid.uuid4().hex, 'creative_id': sku['creative_id']}
-            if card.get('campaign_version') is not None:
-                exposure['expected_campaign_version'] = card['campaign_version']
-            if card.get('creative_version') is not None:
-                exposure['expected_creative_version'] = card['creative_version']
-            exposed = http(shopper, 'POST', '/api/assistant/ads/exposures', json=exposure, headers=shopper_headers)
-            clicked = http(shopper, 'POST', '/api/assistant/ads/clicks', json={
-                'click_id': uuid.uuid4().hex, 'exposure_id': exposed['exposure_id'],
-            }, headers=shopper_headers)
-            assert clicked['status'] == 'CHARGED', clicked
+            stage('Confirm an order from a recommended SKU and mock-pay')
+            recs = http(shopper, 'GET', '/api/assistant/recommendations', params={'limit': 4})
+            card = next((item for item in recs.get('items') or []
+                         if item.get('productId') and item.get('propertyValueIds')), None)
+            sku = next((row for row in planned if card and row['product_id'] == card['productId']), planned[0])
+            product_id = (card or {}).get('productId') or sku['product_id']
+            property_value_ids = (card or {}).get('propertyValueIds') or sku['property_value_ids']
+            if card and card.get('recommendation_id') and card.get('position'):
+                rec_id = card['recommendation_id']
+                http(shopper, 'POST', '/api/assistant/recommendations/%s/exposures' % rec_id,
+                     json={'positions': [card['position']]}, headers=shopper_headers)
+                http(shopper, 'POST', '/api/assistant/recommendations/%s/clicks' % rec_id,
+                     json={'position': card['position']}, headers=shopper_headers)
             conversation = http(shopper, 'POST', '/api/assistant/conversations', json={}, headers=shopper_headers)
             conversation_id = conversation['conversation_id']
             proposed = proposal_from(http(shopper, 'POST',
@@ -570,8 +489,8 @@ def main():
                     'message_id': uuid.uuid4().hex, 'action_type': 'order', 'parameters': {
                         'payMethod': 'mock', 'addressId': user['addressId'], 'orderFrom': 0,
                         'orderList': [{
-                            'productId': sku['product_id'],
-                            'propertyValueIds': card.get('propertyValueIds') or sku['property_value_ids'],
+                            'productId': product_id,
+                            'propertyValueIds': property_value_ids,
                             'buyCount': 1,
                         }],
                     },
@@ -603,10 +522,8 @@ def main():
                 'proposal_id': proposed['proposal_id'],
                 'pay_order_id': pay_id,
                 'amount_cents': amount,
-                'product_id': sku['product_id'],
-                'creative_id': sku['creative_id'],
-                'click_id': clicked['click_id'],
-                'exposure_id': exposed['exposure_id'],
+                'product_id': product_id,
+                'recommendation_id': (card or {}).get('recommendation_id'),
                 'payment_status': 'PAID',
             }
             save_artifact(evidence)
@@ -645,7 +562,7 @@ def main():
     print(json.dumps({
         'status': 'READY',
         'campaigns': len(evidence['campaigns']),
-        'guest_ads': evidence['guest_recommendations'],
+        'guest_recommendations': evidence['guest_recommendations'],
         'walkthrough': evidence.get('walkthrough', {}),
         'ticket': ticket,
         'login': DEMO_ACCOUNT,

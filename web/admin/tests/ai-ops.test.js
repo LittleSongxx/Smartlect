@@ -243,69 +243,27 @@ it('prompt skill view edits a draft and activates a rollback with confirmation',
 
 const editValue = (wrapper) => wrapper.find('textarea').element.value
 
-it('review analysis page generates deterministic stats and lists history', async () => {
-  const { default: ReviewAnalysisView } = await import('../src/views/biz/ReviewAnalysisView.vue')
-  handler = (path, options) => {
-    if (path.endsWith('/reviewAnalysis') && options?.method !== 'POST') {
-      // The list endpoint returns insights_json decoded as `insights`; a row with narration
-      // must read as "有", which is why the field is part of the list projection.
-      return response({ items: [
-        { product_id: 'p1', comment_count: 2, insights: null,
-          stats: { total: 2, good: 2, mid: 0, bad: 0, average: 4.5, positive_rate: 1, sentiment: 'POSITIVE' },
-          updated_at: '2026-09-16T10:00:00Z' },
-        { product_id: 'p2', comment_count: 3, insights: { strengths: ['轻'], problems: [], keywords: ['轻'], suggestions: [] },
-          stats: { total: 3, good: 1, mid: 1, bad: 1, average: 3.0, positive_rate: 0.3333, sentiment: 'NEGATIVE' },
-          updated_at: '2026-09-16T09:00:00Z' }] })
-    }
-    if (path.endsWith('/reviewAnalysis/product/p1')) {
-      return response({ product_id: 'p1', comment_count: 2, insights: { strengths: ['保温好'], problems: [], keywords: ['保温'], suggestions: ['继续'] },
-        stats: { total: 2, good: 2, mid: 0, bad: 0, average: 4.5, positive_rate: 1, sentiment: 'POSITIVE' },
-        insight_error: null, updated_at: '2026-09-16T10:00:00Z' })
-    }
-    return null
-  }
-  const wrapper = await mountView(ReviewAnalysisView)
-  expect(wrapper.text()).toContain('整体好评')
-  expect(wrapper.findAll('tbody tr')[0].text()).toContain('无')
-  expect(wrapper.findAll('tbody tr')[1].text()).toContain('有')
-  await wrapper.find('input').setValue('p1')
-  await wrapper.findAll('button').find((item) => item.text() === '生成分析').trigger('click')
+it('retired analytics pages stay reachable and marked disabled', async () => {
+  const { default: DisabledFeatureView } = await import('../src/views/common/DisabledFeatureView.vue')
+  const { createMemoryHistory } = await import('vue-router')
+  const { createAdminRouter } = await import('../src/router.js')
+  const router = createAdminRouter(createMemoryHistory())
+  await router.push('/reviewAnalysis')
+  const review = mount(DisabledFeatureView, {
+    global: { plugins: [ElementPlus, router], components: sharedComponents },
+  })
   await flushPromises()
-  expect(wrapper.text()).toContain('保温好')
-  wrapper.unmount()
-})
+  expect(review.text()).toContain('此功能已停用')
+  expect(review.text()).toContain('评价分析已停用')
+  review.unmount()
 
-it('growth report page renders snapshot numbers and parses stored suggestions', async () => {
-  const { default: GrowthReportView } = await import('../src/views/biz/GrowthReportView.vue')
-  // The snapshot stores the suggestion list as a JSON array; the older {"suggestions": ...}
-  // envelope and a null column are both covered so neither shape hides a real list.
-  const report = (suggestions) => ({ latest: {
-    data: { payments: { net_cents: 800, conversions: 3, paid_cents: 1000, refunded_cents: 200 },
-      ai_activity: { conversations: 9, support_tickets: 1, published_documents: 5, run_states: { COMPLETED: 4, FAILED: 1, WAIT_USER: 0 } } },
-    suggestions, model_label: 'qwen3.7-plus@live', model_error: null, updated_at: '2026-09-16T10:00:00Z' },
-    history: [] })
-
-  handler = () => response(report('["增加导购入口", "跟进差评商品", "扩充知识库"]'))
-  const wrapper = await mountView(GrowthReportView)
-  expect(wrapper.text()).toContain('800')
-  expect(wrapper.text()).toContain('增加导购入口')
-  expect(wrapper.text()).toContain('5')  // published documents
-  // 运行状态是计数字典：页面上要读成"已完成 4 · 失败 1"，不能露出原始 JSON；计数为 0 的不显示
-  expect(wrapper.text()).toContain('已完成 4')
-  expect(wrapper.text()).toContain('失败 1')
-  expect(wrapper.text()).not.toContain('{"COMPLETED"')
-  expect(wrapper.text()).not.toContain('等待用户确认 0')
-  wrapper.unmount()
-
-  handler = () => response(report('{"suggestions": ["改写客服话术"]}'))
-  const legacy = await mountView(GrowthReportView)
-  expect(legacy.text()).toContain('改写客服话术')
-  legacy.unmount()
-
-  handler = () => response(report(null))
-  const empty = await mountView(GrowthReportView)
-  expect(empty.text()).toContain('建议未生成')
-  empty.unmount()
+  await router.push('/growthReport')
+  const growth = mount(DisabledFeatureView, {
+    global: { plugins: [ElementPlus, router], components: sharedComponents },
+  })
+  await flushPromises()
+  expect(growth.text()).toContain('增长报告已停用')
+  growth.unmount()
 })
 
 it('growth 业务错误码给中文提示，不把机器码摆给管理员', async () => {

@@ -17,40 +17,26 @@
       <section v-if="editorPicks.length >= 2" class="editor-picks card">
         <header class="editor-head">
           <div>
-            <h3 class="editor-title">编辑精选</h3>
-            <p class="editor-sub">买手团队严选，品质之选</p>
+            <h3 class="editor-title">精选推荐</h3>
+            <p class="editor-sub">确定性推荐与热门甄选</p>
           </div>
           <button type="button" class="editor-more" @click="router.push('/recommend')">
             更多 <el-icon :size="14"><ArrowRight /></el-icon>
           </button>
         </header>
         <div class="editor-grid">
-          <AdSlot
-            v-for="item in editorAds"
-            :key="item.promotion!.creative_id"
-            :item="item.promotion!"
-            class="editor-item"
-            @charged="goPaid(item)"
-          >
-            <div class="editor-img-wrap">
-              <ProductImage :product="item" fit="cover" width="100%" height="100%" class="editor-img" :lazy="false" />
-              <span class="editor-badge is-ad">广告</span>
-            </div>
-            <div class="editor-meta">
-              <h4 class="editor-name">{{ item.productName }}</h4>
-              <p class="editor-price">¥{{ formatPrice(item.price ?? item.minPrice) }}</p>
-            </div>
-          </AdSlot>
           <button
-            v-for="item in editorHots"
-            :key="item.productId"
+            v-for="item in editorPicks"
+            :key="item.kind === 'recommend' ? `${item.recommendation_id}:${item.position}` : item.productId"
             type="button"
             class="editor-item"
-            @click="goDetail(item)"
+            @click="goPick(item)"
           >
             <div class="editor-img-wrap">
               <ProductImage :product="item" fit="cover" width="100%" height="100%" class="editor-img" :lazy="false" />
-              <span class="editor-badge">甄选</span>
+              <span class="editor-badge" :class="{ 'is-recommend': item.kind === 'recommend' }">
+                {{ item.kind === 'recommend' ? '推荐' : '甄选' }}
+              </span>
             </div>
             <div class="editor-meta">
               <h4 class="editor-name">{{ item.productName }}</h4>
@@ -111,12 +97,10 @@ import ProductCard from '@/components/business/ProductCard.vue';
 import ProductImage from '@/components/common/ProductImage.vue';
 import AIGuideCard from '@/components/business/AIGuideCard.vue';
 import HomeFeatureCards from '@/components/business/HomeFeatureCards.vue';
-import AdSlot from '@/components/home/AdSlot.vue';
 import { productApi } from '@/api/modules';
 import { usePageRefresh } from '@/composables/pullRefresh';
-import { usePromotions } from '@/composables/usePromotions';
-import { promotionProductPath } from '@/composables/usePromotionCharge';
-import { mixHomeAds } from '@/utils/homeAds';
+import { useHomeRecommendations } from '@/composables/useHomeRecommendations';
+import { mixHomeRecommendations, recommendationProductPath } from '@/utils/homeRecommendations';
 import { isStandaloneDisplay } from '@/utils/standalone';
 import { filterStorefrontProducts, splitStorefrontPage } from '@/utils/product';
 import { isFeatureSupported } from '@/integrations/featureRegistry';
@@ -144,7 +128,7 @@ const feedLoadError = ref(false);
 const products = ref<any[]>([]);
 const hotProductsList = ref<any[]>([]);
 const homeScrollRef = ref<HTMLElement | null>(null);
-const { ads, owner, load: loadAds } = usePromotions(2);
+const { items: recommended, owner, load: loadRecommendations, rememberClick } = useHomeRecommendations(4);
 
 const menuIconStyle = computed(() => ({ color: 'var(--primary)' }));
 
@@ -168,9 +152,7 @@ const menuItems = computed(() => {
   return all.filter((m) => isFeatureSupported(m.feature));
 });
 
-const editorPicks = computed(() => mixHomeAds(hotProductsList.value, ads.value, 2, 4));
-const editorAds = computed(() => editorPicks.value.filter((row) => row.promotion));
-const editorHots = computed(() => editorPicks.value.filter((row) => !row.promotion));
+const editorPicks = computed(() => mixHomeRecommendations(hotProductsList.value, recommended.value, 4, 4));
 
 const formatPrice = (price: any): string => {
   const n = Number(price);
@@ -263,9 +245,13 @@ const goDetail = (p: any) => {
   if (p?.productId) router.push(`/product/${p.productId}`);
 };
 
-const goPaid = (p: any) => {
-  if (p?.promotion) router.push(promotionProductPath(p.promotion));
-  else goDetail(p);
+const goPick = async (p: any) => {
+  if (p?.kind === 'recommend') {
+    await rememberClick(p);
+    router.push(recommendationProductPath(p));
+    return;
+  }
+  goDetail(p);
 };
 
 onMounted(async () => {
@@ -327,13 +313,13 @@ onUnmounted(() => {
   feedObserver = null;
 });
 
-watch(owner, (value) => { void (value ? loadAds() : Promise.resolve(ads.value = [])); }, { immediate: true });
+watch(owner, (value) => { void (value ? loadRecommendations() : Promise.resolve(recommended.value = [])); }, { immediate: true });
 
 usePageRefresh(async () => {
   clearHomeBootstrap();
   await Promise.all([
     load({ prefetch: false, fromPullRefresh: true }),
-    loadAds()
+    loadRecommendations()
   ]);
 });
 </script>
@@ -546,7 +532,7 @@ usePageRefresh(async () => {
   font-weight: 700;
   letter-spacing: 0;
 
-  &.is-ad {
+  &.is-recommend {
     color: #fff;
     font-weight: 500;
     background: rgba(0, 0, 0, 0.42);

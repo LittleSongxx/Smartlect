@@ -9,7 +9,7 @@ describe('商家后台商品与经营入口', () => {
 
   it('经营四页仍可进入', async () => {
     const router = createAdminRouter(createMemoryHistory());
-    for (const name of ['merchant', 'ads', 'knowledge', 'support']) {
+    for (const name of ['merchant', 'ads', 'knowledge', 'support', 'reviewAnalysis', 'growthReport']) {
       await router.push({ name });
       expect(router.currentRoute.value.name).toBe(name);
     }

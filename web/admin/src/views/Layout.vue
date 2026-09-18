@@ -28,11 +28,12 @@
               <div
                 v-for="sub in item.children"
                 :key="sub.path"
-                :class="['submenu-item', route.path === sub.path ? 'active' : '']"
+                :class="['submenu-item', route.path === sub.path ? 'active' : '', sub.disabled ? 'is-disabled' : '']"
                 @click="jump(sub)"
               >
                 <span class="submenu-dot"></span>
                 {{ sub.name }}
+                <span v-if="sub.disabled" class="menu-badge">已停用</span>
               </div>
             </div>
           </template>
@@ -79,7 +80,7 @@
       <p v-if="isTrial" class="trial-banner">作品集展厅：只能查看经营数据，不能改库存、发知识、发券或查看用户隐私。</p>
       <main class="right-body" :class="{ 'is-home': route.path === '/home' }">
         <router-view v-if="sessionReady" v-slot="{ Component }">
-          <component :is="Component" :key="scopeKey" v-bind="pageProps" />
+          <component :is="Component" :key="scopeKey" />
         </router-view>
       </main>
     </div>
@@ -106,39 +107,8 @@ const currentScopeLabel = computed(
     scopes.value.find((scope) => scope.execution_scope_id === session.value?.actor?.execution_scope_id)?.label ||
     '当前范围',
 )
-// 经营计划的审批交接（自 GrowthShell 迁入）：经营页点“明确批准授权”把计划带到活动页，
-// 活动页批准后回经营页提示，两条路径都要求这两页是同一个 router-view 的兄弟路由。
-const approvalPlan = ref(null)
-const merchantNotice = ref('')
-const reviewGrant = (plan) => {
-  approvalPlan.value = plan || null
-  merchantNotice.value = ''
-  router.push({ name: 'ads' })
-}
-const grantApproved = () => {
-  approvalPlan.value = null
-  merchantNotice.value = '稳定授权已保存；请核对计划状态，并通过执行器继续或恢复原回执。'
-  router.push({ name: 'merchant' })
-}
-const closePlan = () => {
-  approvalPlan.value = null
-  merchantNotice.value = ''
-  router.push({ name: 'merchant' })
-}
-// 只给需要的那一页绑定计划审批的 props/监听：其余页面收到未声明的 attrs 会刷警告。
-const pageProps = computed(() => {
-  if (route.name === 'ads') {
-    return { merchantPlan: approvalPlan.value, onGrantApproved: grantApproved, onClosePlan: closePlan }
-  }
-  if (route.name === 'merchant') {
-    return { initialNotice: merchantNotice.value, onReviewGrant: reviewGrant }
-  }
-  return {}
-})
 watch(scopeKey, async () => {
   scopes.value = []
-  approvalPlan.value = null
-  merchantNotice.value = ''
   if (session.value?.actor?.subject_type !== 'merchant') return
   try {
     scopes.value = (await aiGet('/scopes')).items
@@ -243,12 +213,12 @@ const menuList = ref([
     icon: 'setting',
     opened: true,
     children: [
-      { name: '经营助手', path: '/merchant' },
-      { name: '活动与授权', path: '/ads' },
+      { name: '经营助手', path: '/merchant', disabled: true },
+      { name: '活动与授权', path: '/ads', disabled: true },
       { name: '知识库', path: '/knowledge' },
       { name: '人工客服', path: '/support' },
-      { name: '评价分析', path: '/reviewAnalysis' },
-      { name: '增长报告', path: '/growthReport' },
+      { name: '评价分析', path: '/reviewAnalysis', disabled: true },
+      { name: '增长报告', path: '/growthReport', disabled: true },
     ],
   },
   {
@@ -447,6 +417,20 @@ const logout = () => {
           .submenu-dot {
             background: var(--accent);
           }
+        }
+
+        &.is-disabled {
+          opacity: 0.72;
+        }
+
+        .menu-badge {
+          margin-left: auto;
+          padding: 0 6px;
+          border-radius: 999px;
+          font-size: 10px;
+          line-height: 18px;
+          color: var(--sidebar-text-muted);
+          background: var(--sidebar-hover);
         }
       }
 

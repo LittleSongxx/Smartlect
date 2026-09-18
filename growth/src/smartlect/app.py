@@ -43,13 +43,13 @@ from smartlect.documents import parse_document, MAX_INPUT_BYTES
 from smartlect.attribution import AttributionStore
 from smartlect.recommendation.service import RecommendationService, RecommendationRequest
 from smartlect.recommendation.store import StrategyStore
-from smartlect.ads.inference import sync_behavior_preferences
 from smartlect.ads.service import (AdsService, CampaignRequest, CreativeRequest, GrantRequest,
                                   ActionRequest, RevokeRequest, AdExposureRequest, AdClickRequest)
 from smartlect.ads.store import AdsStore
 from smartlect.merchant.store import MerchantStore
 from smartlect.merchant.service import (MerchantService, MerchantRunRequest, PlanExecuteRequest,
                                         ExperienceApproveRequest, ScopeSelectRequest)
+from smartlect.disabled_features import reject as reject_disabled
 
 
 async def db(function, *args, **kwargs):
@@ -461,94 +461,76 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
 
     @app.get('/admin-api/assistant/merchant')
     async def merchant_snapshot(request: Request,response: Response):
-        return await db(merchant.store.merchant_snapshot,await ads_merchant(request,response))
+        await ads_merchant(request,response)
+        reject_disabled('merchant_planner')
 
     @app.post('/admin-api/assistant/merchant/runs')
     async def merchant_create_run(payload: MerchantRunRequest,request: Request,response: Response):
-        actor=await ads_merchant(request,response,write=True)
-        await admit_runs(actor)
-        run,lease=await merchant.prepare_run(actor,payload.model_dump(exclude_none=True))
-        if lease is not None:
-            task=asyncio.create_task(merchant.run(actor,run,lease))
-            key='merchant:'+run['agent_run_id']
-            owner=(actor.subject_type,actor.actor_id)
-            tasks[key]=task
-            task_owners[key]=owner
-            task.add_done_callback(lambda completed:(tasks.pop(key,None),task_owners.pop(key,None)))
-        return run
+        await ads_merchant(request,response,write=True)
+        reject_disabled('merchant_planner')
 
     @app.get('/admin-api/assistant/merchant/runs/{run_id}')
     async def merchant_get_run(run_id: str,request: Request,response: Response):
-        actor=await ads_merchant(request,response)
-        await db(merchant.store.get_merchant_context,actor,run_id)
-        return await db(merchant.store.get_run,actor,run_id)
+        await ads_merchant(request,response)
+        reject_disabled('merchant_planner')
 
     @app.post('/admin-api/assistant/merchant/plans/{plan_id}/execute')
     async def merchant_execute(plan_id: str,payload: PlanExecuteRequest,request: Request,response: Response):
-        return await merchant.execute_plan(await ads_merchant(request,response,write=True),plan_id,payload.expected_version)
+        await ads_merchant(request,response,write=True)
+        reject_disabled('merchant_planner')
 
     @app.post('/admin-api/assistant/merchant/memories/{memory_id}/approve')
     async def merchant_approve_memory(memory_id: str,payload: ExperienceApproveRequest,request: Request,response: Response):
-        return await db(merchant.store.approve_experience,await ads_merchant(request,response,write=True),memory_id,payload.expected_version,payload.reviewed_content)
+        await ads_merchant(request,response,write=True)
+        reject_disabled('merchant_planner')
 
     @app.post('/admin-api/assistant/ads/campaigns')
     async def ad_campaign(payload: CampaignRequest, request: Request, response: Response):
-        actor = await ads_merchant(request, response, write=True)
-        return await ads.create_campaign(actor, payload.model_dump(exclude_none=True))
+        await ads_merchant(request, response, write=True)
+        reject_disabled('ads')
 
     @app.post('/admin-api/assistant/ads/creatives')
     async def ad_creative(payload: CreativeRequest, request: Request, response: Response):
-        actor = await ads_merchant(request, response, write=True)
-        return await db(ads.store.create_creative, actor, payload.model_dump(exclude_none=True))
+        await ads_merchant(request, response, write=True)
+        reject_disabled('ads')
 
     @app.post('/admin-api/assistant/ads/grants')
     async def ad_grant(payload: GrantRequest, request: Request, response: Response):
-        actor = await ads_merchant(request, response, write=True)
-        return await db(ads.store.approve_grant, actor, payload.model_dump(exclude_none=True))
+        await ads_merchant(request, response, write=True)
+        reject_disabled('ads')
 
     @app.post('/admin-api/assistant/ads/grants/{grant_id}/revoke')
     async def ad_revoke(grant_id: str, payload: RevokeRequest, request: Request, response: Response):
-        actor = await ads_merchant(request, response, write=True)
-        return await db(ads.store.revoke_grant, actor, grant_id, payload.model_dump(exclude_none=True))
+        await ads_merchant(request, response, write=True)
+        reject_disabled('ads')
 
     @app.post('/admin-api/assistant/ads/actions')
     async def ad_action(payload: ActionRequest, request: Request, response: Response):
-        actor = await ads_merchant(request, response, write=True)
-        return await ads.execute_action(actor, payload.model_dump(exclude_none=True))
+        await ads_merchant(request, response, write=True)
+        reject_disabled('ads')
 
     @app.get('/admin-api/assistant/ads/actions/{action_id}')
     async def ad_action_receipt(action_id: str, request: Request, response: Response):
-        actor = await ads_merchant(request, response)
-        return await db(ads.store.get_action, actor, action_id)
+        await ads_merchant(request, response)
+        reject_disabled('ads')
 
     @app.get('/api/assistant/ads/recommendations')
     async def ad_recommendations(request: Request, response: Response, limit: int = 2):
         actor = await actor_for(request, response)
         actor.require('shopping:read')
-        if ads is None:
-            raise HTTPException(503, 'ads_not_configured')
-        if actor.subject_type == 'user' and memory:
-            await sync_behavior_preferences(commerce, memory, actor)
-            preferences = await db(memory.preferences, actor)
-        else:
-            preferences = []
-        return await ads.recommend(actor, limit=limit, preferences=preferences)
+        reject_disabled('ads')
 
     @app.post('/api/assistant/ads/exposures')
     async def ad_exposure(payload: AdExposureRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True)
         actor.require('shopping:read')
-        if ads is None:
-            raise HTTPException(503, 'ads_not_configured')
-        return await ads.expose(actor, payload.model_dump(exclude_none=True))
+        reject_disabled('ads')
 
     @app.post('/api/assistant/ads/clicks')
     async def ad_click(payload: AdClickRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True)
         actor.require('shopping:read')
-        if ads is None:
-            raise HTTPException(503, 'ads_not_configured')
-        return await ads.click(actor, payload.model_dump())
+        reject_disabled('ads')
 
     @app.post("/api/assistant/conversations")
     async def create_conversation(request: Request, response: Response, payload: Arguments):

@@ -228,22 +228,30 @@ class AdsServiceTests(unittest.IsolatedAsyncioTestCase):
                            {'budget_cents': -1}, {'cpc_cents': 0}, {'actor_id': 'other'},
                            {'execution_scope_id': 'other'}, {'status': 'ACTIVE'}):
                 self.assertEqual((await client.post(path, json={**CAMPAIGN, **change}, headers=headers)).status_code, 422)
-            self.assertEqual((await client.post(path, json=CAMPAIGN, headers=headers)).status_code, 200)
-            self.assertEqual(ads.create_campaign.call_args.args[0].actor_id, 'admin')
-            self.assertEqual(ads.create_campaign.call_count, 1)
+            self.assertEqual((await client.post(path, json=CAMPAIGN, headers=headers)).status_code, 410)
+            self.assertFalse(ads.create_campaign.called)
+            merchant = await client.get('/admin-api/assistant/merchant')
+            self.assertEqual(merchant.status_code, 410)
+            self.assertEqual(merchant.json()['error'], 'merchant_planner_disabled')
+            review = await client.get('/admin-api/assistant/reviewAnalysis')
+            self.assertEqual(review.status_code, 410)
+            self.assertEqual(review.json()['error'], 'review_analysis_disabled')
+            report = await client.get('/admin-api/assistant/growthReport')
+            self.assertEqual(report.status_code, 410)
+            self.assertEqual(report.json()['error'], 'growth_report_disabled')
             user_session = (await client.get('/api/assistant/session')).json()
             preview = await client.get('/api/assistant/ads/recommendations?limit=2')
-            self.assertEqual(preview.status_code, 200)
-            self.assertEqual(ads.recommend.call_args.args[0].actor_id, 'user')
-            self.assertEqual(ads.recommend.call_args.kwargs['preferences'][0]['value'], ['杯'])
+            self.assertEqual(preview.status_code, 410)
+            self.assertEqual(preview.json()['error'], 'ads_disabled')
+            self.assertFalse(ads.recommend.called)
             self.assertFalse(ads.expose.called)
             self.assertFalse(ads.click.called)
             headers['X-CSRF-Token'] = user_session['csrf_token']
             click_path = '/api/assistant/ads/clicks'
             click = {'click_id': 'click', 'exposure_id': 'exposure'}
             self.assertEqual((await client.post(click_path, json={**click, 'fee_cents': 0}, headers=headers)).status_code, 422)
-            self.assertEqual((await client.post(click_path, json=click, headers=headers)).status_code, 200)
-            self.assertEqual(ads.click.call_args.args[0].actor_id, 'user')
+            self.assertEqual((await client.post(click_path, json=click, headers=headers)).status_code, 410)
+            self.assertFalse(ads.click.called)
 
 
 class AdsSchemaTests(unittest.TestCase):

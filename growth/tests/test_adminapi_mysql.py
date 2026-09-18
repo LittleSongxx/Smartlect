@@ -326,12 +326,6 @@ class AdminApiMySQLTests(unittest.TestCase):
             if path == "/internal/identity/introspect":
                 data = {"subjectType": "merchant", "actorId": "boss-" + suffix, "sessionId": "s",
                         "permissions": ["admin:legacy", "shopping:read"]}
-            elif path == "/internal/order/commerce/productComments":
-                self.assertEqual(json.loads(request.content), {"productId": "p-rev", "limit": 200})
-                data = [{"orderId": "o1", "productId": "p-rev", "star": 5, "nickName": "买家",
-                         "commentContent": "非常好用", "commentTime": "2026-09-01"},
-                        {"orderId": "o2", "productId": "p-rev", "star": 4,
-                         "commentContent": "还行", "commentTime": "2026-09-02"}]
             else:
                 raise AssertionError(path)
             return httpx.Response(200, json={"status": "success", "data": data})
@@ -344,39 +338,28 @@ class AdminApiMySQLTests(unittest.TestCase):
                               commerce=AsyncCommerceClient(config, transport=transport))
 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
+            denied = await client.post("/admin-api/assistant/reviewAnalysis/product/p-rev", json={})
+            self.assertEqual(denied.status_code, 401, denied.text)
+
             client.cookies.set("adminToken", "boss-" + suffix)
             headers = await csrf_headers(client, origin)
 
             analyzed = await client.post("/admin-api/assistant/reviewAnalysis/product/p-rev", headers=headers, json={})
-            self.assertEqual(analyzed.status_code, 200, analyzed.text)
-            row = analyzed.json()
-            self.assertEqual(row["stats"]["total"], 2)
-            self.assertEqual(row["sentiment"] if False else row["stats"]["sentiment"], "POSITIVE")
-            self.assertEqual(row["insight_error"], "model_not_live")
+            self.assertEqual(analyzed.status_code, 410, analyzed.text)
+            self.assertEqual(analyzed.json()["error"], "review_analysis_disabled")
 
-            listed = (await client.get("/admin-api/assistant/reviewAnalysis")).json()
-            self.assertEqual(len(listed["items"]), 1)
-            # The history list must carry the narration field, or every row reads "no insights".
-            self.assertIn("insights", listed["items"][0])
-            self.assertIsNone(listed["items"][0]["insights"])
-
-            # Real money for the merchant's scope: the report has to surface exactly these
-            # numbers. Only asserting "payments is present" let a null-only snapshot pass.
-            self.seed_scope_payment(suffix)
+            listed = await client.get("/admin-api/assistant/reviewAnalysis")
+            self.assertEqual(listed.status_code, 410, listed.text)
+            self.assertEqual(listed.json()["error"], "review_analysis_disabled")
 
             report = await client.post("/admin-api/assistant/growthReport/generate",
                                       headers=await csrf_headers(client, origin), json={})
-            self.assertEqual(report.status_code, 200, report.text)
-            body = report.json()
-            self.assertEqual(body["data"]["payments"], {"paid_cents": 1000, "refunded_cents": 200,
-                                                        "net_cents": 800, "conversions": 1})
-            self.assertEqual(body["model_error"], "model_not_live")
+            self.assertEqual(report.status_code, 410, report.text)
+            self.assertEqual(report.json()["error"], "growth_report_disabled")
 
-            view = (await client.get("/admin-api/assistant/growthReport")).json()
-            self.assertIsNotNone(view["latest"])
-            self.assertEqual(view["latest"]["data"]["payments"]["net_cents"], 800)
-            # Suggestions are stored as a JSON array; a list consumer must find a list here.
-            self.assertIsNone(view["latest"]["suggestions"])
+            view = await client.get("/admin-api/assistant/growthReport")
+            self.assertEqual(view.status_code, 410, view.text)
+            self.assertEqual(view.json()["error"], "growth_report_disabled")
 
     def seed_scope_payment(self, suffix):
         """One attributed payment plus an unrelated refund in the default `store` scope."""
