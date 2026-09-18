@@ -219,7 +219,7 @@ public class OrderCommerceInternalController extends ABaseController {
     }
 
     /**
-     * Product-level comment facts for the growth review analysis. Soft-deleted and
+     * Product-level comment facts for the assistant service. Soft-deleted and
      * image-review-pending rows stay out, exactly like the admin comment list.
      */
     @PostMapping("/productComments")
@@ -313,7 +313,7 @@ public class OrderCommerceInternalController extends ABaseController {
      * This is intentionally an advisory decision, not a write reservation.
      * The real command remains responsible for its transactional/lock-aware
      * validation at execution time.  Keeping the decision in the order service
-     * prevents the Python growth service from inferring a capability from an order
+     * prevents the Python assistant service from inferring a capability from an order
      * status snapshot or from a retrieved policy sentence.
      */
     @PostMapping("/actionCapability")

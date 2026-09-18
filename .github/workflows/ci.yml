@@ -29,7 +29,7 @@ jobs:
       - name: mvn test（testcontainers 自带 MySQL）
         run: mvn -B -f backend/pom.xml test
 
-  growth:
+  assistant:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -39,16 +39,16 @@ jobs:
           python-version: "3.13"
       - name: 安装锁定依赖 + 本包
         run: |
-          pip install -r growth/requirements.lock
-          pip install --no-deps --no-build-isolation ./growth
+          pip install -r assistant/requirements.lock
+          pip install --no-deps --no-build-isolation ./assistant
       - name: unittest
-        working-directory: growth
+        working-directory: assistant
         run: python -m unittest discover -s tests
       # The MySQL-backed contract tests own one disposable container each and skip
       # themselves without this flag; leaving it unset is how 18 real failures stayed
       # invisible while the suite reported green (142 skips).
       - name: unittest（真实 MySQL 契约测试）
-        working-directory: growth
+        working-directory: assistant
         env:
           SMARTLECT_RUN_MYSQL_TESTS: "1"
         run: python -m unittest discover -s tests
@@ -84,7 +84,7 @@ jobs:
 
   deploy:
     if: github.event_name == 'workflow_dispatch'
-    needs: [backend, growth, web]
+    needs: [backend, assistant, web]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

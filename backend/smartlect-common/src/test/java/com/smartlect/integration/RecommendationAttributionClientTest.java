@@ -54,7 +54,7 @@ class RecommendationAttributionClientTest {
         client(server.getAddress().getPort()).validateAndApply("u1", List.of(item));
 
         assertEquals("internal-test", receivedToken.get(), "内部令牌没送到");
-        assertNotNull(receivedBody.get(), "请求没到达：客户端把这次调用当成 growth 不可用处理了");
+        assertNotNull(receivedBody.get(), "请求没到达：客户端把这次调用当成 assistant 不可用处理了");
         assertTrue(receivedBody.get().contains("\"userId\":\"u1\""), receivedBody.get());
         assertTrue(receivedBody.get().contains("\"requestId\":\"request-1\""), receivedBody.get());
         assertTrue(receivedBody.get().contains("\"skuKey\":\"sku-1\""), receivedBody.get());
@@ -167,7 +167,7 @@ class RecommendationAttributionClientTest {
 
     private static RecommendationAttributionClient client(int port) {
         // 超时给宽裕值：这几条用例查的是字段归一化，不是超时行为。原来的 100/200ms 在负载较高的
-        // CI 上会真的读超时，客户端按"growth 不可用"降级清空字段，最终只表现为 requestId 为 null，
+        // CI 上会真的读超时，客户端按"assistant 不可用"降级清空字段，最终只表现为 requestId 为 null，
         // 排查时完全看不出是超时（2026-09-17 遇到过一次）。
         return new RecommendationAttributionClient(
                 RestClient.builder(),

@@ -62,8 +62,8 @@ class OrderGrowthOutboxTest {
         ArgumentCaptor<OrderGrowthEventDTO> eventCaptor =
                 ArgumentCaptor.forClass(OrderGrowthEventDTO.class);
         verify(transactionalMqSender).sendAfterCommit(
-                eq(RabbitMQConfig.USER_GROWTH_EXCHANGE),
-                eq(RabbitMQConfig.USER_GROWTH_KEY),
+                eq(RabbitMQConfig.USER_MEMBER_EXCHANGE),
+                eq(RabbitMQConfig.USER_MEMBER_KEY),
                 eventCaptor.capture(),
                 eq("order:growth:order-1"),
                 eq(MessageReliabilityLevelEnum.STANDARD));

@@ -152,7 +152,7 @@ def transaction_scenario(seed):
                           == (expected_cents, result["refunded_cents"], 1), "commerce ledger reconciliation")
         assert all(event["status"] == "APPLIED" for event in ledger["events"])
         result["ledger"] = ledger
-        passed("Java events reconcile to growth ledger; repeat-purchase labels add no revenue")
+        passed("Java events reconcile to the assistant ledger; repeat-purchase labels add no revenue")
     return result
 
 

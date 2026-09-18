@@ -66,9 +66,9 @@ class FoundationTests(unittest.TestCase):
                         break
                     except (URLError, TimeoutError):
                         if process.poll() is not None or time.monotonic() >= deadline:
-                            self.fail("growth health did not become available")
+                            self.fail("assistant health did not become available")
                         time.sleep(0.02)
-                self.assertEqual(result["service"], "smartlect-growth")
+                self.assertEqual(result["service"], "smartlect-assistant")
                 self.assertEqual(result["phase"], "P0")
                 with self.assertRaises(HTTPError) as error:
                     urlopen(f"http://127.0.0.1:{port}/recommend", timeout=0.5)

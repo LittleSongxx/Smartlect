@@ -21,13 +21,13 @@ public class OrderGrowthListenerComponent {
     @Resource
     private MqListenerHelper mqListenerHelper;
 
-    @RabbitListener(queues = RabbitMQConfig.USER_GROWTH_QUEUE, ackMode = "MANUAL")
+    @RabbitListener(queues = RabbitMQConfig.USER_MEMBER_QUEUE, ackMode = "MANUAL")
     public void handle(OrderGrowthEventDTO event, Channel channel, Message message)
             throws IOException {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         try {
             boolean applied = userMemberProfileService.applyOrderGrowth(event);
-            mqListenerHelper.clearConsumeRetry(RabbitMQConfig.USER_GROWTH_QUEUE, message);
+            mqListenerHelper.clearConsumeRetry(RabbitMQConfig.USER_MEMBER_QUEUE, message);
             channel.basicAck(deliveryTag, false);
             log.info("订单成长值事件已处理 orderId={}, applied={}",
                     event == null ? null : event.getOrderId(), applied);
@@ -40,7 +40,7 @@ public class OrderGrowthListenerComponent {
                     channel,
                     deliveryTag,
                     message,
-                    RabbitMQConfig.USER_GROWTH_QUEUE,
+                    RabbitMQConfig.USER_MEMBER_QUEUE,
                     event,
                     error);
         }

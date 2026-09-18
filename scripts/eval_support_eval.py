@@ -13,7 +13,7 @@
 
 用法：
   collect（需活栈，venv python）:
-    growth/.venv/bin/python scripts/eval_support_eval.py collect --output artifacts/support-eval/<日期>-r1
+    assistant/.venv/bin/python scripts/eval_support_eval.py collect --output artifacts/support-eval/<日期>-r1
   score（需 judge 密钥，系统 python3，无第三方新依赖之外的要求）:
     python3 scripts/eval_support_eval.py score --input artifacts/support-eval/<日期>-r1[,<日期>-r2,...]
   官方数字 = 双跑均值：两次独立 collect（-r1/-r2）后 score 传两目录，逐题取均值再聚合
@@ -77,7 +77,7 @@ def questions():
 
 
 # ---------- collect：活栈采集（与旧 support-ragas 同链路） ----------
-def growth_up():
+def assistant_up():
     try:
         import httpx
         from runtime import ENV_FILE, parse_env
@@ -109,8 +109,8 @@ def load_corpus_documents(docs):
 
 
 def cmd_collect(args):
-    if not growth_up():
-        raise SystemExit('growth_not_healthy; start the isolated stack first (scripts/dev.sh up)')
+    if not assistant_up():
+        raise SystemExit('assistant_not_healthy; start the isolated stack first (scripts/dev.sh up)')
     from eval_support import setup_knowledge
     from eval_quality_v2 import collect_tools
     from scenario_client import ScenarioClient

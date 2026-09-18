@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-ROOTS = ("backend", "growth", "web", "deploy", "scripts", "fixtures")
+ROOTS = ("backend", "assistant", "web", "deploy", "scripts", "fixtures")
 SKIP_DIRS = {"target", ".venv", "venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "licenses"}
 SKIP_FILES = {"check_independence.py", "migrate_java.py", "LICENSE", "LICENSE.md", "NOTICE", "SOURCES.md"}
 PATTERNS = {
@@ -81,8 +81,8 @@ def self_test():
         assert len(scan(root)[1]) == 1
         page.unlink()
         with tempfile.TemporaryDirectory() as external:
-            (root / "growth").symlink_to(external, target_is_directory=True)
-            assert scan(root)[1] == ["growth: link escapes project"]
+            (root / "assistant").symlink_to(external, target_is_directory=True)
+            assert scan(root)[1] == ["assistant: link escapes project"]
             (root / ".git").symlink_to(external, target_is_directory=True)
             assert repository_problems(root)
     print("Independence scanner self-test passed.")

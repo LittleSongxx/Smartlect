@@ -27,7 +27,7 @@ from smartlect.config import Settings
 from smartlect.events import Ledger, canonical
 from smartlect.observability import gen_ai_span, prometheus_counter
 
-RUN_ADMISSION_REJECTIONS = prometheus_counter("growth_run_admission_rejections_total",
+RUN_ADMISSION_REJECTIONS = prometheus_counter("assistant_run_admission_rejections_total",
                                               "New runs rejected by the concurrency admission gates", ["gate"])
 from smartlect import mcp
 from smartlect.state import SessionStore, StateError
@@ -135,7 +135,7 @@ def health(settings, config=None):
     model_ready = settings.model_mode != "live" or bool(
         config.get("SMARTLECT_MODEL_API_KEY") and config.get("SMARTLECT_MODEL_BASE_URL"))
     status = "ok" if model_ready else "misconfigured"
-    return {"service": "smartlect-growth", "version": __version__, "status": status,
+    return {"service": "smartlect-assistant", "version": __version__, "status": status,
             "phase": "F3" if settings.events_enabled else "P0", "model_mode": settings.model_mode,
             "model_ready": model_ready}
 
@@ -280,7 +280,7 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
         except ImportError:
             return
-        provider = TracerProvider(resource=Resource.create({"service.name": "smartlect-growth"}))
+        provider = TracerProvider(resource=Resource.create({"service.name": "smartlect-assistant"}))
         provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
         trace.set_tracer_provider(provider)
         FastAPIInstrumentor.instrument_app(app, tracer_provider=provider,

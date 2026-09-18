@@ -14,7 +14,7 @@ import pymysql
 
 from smartlect.money import to_cents
 
-QUEUE = "smartlect.growth.commerce.queue"
+QUEUE = "smartlect.assistant.commerce.queue"
 BEHAVIORS = {"REPEAT_PURCHASE", "ADD_TO_CART", "REVIEW", "CANCEL", "VIEW", "PAYMENT_ATTEMPT"}
 NONFINANCIAL_SCOPE_VERSION = 'nonfinancial-scope-v1'
 log = logging.getLogger(__name__)
@@ -30,13 +30,13 @@ def _new_connection():
     database = required_env("SMARTLECT_GROWTH_MYSQL_DATABASE")
     user = required_env("SMARTLECT_GROWTH_MYSQL_USER")
     if database != "smartlect_growth" or user != "smartlect_growth":
-        raise ValueError("Growth must use its dedicated smartlect_growth database and identity")
+        raise ValueError("Assistant must use its dedicated smartlect_growth database and identity")  # 库名沿用历史 growth 命名
     return pymysql.connect(host=required_env("SMARTLECT_MYSQL_HOST"),
                            port=int(required_env("SMARTLECT_MYSQL_PORT")), user=user,
                            password=required_env("SMARTLECT_GROWTH_MYSQL_PASSWORD"), database=database,
                            charset="utf8mb4", cursorclass=pymysql.cursors.DictCursor,
                            autocommit=False, connect_timeout=5, read_timeout=10, write_timeout=10,
-                           # MySQL is loopback-only for growth. pymysql's PREFERRED mode would
+                           # MySQL is loopback-only for the assistant worker. pymysql's PREFERRED mode would
                            # build a fresh TLS context (full system CA load) per connection —
                            # hundreds of ms CPU each — which flattened concurrency to ~3 rps.
                            ssl_disabled=os.getenv("SMARTLECT_GROWTH_MYSQL_SSL", "0") != "1",

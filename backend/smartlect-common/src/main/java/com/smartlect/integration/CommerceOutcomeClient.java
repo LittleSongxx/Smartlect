@@ -33,7 +33,7 @@ public class CommerceOutcomeClient {
 
     public CommerceOutcomeClient(
             TransactionalMqSender transactionalMqSender,
-            @Value("${smartlect.growth.outcome-enabled:true}") boolean enabled) {
+            @Value("${smartlect.assistant.outcome-enabled:true}") boolean enabled) {
         this.transactionalMqSender = transactionalMqSender;
         this.enabled = enabled;
     }

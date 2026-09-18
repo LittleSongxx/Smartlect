@@ -32,9 +32,9 @@ class ScenarioClient:
         if self.config.get('SMARTLECT_PAYMENT_MODE') != 'mock':
             raise ValueError('demo_requires_mock_payment')
         self.base = 'http://127.0.0.1:' + self.config['SMARTLECT_GATEWAY_PORT']
-        growth = 'http://127.0.0.1:' + self.config['SMARTLECT_GROWTH_PORT']
+        assistant = 'http://127.0.0.1:' + self.config['SMARTLECT_GROWTH_PORT']
         with httpx.Client(timeout=10, trust_env=False) as client:
-            health = client.get(growth + '/health')
+            health = client.get(assistant + '/health')
             health.raise_for_status()
             health = health.json()
         self.mode = health['model_mode']

@@ -41,7 +41,7 @@ class OrderGrowthListenerComponentTest {
         listener.handle(event, channel, message);
 
         verify(channel).basicAck(17L, false);
-        verify(mqListenerHelper).clearConsumeRetry(RabbitMQConfig.USER_GROWTH_QUEUE, message);
+        verify(mqListenerHelper).clearConsumeRetry(RabbitMQConfig.USER_MEMBER_QUEUE, message);
         verify(mqListenerHelper, never()).tryBeginConsume(eq(message), anyLong());
     }
 
@@ -59,7 +59,7 @@ class OrderGrowthListenerComponentTest {
                 channel,
                 18L,
                 message,
-                RabbitMQConfig.USER_GROWTH_QUEUE,
+                RabbitMQConfig.USER_MEMBER_QUEUE,
                 event,
                 failure);
     }

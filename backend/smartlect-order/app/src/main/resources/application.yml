@@ -98,7 +98,8 @@ smartlect:
   feign:
     connect-timeout-ms: 3000
     read-timeout-ms: 10000
-  growth:
+  assistant:
+    # 环境变量名沿用历史 growth 前缀，线上 .env 不随服务改名
     base-url: ${SMARTLECT_GROWTH_BASE_URL:http://127.0.0.1:18000}
     attribution-connect-timeout-ms: ${SMARTLECT_GROWTH_ATTRIBUTION_CONNECT_TIMEOUT_MS:200}
     attribution-read-timeout-ms: ${SMARTLECT_GROWTH_ATTRIBUTION_READ_TIMEOUT_MS:500}

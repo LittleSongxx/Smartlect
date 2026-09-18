@@ -3,7 +3,8 @@ import unittest
 
 from smartlect.knowledge_scope import (PRODUCT, PRODUCT_AND_STORE, STORE, citation_covers_product,
                                        compile_search_filter, search_document_clause)
-from smartlect.session_focus import compile_focus
+from smartlect.session_focus import (compile_focus, pin_focus_offer_args,
+                                     pin_focus_retrieve_params)
 
 
 class SessionFocusTests(unittest.TestCase):
@@ -30,6 +31,16 @@ class SessionFocusTests(unittest.TestCase):
 
     def test_product_without_id_falls_back_to_global(self):
         self.assertEqual(compile_focus(focus_mode="PRODUCT")["focus_mode"], "GLOBAL")
+
+    def test_product_focus_pins_retrieve_and_offer(self):
+        focus = compile_focus(product_id="p1", focus_mode="PRODUCT")
+        pinned = pin_focus_retrieve_params({'query': '规格', 'product_id': 'other'}, focus, '规格怎么选')
+        self.assertEqual(pinned['product_id'], 'p1')
+        self.assertEqual(pin_focus_offer_args({'productId': 'other'}, focus)['productId'], 'p1')
+        free = pin_focus_retrieve_params({'query': '笔记本'}, focus, '帮我看看别的商品')
+        self.assertNotIn('product_id', free)
+        alt = pin_focus_retrieve_params({'query': '可乐'}, focus, '有没有更便宜的替代')
+        self.assertNotIn('product_id', alt)
 
 
 class KnowledgeScopeClauseTests(unittest.TestCase):

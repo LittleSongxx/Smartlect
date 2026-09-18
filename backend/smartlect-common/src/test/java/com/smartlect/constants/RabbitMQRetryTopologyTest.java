@@ -34,7 +34,7 @@ class RabbitMQRetryTopologyTest {
         assertRetryQueues(queueNames, RabbitMQConfig.RUSHING_ORDER_QUEUE);
         assertRetryQueues(queueNames, RabbitMQConfig.REFUND_STOCK_QUEUE);
         assertRetryQueues(queueNames, RabbitMQConfig.REFUND_RESULT_QUEUE);
-        assertRetryQueues(queueNames, RabbitMQConfig.USER_GROWTH_QUEUE);
+        assertRetryQueues(queueNames, RabbitMQConfig.USER_MEMBER_QUEUE);
         assertRetryQueues(queueNames, RabbitMQConfig.USER_TEMP_BAN_DEAD_QUEUE);
     }
 

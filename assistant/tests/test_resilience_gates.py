@@ -141,7 +141,7 @@ class RunAdmissionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(second.json()["error"], "actor_run_limit")
             from prometheus_client import REGISTRY
             self.assertGreaterEqual(REGISTRY.get_sample_value(
-                "growth_run_admission_rejections_total", {"gate": "actor"}), 1.0)
+                "assistant_run_admission_rejections_total", {"gate": "actor"}), 1.0)
             await asyncio.sleep(0.6)  # drain the held executor task
 
     async def test_global_limit_admits_a_second_actor_only_after_a_slot_frees(self):

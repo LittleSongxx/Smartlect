@@ -22,8 +22,8 @@ public final class MqConsumeReplayRouter {
                     new Target(RabbitMQConfig.SIGN_RECORD_EXCHANGE, RabbitMQConfig.SIGN_RECORD_KEY);
             case RabbitMQConfig.NOTIFY_QUEUE ->
                     new Target(RabbitMQConfig.NOTIFY_EXCHANGE, RabbitMQConfig.NOTIFY_KEY);
-            case RabbitMQConfig.USER_GROWTH_QUEUE, RabbitMQConfig.USER_GROWTH_DEAD_QUEUE ->
-                    new Target(RabbitMQConfig.USER_GROWTH_EXCHANGE, RabbitMQConfig.USER_GROWTH_KEY);
+            case RabbitMQConfig.USER_MEMBER_QUEUE, RabbitMQConfig.USER_MEMBER_DEAD_QUEUE ->
+                    new Target(RabbitMQConfig.USER_MEMBER_EXCHANGE, RabbitMQConfig.USER_MEMBER_KEY);
             case RabbitMQConfig.REFUND_STOCK_QUEUE, RabbitMQConfig.REFUND_STOCK_DEAD_QUEUE ->
                     new Target(RabbitMQConfig.REFUND_EXCHANGE, RabbitMQConfig.REFUND_STOCK_KEY);
             case RabbitMQConfig.REFUND_RESULT_QUEUE, RabbitMQConfig.REFUND_RESULT_DEAD_QUEUE ->

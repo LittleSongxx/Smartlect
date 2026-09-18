@@ -1,6 +1,6 @@
 // AI 层控制面压测（无 LLM）：visitor 会话引导 + 推荐读取，走
-// nginx → gateway → growth(FastAPI) → Java introspect/召回 → MySQL 全链。
-// 用法：k6 run -e BASE=http://172.21.131.151 -e VUS=100 -e HOLD=60s growth-control.js
+// nginx → gateway → assistant(FastAPI) → Java introspect/召回 → MySQL 全链。
+// 用法：k6 run -e BASE=http://172.21.131.151 -e VUS=100 -e HOLD=60s assistant-control.js
 import http from 'k6/http';
 import { check } from 'k6';
 

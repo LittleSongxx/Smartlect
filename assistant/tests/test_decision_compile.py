@@ -1,10 +1,13 @@
 """Decision compile table and query composition. No case IDs or holdout text."""
+import json
 import unittest
 
 from smartlect.agents.shopping import (EMPTY_EVIDENCE_ANSWER, PRODUCT_UNCOVERED_ANSWER,
-                                       PROVIDER_FAULT_ANSWER,
-                                       allow_retrieval_rewrite, classify_evidence, close_degraded_turn,
-                                       compile_decision, controller_fallback_result,
+                                       PROVIDER_FAULT_ANSWER, FinalAnswer,
+                                       allow_retrieval_rewrite, bind_sole_observed_sku,
+                                       classify_evidence, close_degraded_turn,
+                                       coerce_observed_fact_grounding, compile_decision,
+                                       controller_fallback_result,
                                        empty_evidence_result, keep_uncovered_leftovers,
                                        knowledge_observation, looks_like_irreconcilable_sources,
                                        looks_like_product_unique_fact,
@@ -12,7 +15,10 @@ from smartlect.agents.shopping import (EMPTY_EVIDENCE_ANSWER, PRODUCT_UNCOVERED_
                                        misses_utterance_constraints,
                                        no_business_claim_has_store_conclusion,
                                        rejected_search_data, retrieval_budget_action,
-                                       store_policy_allows_empty_citations)
+                                       salvage_observed_fact_closeout,
+                                       salvage_unstructured_fact_answer,
+                                       store_policy_allows_empty_citations,
+                                       template_observed_catalog_result)
 from smartlect.events import canonical
 from smartlect.knowledge import compose_search_query, constraint_terms, rank_chunks
 
@@ -76,8 +82,14 @@ class DecisionCompileTests(unittest.TestCase):
             {'answer_status': 'answered', 'open_ticket': False})
         self.assertTrue(looks_like_product_unique_fact('这件的成分是什么'))
         self.assertTrue(looks_like_product_unique_fact('包装里有没有说明书'))
+        self.assertTrue(looks_like_product_unique_fact('规格怎么选'))
+        self.assertTrue(looks_like_product_unique_fact('这件有哪些规格'))
         self.assertFalse(looks_like_product_unique_fact('运费怎么算'))
         self.assertFalse(looks_like_product_unique_fact('这件怎么退'))
+        self.assertFalse(looks_like_product_unique_fact('规格不符怎么退'))
+        self.assertEqual(
+            compile_decision('inquire_fact', 'unobserved', product_unique_fact=True, product_grounded=True),
+            {'answer_status': 'answered', 'open_ticket': False})
         self.assertEqual(PRODUCT_UNCOVERED_ANSWER, '资料未覆盖这一件。可切换到全店询问运费或退换，也可以转人工核实。')
 
     def test_proposal_overrides_ticket_compilation(self):
@@ -368,6 +380,89 @@ class DecisionCompileTests(unittest.TestCase):
                          [{'doc_id': 'internal-code', 'title': '内部核对码'}])
         self.assertNotIn('SECRET_MARKER_SHOULD_NOT_APPEAR', canonical(observation))
         self.assertEqual(observation['citations'][0]['content'], '退货与订单规则。')
+
+    def test_mislabeled_observed_facts_are_coerced_not_rejected(self):
+        final = FinalAnswer(answer='库存充足，只有一个规格。', request_kind='inquire_fact',
+                            handoff_requested=False, grounding='no_business_claim')
+        observed = {'fact_observed': True, 'retrieval_calls': 0}
+        self.assertTrue(coerce_observed_fact_grounding(final, observed))
+        self.assertEqual(final.grounding, 'user_facts')
+        self.assertTrue(observed['grounding_compiled_from_observation'])
+        unseen = FinalAnswer(answer='库存充足，只有一个规格。', request_kind='inquire_fact',
+                             handoff_requested=False, grounding='no_business_claim')
+        empty = {}
+        self.assertFalse(coerce_observed_fact_grounding(unseen, empty))
+        self.assertEqual(unseen.grounding, 'no_business_claim')
+        policy = FinalAnswer(answer='库存充足，运费怎么算以店规为准。', request_kind='inquire_fact',
+                             handoff_requested=False, grounding='no_business_claim')
+        self.assertFalse(coerce_observed_fact_grounding(policy, {'fact_observed': True}))
+
+    def test_unstructured_closeout_is_salvaged_only_after_observations(self):
+        text = '这款目前只有一个规格可选，库存充足。'
+        saved = salvage_unstructured_fact_answer(text, {'fact_observed': True})
+        self.assertEqual(saved.grounding, 'user_facts')
+        self.assertEqual(saved.answer, text)
+        self.assertIsNone(salvage_unstructured_fact_answer(text, {}))
+        self.assertIsNone(salvage_unstructured_fact_answer('{"answer":"x"}', {'fact_observed': True}))
+        self.assertIsNone(salvage_unstructured_fact_answer(
+            '库存充足，运费全国包邮。', {'fact_observed': True}))
+
+    def test_sole_observed_sku_is_bound_on_user_facts(self):
+        final = FinalAnswer(answer='仅此规格。', request_kind='inquire_fact',
+                            handoff_requested=False, grounding='user_facts')
+        context = {}
+        self.assertTrue(bind_sole_observed_sku(final, {'sku-1': {'sku_key': 'sku-1'}}, context))
+        self.assertEqual(final.selected_sku_keys, ['sku-1'])
+        self.assertTrue(context['sku_selected_from_sole_observation'])
+        keep = FinalAnswer(answer='仅此规格。', request_kind='inquire_fact',
+                           handoff_requested=False, grounding='user_facts',
+                           selected_sku_keys=['sku-1'])
+        self.assertFalse(bind_sole_observed_sku(keep, {'sku-1': {}, 'sku-2': {}}, {}))
+
+    def test_contract_failed_keeps_observed_fact_draft_instead_of_ticket(self):
+        context = {
+            'fact_observed': True,
+            'product_offer_observed': True,
+            'focus_mode': 'PRODUCT',
+            'answer_rejections': [{
+                'reason': 'no_business_claim_cannot_state_store_facts',
+                'candidate_output': json.dumps({
+                    'answer': '这款目前只有一个规格可选，库存充足。',
+                    'grounding': 'no_business_claim'}, ensure_ascii=False),
+            }],
+        }
+        saved = salvage_observed_fact_closeout(context, utterance='规格怎么选')
+        self.assertEqual(saved['answer_status'], 'answered')
+        self.assertEqual(saved['grounding'], 'user_facts')
+        self.assertEqual(saved['closeout'], 'salvaged_observed_facts')
+        self.assertFalse(saved['compiled']['open_ticket'])
+        self.assertIsNone(salvage_observed_fact_closeout({'fact_observed': False}, utterance='规格怎么选'))
+        self.assertIsNone(salvage_observed_fact_closeout({
+            'fact_observed': True,
+            'answer_rejections': [{'candidate_output': '库存充足，运费全国包邮。'}],
+        }, utterance='规格怎么选'))
+
+    def test_observed_skus_template_close_spec_question(self):
+        products = {
+            'p1:h': {
+                'sku_key': 'p1:h', 'productName': '可乐混合装',
+                'specification': '可乐*12+雪碧*8+芬达*4 330ml*24',
+                'price_cents': 4990, 'stock': 99900,
+            },
+        }
+        context = {'fact_observed': True, 'focus_mode': 'PRODUCT', 'product_offer_observed': True}
+        saved = template_observed_catalog_result(context, products, utterance='规格怎么选')
+        self.assertEqual(saved['closeout'], 'observed_catalog_template')
+        self.assertEqual(saved['grounding'], 'user_facts')
+        self.assertEqual(saved['answer_status'], 'answered')
+        self.assertFalse(saved['compiled']['open_ticket'])
+        self.assertIn('330ml*24', saved['answer'])
+        self.assertIn('¥49.90', saved['answer'])
+        self.assertEqual(len(saved['products']), 1)
+        self.assertIsNone(template_observed_catalog_result(
+            context, products, utterance='这件怎么退'))
+        self.assertIsNone(template_observed_catalog_result(
+            {'fact_observed': True}, {}, utterance='规格怎么选'))
 
 
 class ConstraintRerankTests(unittest.TestCase):

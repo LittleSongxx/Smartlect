@@ -40,13 +40,13 @@ class MqListenerHelperTest {
         when(idempotencyHelper.resolveIdempotencyKey(source)).thenReturn("message-1");
 
         helper.nackWithRetryOrDlq(
-                channel, 17L, source, RabbitMQConfig.USER_GROWTH_QUEUE,
+                channel, 17L, source, RabbitMQConfig.USER_MEMBER_QUEUE,
                 "payload", new IllegalStateException("temporary"));
 
         ArgumentCaptor<Message> retry = ArgumentCaptor.forClass(Message.class);
         verify(publisherConfirmHelper).sendRawAndAwaitConfirm(
                 eq(RabbitMQConfig.MQ_RETRY_EXCHANGE),
-                eq(RabbitMQConfig.retryRoutingKey(RabbitMQConfig.USER_GROWTH_QUEUE, 1)),
+                eq(RabbitMQConfig.retryRoutingKey(RabbitMQConfig.USER_MEMBER_QUEUE, 1)),
                 retry.capture(),
                 anyString());
         assertEquals(1, ((Number) retry.getValue().getMessageProperties()
@@ -104,12 +104,12 @@ class MqListenerHelperTest {
         when(idempotencyHelper.resolveIdempotencyKey(source)).thenReturn("message-3");
 
         helper.ackCompletedOrDeferBusy(
-                channel, 20L, source, RabbitMQConfig.USER_GROWTH_QUEUE);
+                channel, 20L, source, RabbitMQConfig.USER_MEMBER_QUEUE);
 
         ArgumentCaptor<Message> deferred = ArgumentCaptor.forClass(Message.class);
         verify(publisherConfirmHelper).sendRawAndAwaitConfirm(
                 eq(RabbitMQConfig.MQ_RETRY_EXCHANGE),
-                eq(RabbitMQConfig.retryRoutingKey(RabbitMQConfig.USER_GROWTH_QUEUE, 2)),
+                eq(RabbitMQConfig.retryRoutingKey(RabbitMQConfig.USER_MEMBER_QUEUE, 2)),
                 deferred.capture(),
                 anyString());
         assertEquals(1, ((Number) deferred.getValue().getMessageProperties()

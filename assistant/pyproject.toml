@@ -3,9 +3,9 @@ requires = ["setuptools==80.9.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "smartlect-growth"
+name = "smartlect-assistant"
 version = "0.1.0"
-description = "Smartlect AI application and deterministic growth services"
+description = "Smartlect AI assistant service: bounded shopping agent, knowledge, recommendations, ledger"
 requires-python = ">=3.11"
 dependencies = [
     "pika==1.4.1", "PyMySQL[rsa]==1.2.0", "cryptography==50.0.1",
@@ -22,8 +22,8 @@ dependencies = [
 ]
 
 [project.scripts]
-smartlect-growth = "smartlect.app:main"
-smartlect-growth-worker = "smartlect.worker:main"
+smartlect-assistant = "smartlect.app:main"
+smartlect-assistant-worker = "smartlect.worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

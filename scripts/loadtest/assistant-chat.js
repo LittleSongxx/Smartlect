@@ -1,6 +1,6 @@
 // AI Agent 对话链路压测：session → conversation → message → poll run 到终态。
 // 每轮一次完整 Agent run（含真 LLM 调用、检索、缓存、准入闸、信号量排队）。
-// 用法：k6 run -e BASE=http://172.21.131.151 -e VUS=4 -e HOLD=90s growth-chat.js
+// 用法：k6 run -e BASE=http://172.21.131.151 -e VUS=4 -e HOLD=90s assistant-chat.js
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Trend, Counter } from 'k6/metrics';

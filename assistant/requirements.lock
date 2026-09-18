@@ -1,6 +1,6 @@
 # Smartlect F0 Python dependency lock, resolved on CPython 3.13.11 / Linux x86_64.
 # Exact runtime + transitive pins; setuptools is the pyproject build dependency.
-# Install this file first, then install ./growth with --no-deps --no-build-isolation.
+# Install this file first, then install ./assistant with --no-deps --no-build-isolation.
 # Origin and update/verification procedure: docs/adr/0001-final-integration.md.
 PyJWT==2.10.1
 PyMySQL==1.2.0

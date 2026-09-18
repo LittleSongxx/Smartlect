@@ -15,7 +15,7 @@ export function errorText(reason) {
     trial_chat_limit: '试用账号今日操作次数已用完。',
     version_conflict: '版本已变化，请刷新并重新核对。',
     csrf_denied: '会话校验已失效，请刷新。', origin_denied: '当前访问地址不在允许的管理地址内。',
-    // growth 域的业务码：直接把机器码摆给管理员看不懂，这里给中文
+    // assistant 域的业务码：直接把机器码摆给管理员看不懂，这里给中文
     no_comments: '这件商品还没有评价，先有评价才能生成分析。',
     user_required: '请先登录后再操作。',
     conversation_not_found: '当前会话已失效，请刷新页面后重试。',

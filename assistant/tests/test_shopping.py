@@ -12,7 +12,7 @@ from smartlect.tools import tool_schema, SearchArgs, CreateOrderArgs, Preference
 
 class ShoppingBoundaryTests(unittest.TestCase):
     def test_final_answer_declares_request_kind_instead_of_status(self):
-        self.assertEqual(PROMPT_VERSION, 'shopping-react-v26')
+        self.assertEqual(PROMPT_VERSION, 'shopping-react-v27')
         self.assertEqual(SCHEMA_VERSION, 'shopping-answer-v6')
         advice = load_skill('shopping_advice')
         self.assertEqual(advice['version'], '1.13.0')

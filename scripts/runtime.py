@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ENV_FILE = ROOT / "run/runtime.env"
 PROCESS_FILE = ROOT / "run/processes.json"
 DATABASES = ("admin", "user", "product", "stock", "cart", "order", "pay", "coupon")
-APPS = ("growth-worker", "growth", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
+APPS = ("assistant-worker", "assistant", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
 PORTS = {"MYSQL": 13306, "POSTGRES": 15432, "REDIS": 16379, "RABBIT": 15672,
          "RABBIT_MANAGEMENT": 15674, "NACOS": 18848, "SEATA": 18092,
          "GATEWAY": 18080, "GROWTH": 18000, "DASHBOARD": 18501,
@@ -57,9 +57,9 @@ def model_env(path=None):
 
 
 def service_env(service, env):
-    """Growth processes must receive model.env; app_launch used to merge it locally
+    """Assistant processes must receive model.env; app_launch used to merge it locally
     and then throw the copy away, so live mode started with no keys."""
-    if service in {"growth", "growth-worker"}:
+    if service in {"assistant", "assistant-worker"}:
         return {**env, **model_env()}
     return dict(env)
 
@@ -227,7 +227,7 @@ def infra_up(env):
     if not result.get("accessToken"):
         raise RuntimeError("Smartlect Nacos login failed")
     compose("up", "-d", "--build", "--wait", "--wait-timeout", "180", "seata")
-    print("Smartlect middleware is healthy; commerce/growth application readiness is a separate gate.")
+    print("Smartlect middleware is healthy; commerce/assistant application readiness is a separate gate.")
 
 
 def infra_check(env):
@@ -268,7 +268,7 @@ def infra_check(env):
         if user == "smartlect_app":
             if {row[2] for row in grants} != {"SELECT", "INSERT", "UPDATE", "DELETE"}:
                 raise RuntimeError("Unexpected commercial application privileges")
-    print("Infrastructure checks passed: authenticated Nacos, healthy Seata registration, isolated growth/Flyway/app grants.")
+    print("Infrastructure checks passed: authenticated Nacos, healthy Seata registration, isolated assistant(Flyway)/app grants.")
 
 
 def process_identity(pid):
@@ -360,9 +360,9 @@ def apps_down():
 def app_health(service, record):
     if not owned_process(record):
         return False
-    path = '/admin/' if service == 'web-admin' else '/' if service == 'web-user' else "/health" if service == "growth" else "/actuator/health"
+    path = '/admin/' if service == 'web-admin' else '/' if service == 'web-user' else "/health" if service == "assistant" else "/actuator/health"
     try:
-        if service == "growth-worker":
+        if service == "assistant-worker":
             health = json.loads((ROOT / "run/worker-status.json").read_text())
             return health.get("pid") == record["pid"] and health.get("connected") and 0 <= time.time() - health["observed_at"] < 5
         with urllib.request.urlopen(f"http://127.0.0.1:{record['port']}{path}", timeout=2) as response:
@@ -453,7 +453,7 @@ def java_launch_args(service, env):
     if not Path(agent).is_file():
         agent = "/opt/otel/opentelemetry-javaagent.jar"
     if Path(agent).is_file():
-        # SMARTLECT_OTEL_EXPORTER 同时供 growth(Python, 需含 /v1/traces 全路径)；
+        # SMARTLECT_OTEL_EXPORTER 同时供 assistant(Python, 需含 /v1/traces 全路径)；
         # Java agent 只要基址（自动追加 /v1/traces、/v1/logs），必须剥掉后缀。
         endpoint = env.get("SMARTLECT_OTEL_EXPORTER", "http://127.0.0.1:4318").rstrip("/")
         if endpoint.endswith("/v1/traces"):
@@ -488,7 +488,7 @@ def smoke_apps(env, timeout=180):
     """
     failures = []
     for service in APPS:
-        if service in {"growth", "growth-worker", "web-user", "web-admin"}:
+        if service in {"assistant", "assistant-worker", "web-user", "web-admin"}:
             continue
         executable, command, _, _, _ = app_launch(service, env)
         if not executable.exists():
@@ -555,9 +555,9 @@ def app_launch(service, env):
     start_app 里少绑定一个产物路径，重启直接失败导致整站不可用——把"能不能拼出
     启动计划"变成可独立验证的一步，才能在下线重启前发现。
     """
-    if service in {"growth", "growth-worker"}:
-        executable = ROOT / "growth/.venv/bin/python"
-        command = [str(executable), "-I", "-m", "smartlect.worker" if service == "growth-worker" else "smartlect.app"]
+    if service in {"assistant", "assistant-worker"}:
+        executable = ROOT / "assistant/.venv/bin/python"
+        command = [str(executable), "-I", "-m", "smartlect.worker" if service == "assistant-worker" else "smartlect.app"]
         artifact = Path(run(str(executable), "-I", "-c",
                             "import importlib.util; print(next(iter(importlib.util.find_spec('smartlect').submodule_search_locations)))",
                             capture=True).strip())
@@ -596,7 +596,9 @@ def start_app(service, env, records):
                 and records[service]["cmdline"] == command):
             return
         stop_process(records[service])
-    port = None if service == "growth-worker" else int(env[f"SMARTLECT_{service.upper().replace('-', '_')}_PORT"])
+    # env 前缀沿用历史 growth 命名（线上 .env/数据库不随服务改名），这里显式映射。
+    port_env = {"assistant": "SMARTLECT_GROWTH_PORT"}.get(service, f"SMARTLECT_{service.upper().replace('-', '_')}_PORT")
+    port = None if service == "assistant-worker" else int(env[port_env])
     if port is not None:
         with socket.socket() as probe:
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -653,11 +655,11 @@ def apps_up(env):
             'MYSQL_PWD="$SMARTLECT_FLYWAY_PASSWORD" mysql -usmartlect_flyway -e "$1"',
             "seata-schema", (ROOT / "deploy/sql/16-seata-undo.sql").read_text())
     records = load_processes()
-    # growth-worker passively declares queues Java owns, and the growth app's
+    # assistant-worker passively declares queues Java owns, and the assistant app's
     # health requires a connected worker — so both start after the Java services
     # have redeclared their queues (a volume reset otherwise leaves the worker
     # in a 404 retry loop that fails the whole `up` batch).
-    for services in (APPS[2:9], ('growth-worker', 'growth'), ('admin', 'gateway'), ('web-user', 'web-admin')):
+    for services in (APPS[2:9], ('assistant-worker', 'assistant'), ('admin', 'gateway'), ('web-user', 'web-admin')):
         for service in services:
             start_app(service, env, records)
             # Warm one JVM at a time on the shared WSL host.
@@ -675,7 +677,7 @@ def apps_check(env):
     wait_apps(APPS, records)
     token = nacos_request(env, "/nacos/v1/auth/login", {
         "username": env["SMARTLECT_NACOS_USERNAME"], "password": env["SMARTLECT_NACOS_PASSWORD"]})["accessToken"]
-    pending = set(APPS) - {"growth", "growth-worker", "web-user", "web-admin"}
+    pending = set(APPS) - {"assistant", "assistant-worker", "web-user", "web-admin"}
     deadline = time.monotonic() + 30
     while pending and time.monotonic() < deadline:
         for service in tuple(pending):
@@ -725,7 +727,7 @@ def self_test():
         saved_model_env = model_env
         try:
             globals()["model_env"] = lambda path=None: {"SMARTLECT_MODEL_API_KEY": "injected-from-model-env"}
-            injected = launch_env_for("growth", {"SMARTLECT_MODEL_MODE": "live"})
+            injected = launch_env_for("assistant", {"SMARTLECT_MODEL_MODE": "live"})
             java = launch_env_for("user", {"SMARTLECT_MODEL_MODE": "live"})
         finally:
             globals()["model_env"] = saved_model_env
@@ -835,9 +837,9 @@ def self_test():
                     wait_apps=lambda names, records: calls.append(('healthy', tuple(names)))):
         apps_up({})
     assert calls[:2] == [('start', 'user'), ('healthy', ('user',))]
-    assert ('start', 'growth-worker') in calls and calls.index(('start', 'growth-worker')) > calls.index(('healthy', ('stock',)))
+    assert ('start', 'assistant-worker') in calls and calls.index(('start', 'assistant-worker')) > calls.index(('healthy', ('stock',)))
     assert ('catalog',) in calls and calls.index(('catalog',)) > calls.index(('healthy', ('stock',)))
-    print('Java producers redeclare queues before the growth consumer starts.')
+    print('Java producers redeclare queues before the assistant consumer starts.')
 
 
 def main():

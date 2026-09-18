@@ -41,10 +41,10 @@ public class RecommendationAttributionClient {
 
     public RecommendationAttributionClient(
             RestClient.Builder builder,
-            @Value("${smartlect.growth.base-url:http://127.0.0.1:18000}") String growthBaseUrl,
+            @Value("${smartlect.assistant.base-url:http://127.0.0.1:18000}") String growthBaseUrl,
             @Value("${smartlect.internal.token:}") String internalToken,
-            @Value("${smartlect.growth.attribution-connect-timeout-ms:200}") int connectTimeoutMs,
-            @Value("${smartlect.growth.attribution-read-timeout-ms:500}") int readTimeoutMs) {
+            @Value("${smartlect.assistant.attribution-connect-timeout-ms:200}") int connectTimeoutMs,
+            @Value("${smartlect.assistant.attribution-read-timeout-ms:500}") int readTimeoutMs) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofMillis(Math.max(connectTimeoutMs, 50)));
         requestFactory.setReadTimeout(Duration.ofMillis(Math.max(readTimeoutMs, 50)));

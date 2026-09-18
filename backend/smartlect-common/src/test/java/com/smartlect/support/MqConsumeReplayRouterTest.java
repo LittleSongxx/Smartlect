@@ -12,14 +12,14 @@ class MqConsumeReplayRouterTest {
     void userGrowthQueueReplaysToThePrimaryExchangeRoute() {
         assertEquals(
                 new MqConsumeReplayRouter.Target(
-                        RabbitMQConfig.USER_GROWTH_EXCHANGE,
-                        RabbitMQConfig.USER_GROWTH_KEY),
-                MqConsumeReplayRouter.resolve(RabbitMQConfig.USER_GROWTH_QUEUE));
+                        RabbitMQConfig.USER_MEMBER_EXCHANGE,
+                        RabbitMQConfig.USER_MEMBER_KEY),
+                MqConsumeReplayRouter.resolve(RabbitMQConfig.USER_MEMBER_QUEUE));
         assertEquals(
                 new MqConsumeReplayRouter.Target(
-                        RabbitMQConfig.USER_GROWTH_EXCHANGE,
-                        RabbitMQConfig.USER_GROWTH_KEY),
-                MqConsumeReplayRouter.resolve(RabbitMQConfig.USER_GROWTH_DEAD_QUEUE));
+                        RabbitMQConfig.USER_MEMBER_EXCHANGE,
+                        RabbitMQConfig.USER_MEMBER_KEY),
+                MqConsumeReplayRouter.resolve(RabbitMQConfig.USER_MEMBER_DEAD_QUEUE));
     }
 
     @Test

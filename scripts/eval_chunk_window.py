@@ -13,7 +13,7 @@ from pathlib import Path
 from statistics import mean
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "growth" / "src"))
+sys.path.insert(0, str(ROOT / "assistant" / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from runtime import ROOT as _ROOT  # noqa: E402

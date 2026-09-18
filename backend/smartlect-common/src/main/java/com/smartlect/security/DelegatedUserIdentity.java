@@ -12,7 +12,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  * 解析 Growth 内部调用的委托用户身份（{@code X-Smartlect-User-Id}）。
  *
  * <p>内部接口靠 {@code X-Internal-Token} 证明"调用方是 Growth 系统"，但 token 证明不了
- * "这次查询代表哪个用户"。委托头由 trusted growth service 从会话身份（系统信道）写入；body 里的
+ * "这次查询代表哪个用户"。委托头由 trusted assistant service 从会话身份（系统信道）写入；body 里的
  * {@code userId} 是模型可见信道——模型输出或提示注入可以改写 body，改不了头。因此：
  *
  * <ul>

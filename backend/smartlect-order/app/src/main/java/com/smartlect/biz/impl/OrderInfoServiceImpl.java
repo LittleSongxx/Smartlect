@@ -1455,8 +1455,8 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		OrderGrowthEventDTO event = new OrderGrowthEventDTO(
 				orderInfo.getOrderId(), orderInfo.getUserId(), orderInfo.getAmount());
 		transactionalMqSender.sendAfterCommit(
-				RabbitMQConfig.USER_GROWTH_EXCHANGE,
-				RabbitMQConfig.USER_GROWTH_KEY,
+				RabbitMQConfig.USER_MEMBER_EXCHANGE,
+				RabbitMQConfig.USER_MEMBER_KEY,
 				event,
 				MqIdempotencyKeys.orderGrowth(orderInfo.getOrderId()),
 				MessageReliabilityLevelEnum.STANDARD);

@@ -131,6 +131,24 @@ class RefundCommerce:
         raise AssertionError('unexpected commerce ' + path)
 
 
+class OfferCommerce(FakeCommerce):
+    async def request(self, service, path, *, data=None, **kwargs):
+        if str(path).endswith('/getDetail'):
+            from copy import deepcopy
+            pid = (data or {}).get('productId') or 'content'
+            product = deepcopy(self.products[pid])
+            return {
+                'skus': [dict(productId=pid, propertyValueIdHash='hash-' + pid,
+                              propertyValueIds='v' + pid, price='49.90', stock=None, sort=0)],
+                'productId': pid, 'productName': product['productName'],
+                'minPrice': '49.90', 'maxPrice': '49.90', 'inStock': True,
+                'totalStock': 99900, 'status': 1,
+                'propertyValues': [dict(productId=pid, propertyValueId='v' + pid,
+                                        propertyName='规格', propertyValue='330ml*24')],
+            }
+        return await super().request(service, path, data=data, **kwargs)
+
+
 @unittest.skipUnless(os.getenv("SMARTLECT_RUN_MYSQL_TESTS") == "1", "set SMARTLECT_RUN_MYSQL_TESTS=1 for dedicated MySQL")
 class ShoppingMySQLTests(unittest.TestCase):
     setUpClass = classmethod(ledger_tests.LedgerMySQLTests.setUpClass.__func__)
@@ -141,7 +159,9 @@ class ShoppingMySQLTests(unittest.TestCase):
     # and one actor instead of each registering those ids into a scope of their own. The rest
     # of the class keeps a private scope per test.
     CATALOG_TESTS = {"test_selection_gate_forces_selection_before_insufficient_closeout",
-                     "test_recommend_skus_uses_constraint_retrieve_not_homepage_routes"}
+                     "test_recommend_skus_uses_constraint_retrieve_not_homepage_routes",
+                     "test_observed_product_facts_do_not_handoff_on_mislabeled_closeout",
+                     "test_product_focus_spec_question_templates_from_skus"}
     CATALOG_PRODUCTS = ["content", "popular", "new", "paired", "seed"]
     catalog_scope = None
     catalog_scope_registered = False
@@ -989,6 +1009,70 @@ class ShoppingMySQLTests(unittest.TestCase):
                     self.assertEqual(self.store.get_conversation(self.actor, self.conversation)['messages'], before)
                     self.assertEqual(provider.actual_attempts, 3)
         asyncio.run(exercise())
+
+    def test_observed_product_facts_do_not_handoff_on_mislabeled_closeout(self):
+        # Live 规格怎么选: offer returned the only SKU, the model streamed a correct
+        # markdown spec, then repaired as no_business_claim + 库存 and ticketed.
+        attribution = self.catalog_attribution()
+        markdown = '根据查询结果，这款商品目前只有一个规格可选。价格49.90元，库存充足。'
+        provider = FakeProvider([
+            tool('get_product_offer', {'productId': 'content'}),
+            {'role': 'assistant', 'content': markdown},
+            tool('finish_answer', {
+                'answer': markdown, 'request_kind': 'inquire_fact',
+                'handoff_requested': False, 'grounding': 'no_business_claim'}),
+            AssertionError('observed_fact_closeout_must_not_need_a_third_attempt')])
+        run, lease = self.begin('规格怎么选')
+        self.store.save_context(lease, {**dict(run.get('context') or {}),
+                                        'focus_mode': 'PRODUCT', 'focus_product_id': 'content'})
+        run = self.store.get_run(self.actor, run['agent_run_id'])
+        result = asyncio.run(self.execute(provider, run, lease, commerce=OfferCommerce(),
+                                          attribution=attribution))['result']
+        self.assertEqual(result['answer_status'], 'answered')
+        self.assertEqual(result['grounding'], 'user_facts')
+        self.assertIn('规格', result['answer'])
+        self.assertNotIn('模型通道未能完成回答', result['answer'])
+        self.assertIsNone(result.get('ticket'))
+        self.assertIsNone(self.memory.handoff_state(self.actor, self.conversation))
+        self.assertNotEqual(result.get('handoff_origin'), 'provider_fault')
+        self.assertEqual(result.get('closeout'), None)
+        self.assertEqual(provider.actual_attempts, 2)
+
+        self.conversation = self.store.create_conversation(self.actor)['conversation_id']
+        labeled = FakeProvider([
+            tool('get_product_offer', {'productId': 'content'}),
+            tool('finish_answer', {
+                'answer': markdown, 'request_kind': 'inquire_fact',
+                'handoff_requested': False, 'grounding': 'no_business_claim'}),
+            AssertionError('coerced_user_facts_must_not_repair')])
+        run, lease = self.begin('规格怎么选')
+        self.store.save_context(lease, {**dict(run.get('context') or {}),
+                                        'focus_mode': 'PRODUCT', 'focus_product_id': 'content'})
+        run = self.store.get_run(self.actor, run['agent_run_id'])
+        labeled_result = asyncio.run(self.execute(labeled, run, lease, commerce=OfferCommerce(),
+                                                  attribution=attribution))['result']
+        self.assertEqual(labeled_result['answer_status'], 'answered')
+        self.assertEqual(labeled_result['grounding'], 'user_facts')
+        self.assertIsNone(labeled_result.get('ticket'))
+        self.assertEqual(labeled.actual_attempts, 2)
+
+    def test_product_focus_spec_question_templates_from_skus(self):
+        attribution = self.catalog_attribution()
+        provider = FakeProvider([
+            tool('recommend_skus', {'query': '规格'}),
+            AssertionError('catalog_fact_must_template_without_second_model_call')])
+        run, lease = self.begin('规格怎么选')
+        self.store.save_context(lease, {**dict(run.get('context') or {}),
+                                        'focus_mode': 'PRODUCT', 'focus_product_id': 'content'})
+        run = self.store.get_run(self.actor, run['agent_run_id'])
+        result = asyncio.run(self.execute(provider, run, lease, commerce=FakeCommerce(),
+                                          attribution=attribution))['result']
+        self.assertEqual(result['closeout'], 'observed_catalog_template')
+        self.assertEqual(result['answer_status'], 'answered')
+        self.assertEqual(result['grounding'], 'user_facts')
+        self.assertTrue(result['products'])
+        self.assertIsNone(result.get('ticket'))
+        self.assertEqual(provider.actual_attempts, 1)
 
     def test_recommend_skus_uses_constraint_retrieve_not_homepage_routes(self):
         commerce = FakeCommerce()

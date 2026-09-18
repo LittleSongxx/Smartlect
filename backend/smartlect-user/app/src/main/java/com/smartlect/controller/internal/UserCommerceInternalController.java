@@ -67,7 +67,7 @@ public class UserCommerceInternalController extends ABaseController {
     /**
      * Distinct recently-browsed product IDs, newest first.
      *
-     * <p>The growth service votes on the category of these products to pick a
+     * <p>The assistant service votes on the category of these products to pick a
      * recommendation shelf, so duplicates are collapsed here: five views of the
      * same phone should count once, not carry the whole vote. Rows are
      * over-fetched because de-duplication happens after the query.

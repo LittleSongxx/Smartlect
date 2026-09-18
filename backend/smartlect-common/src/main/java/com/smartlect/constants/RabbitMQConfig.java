@@ -49,7 +49,7 @@ public class RabbitMQConfig {
     // 通知交换机
     public static final String NOTIFY_EXCHANGE = "smartlect.notify.exchange";
     public static final String REFUND_EXCHANGE = "smartlect.refund.exchange";
-    public static final String USER_GROWTH_EXCHANGE = "smartlect.user.growth.exchange";
+    public static final String USER_MEMBER_EXCHANGE = "smartlect.user.member.exchange";
     public static final String COMMERCE_OUTCOME_EXCHANGE = "smartlect.commerce.outcome.exchange";
     public static final String MQ_RETRY_EXCHANGE = "smartlect.mq.retry.exchange";
     public static final String MQ_FAILURE_EXCHANGE = "smartlect.mq.failure.exchange";
@@ -64,9 +64,9 @@ public class RabbitMQConfig {
     public static final String REFUND_STOCK_DEAD_QUEUE = "smartlect.refund.stock.dead.queue";
     public static final String REFUND_RESULT_QUEUE = "smartlect.refund.result.queue";
     public static final String REFUND_RESULT_DEAD_QUEUE = "smartlect.refund.result.dead.queue";
-    public static final String USER_GROWTH_QUEUE = "smartlect.user.growth.queue";
-    public static final String USER_GROWTH_DEAD_QUEUE = "smartlect.user.growth.dead.queue";
-    public static final String COMMERCE_OUTCOME_QUEUE = "smartlect.growth.commerce.queue";
+    public static final String USER_MEMBER_QUEUE = "smartlect.user.member.queue";
+    public static final String USER_MEMBER_DEAD_QUEUE = "smartlect.user.member.dead.queue";
+    public static final String COMMERCE_OUTCOME_QUEUE = "smartlect.assistant.commerce.queue";
     public static final String COMMERCE_OUTCOME_DEAD_QUEUE = "smartlect.commerce.outcome.dead.queue";
 
     // 死信队列（超时未支付释放库存）
@@ -100,8 +100,8 @@ public class RabbitMQConfig {
     public static final String REFUND_STOCK_DEAD_KEY = "smartlect.refund.stock.dead";
     public static final String REFUND_RESULT_KEY = "smartlect.refund.result";
     public static final String REFUND_RESULT_DEAD_KEY = "smartlect.refund.result.dead";
-    public static final String USER_GROWTH_KEY = "smartlect.user.growth";
-    public static final String USER_GROWTH_DEAD_KEY = "smartlect.user.growth.dead";
+    public static final String USER_MEMBER_KEY = "smartlect.user.member";
+    public static final String USER_MEMBER_DEAD_KEY = "smartlect.user.member.dead";
     public static final String COMMERCE_OUTCOME_KEY = "smartlect.commerce.outcome";
     public static final String COMMERCE_OUTCOME_DEAD_KEY = "smartlect.commerce.outcome.dead";
 
@@ -135,7 +135,7 @@ public class RabbitMQConfig {
             SIGN_RECORD_QUEUE,
             REFUND_STOCK_QUEUE,
             REFUND_RESULT_QUEUE,
-            USER_GROWTH_QUEUE,
+            USER_MEMBER_QUEUE,
             USER_TEMP_BAN_DEAD_QUEUE
     );
 
@@ -380,32 +380,32 @@ public class RabbitMQConfig {
     // ========== 订单完成后会员成长值 ==========
     @Bean
     public DirectExchange userGrowthExchange() {
-        return new DirectExchange(USER_GROWTH_EXCHANGE, true, false);
+        return new DirectExchange(USER_MEMBER_EXCHANGE, true, false);
     }
 
     @Bean
     public Queue userGrowthQueue() {
-        return durableQueue(USER_GROWTH_QUEUE)
-                .withArgument("x-dead-letter-exchange", USER_GROWTH_EXCHANGE)
-                .withArgument("x-dead-letter-routing-key", USER_GROWTH_DEAD_KEY)
+        return durableQueue(USER_MEMBER_QUEUE)
+                .withArgument("x-dead-letter-exchange", USER_MEMBER_EXCHANGE)
+                .withArgument("x-dead-letter-routing-key", USER_MEMBER_DEAD_KEY)
                 .build();
     }
 
     @Bean
     public Queue userGrowthDeadQueue() {
-        return durableQueue(USER_GROWTH_DEAD_QUEUE).build();
+        return durableQueue(USER_MEMBER_DEAD_QUEUE).build();
     }
 
     @Bean
     public Binding userGrowthBinding() {
         return BindingBuilder.bind(userGrowthQueue())
-                .to(userGrowthExchange()).with(USER_GROWTH_KEY);
+                .to(userGrowthExchange()).with(USER_MEMBER_KEY);
     }
 
     @Bean
     public Binding userGrowthDeadBinding() {
         return BindingBuilder.bind(userGrowthDeadQueue())
-                .to(userGrowthExchange()).with(USER_GROWTH_DEAD_KEY);
+                .to(userGrowthExchange()).with(USER_MEMBER_DEAD_KEY);
     }
 
     // ========== 浏览足迹异步落库 ==========
