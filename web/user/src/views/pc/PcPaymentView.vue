@@ -41,13 +41,13 @@
         </div>
 
         <div v-else-if="payLaunched" class="result-card pending">
-          <h2>请完成模拟付款</h2>
+          <h2>{{ payMode === 'live' ? '请完成支付宝付款' : '请完成模拟付款' }}</h2>
           <p>
-            本环境使用本地模拟支付。点击下方按钮完成付款，再查询订单状态。
+            {{ payMode === 'live' ? '点击按钮打开支付宝完成付款，支付后回到本页核对结果。' : '本环境使用本地模拟支付。点击下方按钮完成付款，再查询订单状态。' }}
           </p>
           <div class="pending-actions">
             <el-button type="primary" plain :loading="reopening" @click="reopenPayPage">
-              模拟付款
+              {{ payMode === 'live' ? '打开支付宝支付' : '模拟付款' }}
             </el-button>
             <el-button type="primary" :loading="checking" @click="checkPay">我已支付</el-button>
           </div>
@@ -100,6 +100,7 @@ import { usePaymentPage } from '@/composables/usePaymentPage';
 const {
   orderInfo,
   payAmount,
+  payMode,
   payLaunched,
   paySuccess,
   launching,

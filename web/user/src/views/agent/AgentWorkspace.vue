@@ -2,8 +2,8 @@
   <div class="agent-workspace" :class="{ compact }">
     <header v-if="!compact" class="chat-header">
       <div>
-        <h2>导购与客服</h2>
-        <p v-if="statusLine">{{ statusLine }}</p>
+        <h2>{{ focused ? '问这件' : '导购与客服' }}</h2>
+        <p>{{ headerHint }}</p>
       </div>
       <div class="actions-inline">
         <button type="button" :disabled="busy" @click="restore()">刷新</button>
@@ -27,17 +27,23 @@ import { computed, onUnmounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import AgentChatList from '@/views/agent/AgentChatList.vue';
 import AgentSendPanel from '@/views/agent/AgentSendPanel.vue';
+import { useAgentFocus } from '@/composables/useAgentFocus';
 import { HANDOFF_SYNC_INTERVAL_MS, useAgentSession } from '@/composables/useAgentSession';
 import { ownerKey, session } from '@/api/client';
 
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false });
 
 const route = useRoute();
+const { focused } = useAgentFocus();
 const { busy, error, connection, pending, conversationId, messages, handoff, requestHandoff, restore, newConversation, send, syncConversation } = useAgentSession();
 const statusLine = computed(() => {
   const text = connection.value;
   if (!text || ['可以开始对话', '已从服务器恢复', '事件已连接'].includes(text)) return '';
   return text;
+});
+const headerHint = computed(() => {
+  if (statusLine.value) return statusLine.value;
+  return focused.value ? '当前只答这件商品和店规。想问其他请点「改问全店」。' : '当前按全店政策回答。';
 });
 function requestedConversation() {
   const value = route.query.conversation;

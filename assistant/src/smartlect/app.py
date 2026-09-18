@@ -3,6 +3,7 @@ import argparse
 import asyncio
 from collections.abc import AsyncIterable
 from contextlib import asynccontextmanager
+from decimal import Decimal
 import hmac
 import json
 import logging
@@ -143,20 +144,33 @@ def health(settings, config=None):
 async def execute_proposal(proposal, actor, commerce, attribution=None):
     action = proposal["action_type"]
     if action == 'payment':
-        if commerce.config.get('SMARTLECT_PAYMENT_MODE') != 'mock':
-            raise CommerceRejected(403, 'mock_payment_disabled')
         params = proposal['parameters']
         query = {'actionType': 'PAYMENT', 'params': {'payOrderId': params['payOrderId']}}
         current = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor, data=query)
         if current.get('amountCents') != params['expected_amount_cents']:
             raise CommerceRejected(409, 'RECONFIRM_REQUIRED')
-        if current.get('paymentStatus') == 'PENDING':
-            await commerce.request('pay', '/internal/pay/mock/complete', actor=actor,
-                                   data={'payOrderId': params['payOrderId'],
-                                         'expectedAmountCents': params['expected_amount_cents']},
-                                   key=proposal['idempotency_key'])
-            current = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor, data=query)
-        return current
+        mode = str(commerce.config.get('SMARTLECT_PAYMENT_MODE') or 'mock').lower()
+        if mode == 'mock':
+            if current.get('paymentStatus') == 'PENDING':
+                await commerce.request('pay', '/internal/pay/mock/complete', actor=actor,
+                                       data={'payOrderId': params['payOrderId'],
+                                             'expectedAmountCents': params['expected_amount_cents']},
+                                       key=proposal['idempotency_key'])
+                current = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor, data=query)
+            return current
+        if mode == 'live':
+            # 实渠道：取支付宝表单交给前端拉起，服务端绝不代替用户完成真实支付；
+            # 已支付(PENDING 之外)则只回状态，不再生成表单。
+            if current.get('paymentStatus') == 'PENDING':
+                pay = await commerce.request('pay', '/internal/pay/channel/getPayUrl', actor=actor, data={
+                    'payChannel': 'alipay_pc',
+                    'payOrderId': params['payOrderId'],
+                    'subject': 'Smartlect 订单',
+                    'amount': f"{Decimal(params['expected_amount_cents']) / 100:.2f}"})
+                current = {**current, 'paymentMode': 'live', 'payChannel': 'alipay_pc',
+                           'payInfo': (pay or {}).get('payInfo')}
+            return current
+        raise CommerceRejected(403, 'payment_mode_unsupported')
     kinds = {"order": "CREATE_ORDER", "cancel": "CANCEL_ORDER", "refund": "REFUND"}
     if action not in kinds:
         raise CommerceRejected(403, "action_not_allowed")
@@ -721,12 +735,17 @@ def create_app(settings=None, *, config=None, store=None, ledger=None, identity=
         actor.require("orders:write")
         result = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor,
                                         data={'actionType': 'PAYMENT', 'params': {'payOrderId': pay_id}})
-        return {**result, 'amount_cents': result.get('amountCents')}
+        return {**result, 'amount_cents': result.get('amountCents'),
+                'payment_mode': str(config.get('SMARTLECT_PAYMENT_MODE') or 'mock').lower()}
 
     @app.post('/api/assistant/payments/{pay_id}/complete')
     async def complete_payment(pay_id: str, payload: PaymentRequest, request: Request, response: Response):
         actor = await actor_for(request, response, write=True, user=True)
         actor.require("orders:write")
+        if str(config.get('SMARTLECT_PAYMENT_MODE') or 'mock').lower() == 'live' and actor.is_trial_user():
+            # 实渠道模式下，只读访客身份不允许发起任何真实支付意图（建单已被 Java 侧
+            # requireNonTrial 拦截，这里对支付提案创建再加一道对称防线）。
+            raise HTTPException(403, 'trial_real_payment_disabled')
         current = await commerce.request('order', ORDER_ACTION_STATUS_PATH, actor=actor,
                                          data={'actionType': 'PAYMENT', 'params': {'payOrderId': pay_id}})
         if current.get('amountCents') != payload.expected_amount_cents:

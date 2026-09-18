@@ -4,7 +4,7 @@
     <div class="bubble ai-bubble is-wide">
       <p v-if="waiting && !data.result?.answer" class="typing">正在查询并整理回复…</p>
       <div v-if="uncovered" class="refuse-card" role="status">
-        <p>资料未覆盖这一件。可以改问全店运费或退换，也可以转人工核实。</p>
+        <p>这件商品的资料还没覆盖到。运费、退换等店规可以继续问；想问其他商品或订单，请改成「全店」。也可以转人工核实。</p>
         <div class="refuse-actions">
           <button type="button" @click="setGlobal">改问全店</button>
           <button type="button" :disabled="busy || Boolean(handoff)" @click="requestHandoff">转人工</button>

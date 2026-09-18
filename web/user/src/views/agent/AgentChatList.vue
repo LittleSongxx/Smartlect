@@ -8,8 +8,8 @@
             <path d="M20.4 12a8.4 8.4 0 0 1-11.2 8L4.2 21l1.1-4.1A8.4 8.4 0 1 1 20.4 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
           </svg>
         </span>
-        <h1>开始对话</h1>
-        <p>{{ focused ? '这件的规格、用法和售后，可以直接问。' : '选购、运费和退换，按当前全店政策回答。' }}</p>
+        <h1>{{ focused ? '先问这件' : '开始对话' }}</h1>
+        <p>{{ focused ? '现在只回答这件商品，以及适用的运费、退换等店规。想问其他商品、全店选品或订单，请先点下方「改问全店」。' : '当前是全店模式，可按店内政策帮你选购、查运费退换和本人订单。' }}</p>
       </div>
       <div class="welcome-cards">
         <button

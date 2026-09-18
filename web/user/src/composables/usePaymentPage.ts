@@ -9,6 +9,7 @@ import {
   isPaySuccessMarked,
   markPaySuccess
 } from '@/utils/paySuccessSession';
+import { openAlipayPagePay } from '@/utils/alipayPagePay';
 import { toast } from '@/utils/toast';
 
 export type PaymentPageMode = 'mobile' | 'desktop';
@@ -64,13 +65,23 @@ export function usePaymentPage(mode: PaymentPageMode = 'mobile') {
     return false;
   };
 
+  const payMode = ref<'mock' | 'live'>('mock');
+
   const completeMockPay = async () => {
-    const status = await aiGet<{ amount_cents?: number }>(`/payments/${encodeURIComponent(payOrderId())}`);
+    const status = await aiGet<{ amount_cents?: number; payment_mode?: string }>(
+      `/payments/${encodeURIComponent(payOrderId())}`);
+    payMode.value = status?.payment_mode === 'live' ? 'live' : 'mock';
     const expected = Number(status?.amount_cents);
     if (!Number.isInteger(expected) || expected <= 0) {
       throw new Error('无法核对应付金额，请刷新后重试');
     }
-    await aiWrite(`/payments/${encodeURIComponent(payOrderId())}/complete`, { expected_amount_cents: expected });
+    const confirmed = await aiWrite<{ proposal?: { receipt?: { payInfo?: string } } }>(
+      `/payments/${encodeURIComponent(payOrderId())}/complete`, { expected_amount_cents: expected });
+    // 实渠道：回执携带支付宝表单，浏览器新开页提交拉起支付；本地不再代替用户完成付款。
+    const payInfo = confirmed?.proposal?.receipt?.payInfo;
+    if (typeof payInfo === 'string' && openAlipayPagePay(payInfo)) {
+      return true;
+    }
     const info = await orderApi.getOrderInfo(payOrderId());
     if (info && isPaidStatus(info.orderStatus)) {
       showPaidSuccess(info);
@@ -122,6 +133,12 @@ export function usePaymentPage(mode: PaymentPageMode = 'mobile') {
       }
 
       // Mock pay keeps the original Java intent. Calling getPayInfo would close it.
+      try {
+        const status = await aiGet<{ payment_mode?: string }>(`/payments/${encodeURIComponent(payOrderId())}`);
+        payMode.value = status?.payment_mode === 'live' ? 'live' : 'mock';
+      } catch {
+        payMode.value = 'mock';
+      }
       payHtml.value = '';
       payLaunched.value = true;
     } catch (e: any) {
@@ -141,10 +158,12 @@ export function usePaymentPage(mode: PaymentPageMode = 'mobile') {
     loadError.value = '';
     try {
       if (!(await completeMockPay())) {
-        loadError.value = '模拟付款未完成，请稍后重试';
+        loadError.value = payMode.value === 'live'
+          ? '尚未检测到支付完成，可稍后点击“我已支付”核对'
+          : '模拟付款未完成，请稍后重试';
       }
     } catch (e: any) {
-      loadError.value = e?.info || e?.message || '模拟付款失败';
+      loadError.value = e?.info || e?.message || '付款发起失败';
     } finally {
       reopening.value = false;
     }
@@ -169,7 +188,7 @@ export function usePaymentPage(mode: PaymentPageMode = 'mobile') {
         showPaidSuccess(info);
         toast.success('支付成功');
       } else {
-        toast.info('订单尚未支付，请先完成模拟付款');
+        toast.info(payMode.value === 'live' ? '订单尚未支付，请在支付宝完成付款后再核对' : '订单尚未支付，请先完成模拟付款');
       }
     } finally {
       checking.value = false;
@@ -273,6 +292,7 @@ export function usePaymentPage(mode: PaymentPageMode = 'mobile') {
     route,
     orderInfo,
     payAmount,
+    payMode,
     payLaunched,
     paySuccess,
     launching,

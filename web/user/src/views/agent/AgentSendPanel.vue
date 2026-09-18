@@ -14,18 +14,19 @@
           @click="setProduct"
         >
           <span class="focus-dot" />
-          正在问本商品{{ productName ? ` · ${shortName}` : '' }}
+          问这件{{ productName ? ` · ${shortName}` : '' }}
         </button>
         <button
+          v-if="productId"
           type="button"
-          class="focus-chip"
+          class="focus-escape"
           :class="{ active: !focused }"
           :disabled="busy"
           @click="setGlobal"
         >
-          全店
+          {{ focused ? '改问全店' : '正在问全店' }}
         </button>
-        <p v-if="!productId" class="focus-hint">当前按全店政策回答</p>
+        <p class="focus-hint">{{ focusHint }}</p>
       </div>
       <textarea
         ref="textarea"
@@ -40,7 +41,7 @@
         @keydown="keydown"
       />
       <div class="composer-toolbar">
-        <p class="composer-hint">下单和退款都会先确认，事实只依据当前可见资料。</p>
+        <p class="composer-hint">{{ composerHint }}</p>
         <button type="submit" class="btn-send-native" :disabled="busy || Boolean(handoff) || !input.trim()">
           {{ busy ? '…' : '发送' }}
         </button>
@@ -66,6 +67,16 @@ const shortName = computed(() => {
   const name = productName.value || '';
   return name.length > 12 ? `${name.slice(0, 12)}…` : name;
 });
+const focusHint = computed(() => {
+  if (!productId.value) return '当前按全店政策回答';
+  if (focused.value) return '当前只回答这件商品和适用店规。想问其他请点「改问全店」。';
+  return '已切换为全店，可问选品、其他商品和订单。点「问这件」可回到本商品。';
+});
+const composerHint = computed(() => (
+  focused.value
+    ? '下单和退款都会先确认。想问其他商品或订单，请先改成「全店」。'
+    : '下单和退款都会先确认，事实只依据当前可见资料。'
+));
 const composerPlaceholder = computed(() => {
   if (handoff.value) return '本会话已转人工，可刷新查看回复';
   return focused.value ? '问这件的成分、规格、包装或退换…' : '告诉我用途、预算，或咨询运费退换…';
@@ -138,6 +149,20 @@ function keydown(event: KeyboardEvent) {
   font-weight: 600;
 }
 
+.focus-escape {
+  border: none;
+  background: transparent;
+  color: $color-text-muted;
+  font-size: 12px;
+  line-height: 1.3;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.focus-escape.active {
+  color: $color-text-secondary;
+}
+
 .focus-dot {
   width: 6px;
   height: 6px;
@@ -147,8 +172,10 @@ function keydown(event: KeyboardEvent) {
 }
 
 .focus-hint {
-  margin: 0;
+  flex: 1 1 100%;
+  margin: 0 0 2px;
   font-size: 12px;
+  line-height: 1.45;
   color: $color-text-muted;
 }
 

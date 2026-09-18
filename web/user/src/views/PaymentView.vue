@@ -29,10 +29,10 @@
       </div>
 
       <div v-else-if="payLaunched" class="pay-result pending">
-        <p class="result-title">请完成模拟付款</p>
-        <p class="result-desc">本环境使用本地模拟支付，不会跳转第三方。</p>
+        <p class="result-title">{{ payMode === 'live' ? '请完成支付宝付款' : '请完成模拟付款' }}</p>
+        <p class="result-desc">{{ payMode === 'live' ? '点击按钮打开支付宝完成付款，支付后回到本页核对结果。' : '本环境使用本地模拟支付，不会跳转第三方。' }}</p>
         <el-button type="primary" plain round :loading="reopening" @click="reopenPayPage">
-          模拟付款
+          {{ payMode === 'live' ? '打开支付宝支付' : '模拟付款' }}
         </el-button>
         <div class="pay-check">
           <el-button type="primary" round :loading="checking" @click="checkPay">我已支付</el-button>
@@ -68,6 +68,7 @@ import { usePaymentPage } from '@/composables/usePaymentPage';
 const {
   orderInfo,
   payAmount,
+  payMode,
   payLaunched,
   paySuccess,
   launching,

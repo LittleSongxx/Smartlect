@@ -5,7 +5,7 @@
         v-if="pcAgentPanel.visible"
         class="pc-agent-float-root ignore"
         role="dialog"
-        aria-label="智能客服"
+        :aria-label="panelTitle"
         @click.self="pcAgentPanel.close()"
       >
         <section class="pc-agent-float-panel agent-page" @click.stop>
@@ -13,8 +13,8 @@
             <div class="head-title">
               <el-icon class="head-icon" :size="18"><ChatDotRound /></el-icon>
               <div class="head-copy">
-                <span>智能客服</span>
-                <small>{{ connection }}</small>
+                <span>{{ panelTitle }}</span>
+                <small>{{ panelSubtitle }}</small>
               </div>
             </div>
             <div class="head-actions">
@@ -33,13 +33,23 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { ChatDotRound, Close } from '@element-plus/icons-vue';
 import AgentWorkspace from '@/views/agent/AgentWorkspace.vue';
+import { useAgentFocus } from '@/composables/useAgentFocus';
 import { useAgentSession } from '@/composables/useAgentSession';
 import { usePcAgentPanelStore } from '@/stores/pcAgentPanel';
 
 const pcAgentPanel = usePcAgentPanelStore();
+const { focused } = useAgentFocus();
 const { busy, connection, restore, newConversation } = useAgentSession();
+const panelTitle = computed(() => (focused.value ? '问这件' : '智能客服'));
+const panelSubtitle = computed(() => {
+  const live = connection.value && !['可以开始对话', '已从服务器恢复', '事件已连接'].includes(connection.value);
+  if (focused.value && live) return `只答这件商品和店规 · ${connection.value}`;
+  if (focused.value) return '只答这件商品和店规，其他请改问全店';
+  return connection.value;
+});
 </script>
 
 <style scoped lang="scss">

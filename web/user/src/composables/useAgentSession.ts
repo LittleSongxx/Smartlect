@@ -46,6 +46,7 @@ function applyEvent(event: RunEvent, runId: string) {
   }
   // Completed snapshots win over replayed deltas; reconnect cannot duplicate assistant text.
   if (event.event_type === 'message_delta' && ['CREATED', 'RUNNING'].includes(run.state)) {
+    if (event.data?.incremental) return;
     const piece = event.data.text || event.data.delta || '';
     const shown = run.result?.answer || '';
     const streamed = (replayedDeltas.get(runId) || '') + piece;

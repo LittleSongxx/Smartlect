@@ -3,15 +3,16 @@
     type="button"
     class="agent-service-entry"
     :class="{ compact }"
-    aria-label="智能导购"
+    :aria-label="entryLabel"
     @click="goAgent"
   >
     <el-icon :size="iconSize"><ChatDotRound /></el-icon>
-    <span v-if="showLabel" class="label">导购</span>
+    <span v-if="showLabel" class="label">{{ entryLabel }}</span>
   </button>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { ChatDotRound } from '@element-plus/icons-vue';
 import { useOpenAgent } from '@/composables/useOpenAgent';
 import type { AgentConsultProduct } from '@/utils/agentProductConsult';
@@ -32,6 +33,7 @@ const props = withDefaults(
 );
 
 const { openAgent } = useOpenAgent();
+const entryLabel = computed(() => (props.consultProduct?.productId ? '问这件' : '导购'));
 
 const goAgent = () => {
   openAgent({

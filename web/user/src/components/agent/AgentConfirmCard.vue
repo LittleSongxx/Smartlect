@@ -29,7 +29,7 @@
       <button type="button" class="btn-cancel" :disabled="loading" @click="refresh">刷新状态</button>
       <button type="button" class="btn-confirm" :disabled="loading || Boolean(handoff)" @click="decide(true)">继续核对原操作</button>
     </footer>
-    <RouterLink v-if="card.action_type === 'order' && card.status === 'SUCCEEDED'" class="payment-link" to="/orders">前往我的订单，确认模拟付款 →</RouterLink>
+    <RouterLink v-if="card.action_type === 'order' && card.status === 'SUCCEEDED'" class="payment-link" to="/orders">前往我的订单完成付款 →</RouterLink>
   </section>
 </template>
 <script setup lang="ts">
