@@ -31,6 +31,11 @@ class AsyncCommerceClient:
         self.config = config
         self.transport = transport
         self._client = None  # shared; AsyncClient() construction loads CA certs, never per call
+        # 默认回环单机部署；分机部署时设 SMARTLECT_JAVA_BASE_URL 指向网关/对端主机。
+        self._base_host = str(config.get("SMARTLECT_JAVA_BASE_URL") or "http://127.0.0.1").rstrip("/")
+
+    def _service_url(self, service, path):
+        return f"{self._base_host}:{int(self.config[f'SMARTLECT_{service.upper()}_PORT'])}{path}"
 
     async def request(self, service, path, *, actor=None, data=None, key=None):
         if service not in {"user", "product", "stock", "order", "coupon", "pay"} or not path.startswith("/internal/"):
@@ -40,7 +45,7 @@ class AsyncCommerceClient:
             headers["X-Smartlect-User-Id"] = actor.actor_id
         if key:
             headers["Idempotency-Key"] = key
-        url = f"http://127.0.0.1:{int(self.config[f'SMARTLECT_{service.upper()}_PORT'])}{path}"
+        url = self._service_url(service, path)
         try:
             if self._client is None:
                 self._client = httpx.AsyncClient(transport=self.transport, timeout=10, trust_env=False)
@@ -64,6 +69,7 @@ class AsyncCommerceClient:
 class CommerceClient:
     def __init__(self, config):
         self.config = config
+        self._base_host = str(config.get("SMARTLECT_JAVA_BASE_URL") or "http://127.0.0.1").rstrip("/")
 
     def request(self, service, path, *, data=None, form=None, session=None, key=None):
         port = int(self.config[f"SMARTLECT_{service.upper()}_PORT"])
@@ -82,7 +88,7 @@ class CommerceClient:
         else:
             body = json.dumps(data).encode() if data is not None else b""
             headers["Content-Type"] = "application/json"
-        request = Request(f"http://127.0.0.1:{port}{path}", data=body, headers=headers, method="POST")
+        request = Request(f"{self._base_host}:{port}{path}", data=body, headers=headers, method="POST")
         try:
             with urlopen(request, timeout=10) as response:
                 result = json.load(response, parse_float=Decimal)
