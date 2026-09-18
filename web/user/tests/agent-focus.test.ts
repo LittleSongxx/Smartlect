@@ -44,6 +44,21 @@ describe('agent focus and product content', () => {
     expect(b.vm.payload()).toMatchObject({ focus_mode: 'PRODUCT', product_id: 'p9' });
   });
 
+  it('商品路由重挂后仍保持用户点过的全店', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/product/:productId', component: { template: '<div />' } }]
+    });
+    await router.push('/product/p9');
+    await router.isReady();
+    const first = mount({ template: '<div />', setup() { return useAgentFocus(); } }, { global: { plugins: [router] } });
+    first.vm.setGlobal();
+    expect(first.vm.payload()).toEqual({ focus_mode: 'GLOBAL' });
+    first.unmount();
+    const again = mount({ template: '<div />', setup() { return useAgentFocus(); } }, { global: { plugins: [router] } });
+    expect(again.vm.payload()).toEqual({ focus_mode: 'GLOBAL' });
+  });
+
   it('旧 Markdown 落入 extra，栏目单独解析', () => {
     const parsed = parseProductContent({
       productDesc: '整篇旧文',
