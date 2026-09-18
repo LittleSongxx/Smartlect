@@ -331,13 +331,13 @@ defineExpose({ open });
   padding: 8px 0;
   font-size: 14px;
   font-weight: 500;
-  color: #636366;
+  color: var(--text-2);
   background: transparent;
   cursor: pointer;
 
   &.active {
     background: #fff;
-    color: #17202a;
+    color: var(--text);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   }
 }
@@ -362,7 +362,7 @@ defineExpose({ open });
 .editor-hint {
   margin: 0;
   font-size: 12px;
-  color: #86868b;
+  color: var(--text-2);
   text-align: center;
 }
 
@@ -405,7 +405,7 @@ defineExpose({ open });
   padding: 0;
 
   &.active {
-    border-color: #17202a;
+    border-color: var(--text);
     transform: scale(1.08);
   }
 }

@@ -187,7 +187,7 @@ const { barJelly, glassJelly, onTabPress } = useTabBarJelly();
   align-items: center;
   justify-content: center;
   gap: 1px;
-  color: var(--m-ink-3, #8a8a8f);
+  color: var(--m-ink-3, #9a948c);
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
   transition: color 0.25s ease;

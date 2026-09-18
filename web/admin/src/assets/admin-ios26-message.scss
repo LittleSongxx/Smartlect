@@ -2,8 +2,8 @@
 :root {
   --ios26-alert-bg: rgba(255, 255, 255, 0.88);
   --ios26-alert-radius: 8px;
-  --ios26-alert-title: #17202a;
-  --ios26-alert-body: #3c3c43;
+  --ios26-alert-title: var(--text);
+  --ios26-alert-body: var(--text-2);
   --ios26-alert-blue: var(--primary);
   --ios26-alert-blue-hover: var(--primary-hover);
 }
@@ -99,18 +99,18 @@
 
     .el-button--default {
       background: #ffffff;
-      border: 1px solid rgba(60, 60, 67, 0.14);
+      border: 1px solid var(--border);
       color: var(--ios26-alert-title);
 
       &:hover,
       &:focus {
-        background: #f9f9fb;
-        border-color: rgba(60, 60, 67, 0.2);
+        background: var(--surface-soft);
+        border-color: var(--border);
         color: var(--ios26-alert-title);
       }
 
       &:active {
-        background: #f2f2f5;
+        background: var(--page-bg);
       }
     }
 
@@ -128,8 +128,8 @@
       }
 
       &:active {
-        background: #0068d1;
-        border-color: #0068d1;
+        background: var(--primary-active);
+        border-color: var(--primary-active);
       }
     }
 

@@ -8,7 +8,7 @@
             <span class="topbar-text">欢迎您，{{ authStore.userInfo?.nickName || '用户' }}</span>
           </template>
           <template v-else>
-            <RouterLink class="topbar-link" to="/login">你好，请登录</RouterLink>
+            <RouterLink class="topbar-link topbar-link--accent" to="/login">你好，请登录</RouterLink>
             <RouterLink v-if="PUBLIC_REGISTER_ENABLED" class="topbar-link" to="/register">免费注册</RouterLink>
           </template>
         </div>
@@ -352,6 +352,11 @@ onMounted(async () => {
     &:hover {
       color: $color-primary;
     }
+
+    &--accent {
+      color: $color-primary;
+      font-weight: 600;
+    }
   }
 
   .topbar-badge {
@@ -414,7 +419,7 @@ onMounted(async () => {
     .brand-en {
       font-size: 12px;
       font-weight: 500;
-      color: $color-text-muted;
+      color: $color-brand-yellow-text;
       letter-spacing: 0;
       text-transform: none;
       margin-left: 0;

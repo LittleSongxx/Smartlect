@@ -7,21 +7,21 @@
 }
 
 ::-webkit-scrollbar-track {
-    background: #f5f5f7;
+    background: var(--page-bg);
     border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #c7c7cc;
+    background: var(--text-3);
     border-radius: 8px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #aeaeb2;
+    background: var(--text-2);
 }
 
 ::-webkit-scrollbar-corner {
-    background: #f5f5f7;
+    background: var(--page-bg);
 }
 
 body {

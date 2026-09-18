@@ -408,7 +408,7 @@ defineExpose({ show });
 
 .ios-app-name {
   font-weight: 600;
-  color: rgba(60, 60, 67, 0.72);
+  color: var(--text-2);
 }
 
 .ios-meta-sep {
@@ -426,7 +426,7 @@ defineExpose({ show });
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: 0;
-  color: #17202a;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -439,7 +439,7 @@ defineExpose({ show });
   font-weight: 400;
   line-height: 1.32;
   letter-spacing: 0;
-  color: rgba(60, 60, 67, 0.88);
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;

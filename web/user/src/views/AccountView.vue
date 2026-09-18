@@ -328,9 +328,9 @@ const showAllProducts = (row: Record<string, any>) => {
     html += `<div style="display:flex;gap:12px;padding:10px 0;${idx > 0 ? 'border-top:1px solid #eee;' : ''}">
       ${cover}
       <div style="flex:1;min-width:0;">
-        <div style="font-size:14px;font-weight:500;margin-bottom:4px;color:#333333;">${item.productName || ''}</div>
-        <div style="font-size:12px;color:#86868b;">${item.propertyInfo || ''}</div>
-        <div style="font-size:12px;color:#86868b;margin-top:2px;">￥${item.itemAmount || 0} × ${item.buyCount || 0}</div>
+        <div style="font-size:14px;font-weight:500;margin-bottom:4px;color:#333029;">${item.productName || ''}</div>
+        <div style="font-size:12px;color:#6c6560;">${item.propertyInfo || ''}</div>
+        <div style="font-size:12px;color:#6c6560;margin-top:2px;">￥${item.itemAmount || 0} × ${item.buyCount || 0}</div>
       </div>
     </div>`
   })

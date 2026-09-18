@@ -24,8 +24,8 @@ $level-gold: #b08d3f;
 $level-gold-soft: #fdf6e8;
 $level-silver: #8a8f98;
 $level-silver-soft: #f3f4f6;
-$level-base: #94a3b8;
-$level-base-soft: #f5f7fa;
+$level-base: #a89888;
+$level-base-soft: #f6f1ea;
 
 $color-success: #16a34a;
 $color-danger: #dc2626;
@@ -33,14 +33,14 @@ $color-danger-hover: #b91c1c;
 $color-warning: #faad14;
 
 // ── 颜色：文本与表面 ────────────────────────────────────────────────────────
-$color-text: #172033;
-$color-text-2: #64748b;
-$color-text-3: #94a3b8;
+$color-text: #333029;
+$color-text-2: #6c6560;
+$color-text-3: #9a948c;
 $color-page: #f5f5f5;
 $color-surface: #ffffff;
 $color-surface-soft: #fffaf3;
-$color-border: #e5e7eb;
-$color-border-soft: #eceff5;
+$color-border: #e8e2da;
+$color-border-soft: #f0ebe4;
 $color-header-border: #eee6dc;
 
 // ── 圆角 / 阴影 / 字体 ──────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ $radius-sm: 6px;
 $radius-pill: 999px;
 $shadow-header: 0 1px 3px rgba(0, 0, 0, 0.05);
 $shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
-$shadow-hero: 0 28px 80px rgba(25, 43, 72, 0.16);
+$shadow-hero: 0 28px 80px rgba(60, 32, 12, 0.14);
 $font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue',
     'Microsoft YaHei', '微软雅黑', sans-serif;
 $font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
@@ -103,6 +103,11 @@ $page-heading-gap: 12px;
         --text: #{$color-text};
         --text-2: #{$color-text-2};
         --text-3: #{$color-text-3};
+        --text2: #{$color-text-2};
+        --text3: #{$color-text-3};
+        --m-ink: #{$color-text};
+        --m-ink-2: #{$color-text-2};
+        --m-ink-3: #{$color-text-3};
         --page-bg: #{$color-page};
         --surface: #{$color-surface};
         --surface-soft: #{$color-surface-soft};
@@ -139,7 +144,7 @@ $page-heading-gap: 12px;
         --accent-hover: #{$color-primary-hover};
         --accent-soft: #{$color-primary-soft};
         --accent-muted: #{$color-primary-muted};
-        --shadow-sm: 0 1px 2px rgba(23, 32, 42, 0.04);
+        --shadow-sm: 0 1px 2px rgba(60, 40, 20, 0.05);
         --shadow-float: #{$shadow-hero};
         --page-bg-end: #{$color-page};
         --surface-elevated: #{$color-surface};

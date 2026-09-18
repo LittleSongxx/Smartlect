@@ -177,7 +177,7 @@ defineExpose({ open });
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #17202a;
+  color: var(--text);
 }
 
 .cropper-viewport {
@@ -200,7 +200,7 @@ defineExpose({ open });
 .cropper-hint {
   margin: 0;
   font-size: 12px;
-  color: #86868b;
+  color: var(--text-2);
 }
 
 .cropper-actions {

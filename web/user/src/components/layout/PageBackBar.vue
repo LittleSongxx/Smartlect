@@ -96,7 +96,7 @@ const goBack = () => {
   background: rgba(255, 255, 255, 0.55);
   -webkit-backdrop-filter: var(--glass-blur-sm);
   backdrop-filter: var(--glass-blur-sm);
-  color: var(--m-ink, #333333);
+  color: var(--m-ink, #333029);
   cursor: pointer;
   display: grid;
   place-items: center;

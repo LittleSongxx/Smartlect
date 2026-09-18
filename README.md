@@ -6,30 +6,32 @@
 
 <p align="center">
   <b>一家会按商品回答的店</b><br/>
-  C 端商城 + 商家后台，中间只放一个 Shopping Agent
+  C 端商城 + 商家后台，中间只放两个领域 Agent
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white" />
-  <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk&logoColor=white" />
-  <img src="https://img.shields.io/badge/Python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/Vue-3-42b883?style=flat-square&amp;logo=vuedotjs&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square&amp;logo=openjdk&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/Python-3.11+-3776ab?style=flat-square&amp;logo=python&amp;logoColor=white" />
   <img src="https://img.shields.io/badge/LangGraph-bounded-1a1a2e?style=flat-square" />
-  <img src="https://img.shields.io/badge/Spring_Cloud-2025-6db33f?style=flat-square&logo=springboot&logoColor=white" />
-  <img src="https://img.shields.io/badge/MySQL-8-4479a1?style=flat-square&logo=mysql&logoColor=white" />
-  <a href="https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml"><img src="https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml/badge.svg" /></a>
+  <img src="https://img.shields.io/badge/Spring_Cloud-2025-6db33f?style=flat-square&amp;logo=springboot&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/MySQL-8-4479a1?style=flat-square&amp;logo=mysql&amp;logoColor=white" />
+  <a href="https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml"><img src="https://github.com/LittleSongxx/Smartlect/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/product-guide.png" alt="商品页智能导购：正在问本商品，并对照两个规格" width="100%" />
+  <img src="docs/assets/screenshots/home.png" alt="智选商城首页：分类、广告位、智选好物" width="100%" />
 </p>
 
 ---
 
-**Smartlect 是我做的一套可演示单店：前面是能逛的商城，后面是商家后台，中间只有一个 Shopping Agent。** 商品页默认「正在问本商品」，检索的是这件的资料和店规，不是整站闲聊。店规和商品说明可以在后台写成文档、发布后再被引用；价格和库存不进向量，下单、退款都要你点确认。Java 是交易权威，Python 只通过受控 API 说话。
+**Smartlect 是一套可演示的单店。** 前面是能逛的商城，后面是商家后台，中间不是聊天机器人套了个商城皮——货架、价格、库存来自 Java 目录；导购默认钉在「正在问本商品」；店规写成文档、发布后才被引用。
 
-线上可以直接点：[用户端](http://39.107.102.244/) · [管理端](http://39.107.102.244/admin/)。支付和广告花费是模拟的，没有真实资金。
+模型可以建议，不能自己成交。下单、退款、经营授权都要人点确认。价格和库存不进向量，每次重问交易服务。支付和广告花费是模拟的，没有真实资金。
 
-**对外试用账号是公开的，权限在服务端按身份拒绝。** 不要用仓库或环境里的超管、也不要用 `9100000000` 那组内部演示买家。
+线上可以直接点：[用户端](http://39.107.102.244/) · [管理端](http://39.107.102.244/admin/)。
+
+**对外试用账号是公开的，权限在服务端按身份拒绝。** 不要用仓库或环境里的超管。
 
 | 端 | 账号 | 密码 | 能做什么 | 不能做什么 |
 | --- | --- | --- | --- | --- |
@@ -38,7 +40,29 @@
 
 ---
 
-## 它每天在做什么
+## 架构
+
+这条边界是刻意画的：浏览器只负责把状态画出来，Python 负责「问什么、检索什么、下一步计划什么」，真正改价格、扣库存、落订单的，只有 Java。
+
+<p align="center">
+  <img src="docs/assets/architecture.png" alt="Smartlect 四层架构：Vue → Gateway → Python 两个 Agent → Java 交易权威" width="100%" />
+</p>
+
+系统里只有两个领域 Agent，没有总指挥、也没有把检索或记账再包装成 Agent。
+
+- **Shopping** 用有界 ReAct：看这一轮的问题，选工具，读回执，再决定澄清、作答，或生成一张待确认提案。
+- **Merchant** 先看已经发生的点击、费用和净成交，再出有限计划；授权范围内可以执行，越界要再批准一次。
+- **RAG / 推荐 / 账本 / 投放** 是确定性服务。知识要先发布才进检索；推荐只从在售目录里挑；账本按冻结规则记账。
+
+<p align="center">
+  <img src="docs/assets/journey.png" alt="逛店 → 问这件 → 人点确认 → Java 落单 → 入账 → 经营再规划" width="100%" />
+</p>
+
+一次购物会话可以在带引用的答复处结束，不必导向下单。经营侧没有新观测，就不会宣布「又优化成功了」。
+
+---
+
+## 店里在发生什么
 
 <table>
 <tr>
@@ -46,14 +70,14 @@
 
 **① 逛店**
 
-首页、分类、搜索、商品详情都是一家真店的皮。货架、价格、库存来自 Java 目录，不是为聊天临时拼的卡片。
+首页、分类、搜索、商品详情都是一家真店的皮。货架来自 Java 目录，不是为聊天临时拼的卡片。
 
 </td>
 <td width="33%" valign="top">
 
 **② 问这件**
 
-在商品页打开导购，范围钉在「正在问本商品」。Shopping Agent 按这件检索已发布资料；答不上来就承认，而不是改口吹下一件。
+在商品页打开导购，范围钉在「正在问本商品」。Shopping Agent 按这件检索已发布资料；答不上来就承认。
 
 </td>
 <td width="33%" valign="top">
@@ -67,36 +91,10 @@
 </table>
 
 <p align="center">
-  <img src="docs/assets/screenshots/home.png" alt="智选商城首页" width="100%" />
-  <em>C 端先是一家店：分类、广告位、智选好物，导购是店里的入口，不是站外机器人。</em>
+  <img src="docs/assets/screenshots/product-guide.png" alt="商品页导购浮层：正在问本商品" width="100%" />
+  <br/>
+  <em>商品页打开导购，浮层写着「正在问本商品」。规格对照和店规问答都绑在这一件上。</em>
 </p>
-
----
-
-## 它怎么分层
-
-```
-                 ┌────────────────── Vue 用户端 / 商家后台 ──────────────────┐
-                 │   逛店 · 商品 · 导购浮层          知识库 · 经营 · 商品编辑   │
-                 └────────────────────────────┬─────────────────────────────┘
-                                              │ 只展示，不写交易
-┌─────────────────────────────────────────────▼─────────────────────────────────────────────┐
-│                              Gateway · 鉴权，把登录态收成可信身份                              │
-└─────────────────────────────────────────────┬─────────────────────────────────────────────┘
-                                              │
-┌─────────────────────────────────────────────▼─────────────────────────────────────────────┐
-│                         Python Growth · FastAPI + LangGraph                               │
-│     Shopping Agent（有界 ReAct）          Merchant Agent（计划 → 执行 → 再计划）            │
-│     RAG / 推荐 / 账本是确定性服务          价格、库存不进向量                                 │
-└─────────────────────────────────────────────┬─────────────────────────────────────────────┘
-                                              │ 用户确认后的受控 API
-┌─────────────────────────────────────────────▼─────────────────────────────────────────────┐
-│                      Java · 9 个 Spring Cloud 服务，交易库只由这里写                         │
-│                         价格 / 库存 / 订单 / 支付 / 退款                                     │
-└───────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-浏览器只负责把状态画出来。Gateway 做身份。Python 负责「问什么、检索什么、下一步计划什么」。真正改价格、扣库存、落订单的，只有 Java。
 
 ---
 
@@ -105,11 +103,11 @@
 <table>
 <tr>
 <td width="50%"><img src="docs/assets/screenshots/home.png" alt="用户端首页" /><br/><b>逛店</b> — 首页就是货架，不是 Agent 控制台套了个商城皮</td>
-<td width="50%"><img src="docs/assets/screenshots/product-guide.png" alt="商品页导购" /><br/><b>问这件</b> — 浮层默认「正在问本商品」，规格对照来自这一次真实提问</td>
+<td width="50%"><img src="docs/assets/screenshots/product-guide.png" alt="商品页导购" /><br/><b>问这件</b> — 浮层默认钉在当前商品，而不是整站闲聊</td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/assets/screenshots/assistant.png" alt="独立导购页" /><br/><b>独立导购</b> — 不在商品页时按全店政策聊运费、退换和选品</td>
-<td width="50%"><img src="docs/assets/screenshots/category.png" alt="分类页" /><br/><b>分类</b> — 49 个类目可以点进去逛，搜索走同一套在售目录</td>
+<td width="50%"><img src="docs/assets/screenshots/browse.png" alt="全部商品" /><br/><b>货架</b> — 分类和搜索走同一套在售目录，价格库存来自 Java</td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/assets/screenshots/admin-knowledge.png" alt="管理端知识库" /><br/><b>知识库</b> — 店规写成可发布的文档；撤回后不再被新的客服引用</td>

@@ -77,8 +77,8 @@ const todayDataField = ref([
   {
     name: '今日订单',
     icon: 'order-count',
-    color: '#17202a',
-    bg: 'rgba(23, 32, 42, 0.08)',
+    color: 'var(--text)',
+    bg: 'var(--surface-soft)',
     key: 'orderCount',
     dataValue: {},
   },

@@ -338,7 +338,7 @@ onUnmounted(() => window.removeEventListener('resize', handleResize));
     border: none;
     background: transparent;
     font-size: 13px;
-    color: #666666;
+    color: $color-text-body;
     text-align: center;
     cursor: pointer;
     line-height: 1.35;

@@ -153,7 +153,7 @@ const submitReview = async () => {
 
 .detail-row {
   margin: 0 0 8px;
-  color: #4b5b63;
+  color: var(--text-2);
   font-size: 13px;
 }
 </style>

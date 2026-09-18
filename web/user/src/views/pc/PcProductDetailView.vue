@@ -591,10 +591,10 @@ const openReport = (payload: { orderId: string; commentContent?: string }) => {
     font-weight: 600;
     border-radius: $radius-xs;
     --el-button-bg-color: #fff;
-    --el-button-text-color: #333;
+    --el-button-text-color: #{$color-text-title};
     --el-button-border-color: #d9d9d9;
     --el-button-hover-bg-color: #fafafa;
-    --el-button-hover-text-color: #333;
+    --el-button-hover-text-color: #{$color-text-title};
     --el-button-hover-border-color: #c0c0c0;
     --el-button-active-bg-color: #f0f0f0;
     --el-button-active-border-color: #b3b3b3;

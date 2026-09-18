@@ -213,7 +213,7 @@ const submit = async () => {
   padding: 24px 28px 32px;
   font-size: 14px;
   line-height: 1.7;
-  color: #3d4a52;
+  color: $color-text-body;
 }
 
 .trial-lock .submit-btn {

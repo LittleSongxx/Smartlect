@@ -41,9 +41,9 @@
   --m-radius-sm: 6px;
   --m-gold: #{$color-primary};
   --m-gold-soft: #{$color-primary-muted};
-  --m-ink: #17202A;
-  --m-ink-2: #4B5B63;
-  --m-ink-3: #73848C;
+  --m-ink: #{$color-text};
+  --m-ink-2: #{$color-text-2};
+  --m-ink-3: #{$color-text-3};
 }
 
 .home-search-header.ignore.liquid-glass-surface {
@@ -507,8 +507,8 @@ select {
   background: $bg;
   border: 1px solid $border;
   box-shadow:
-    0 4px 6px rgba(16, 24, 40, 0.04),
-    0 12px 28px rgba(16, 24, 40, 0.08);
+    0 4px 6px rgba(60, 40, 20, 0.04),
+    0 12px 28px rgba(60, 40, 20, 0.08);
 
   --el-message-text-color: #{$text};
 
@@ -594,8 +594,8 @@ select {
   border: 1px solid $border;
   border-radius: $radius-card;
   box-shadow:
-    0 4px 6px rgba(16, 24, 40, 0.04),
-    0 12px 28px rgba(16, 24, 40, 0.1),
+    0 4px 6px rgba(60, 40, 20, 0.04),
+    0 12px 28px rgba(60, 40, 20, 0.1),
     inset 4px 0 0 $accent;
 
   .el-notification__title {

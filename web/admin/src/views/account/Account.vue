@@ -176,12 +176,12 @@ const doSubmit = () => {
 .login-page {
   --accent: var(--primary);
   --accent-hover: var(--primary-hover);
-  --accent-soft: #ecfdf5;
+  --accent-soft: var(--primary-soft);
   --brand-ink: #ffffff;
   --brand-muted: rgba(255, 255, 255, 0.78);
-  --ink: #17202a;
-  --muted: #4b5b63;
-  --line: #dde5e8;
+  --ink: var(--text);
+  --muted: var(--text-2);
+  --line: var(--border);
   --panel: #ffffff;
 
   box-sizing: border-box;
@@ -192,7 +192,7 @@ const doSubmit = () => {
   align-items: center;
   justify-content: center;
   padding: 32px 24px;
-  background-color: #f4f7f8;
+  background-color: var(--page-bg);
 }
 
 .login-panel {
@@ -285,7 +285,7 @@ const doSubmit = () => {
   align-items: center;
   justify-content: center;
   padding: 48px 40px;
-  background: #fafbfc;
+  background: var(--surface-soft);
 }
 
 .form-wrap {
@@ -320,7 +320,7 @@ const doSubmit = () => {
     padding-bottom: 6px;
     font-size: 13px;
     font-weight: 500;
-    color: #374151;
+    color: var(--text);
   }
 
   :deep(.el-input__wrapper) {
@@ -336,7 +336,7 @@ const doSubmit = () => {
   }
 
   :deep(.iconfont) {
-    color: #9ca3af;
+    color: var(--text-3);
     font-size: 15px;
   }
 }
@@ -364,7 +364,7 @@ const doSubmit = () => {
   transition: border-color 0.2s;
 
   &:hover {
-    border-color: #c4c9d0;
+    border-color: var(--text-3);
   }
 }
 
@@ -405,7 +405,7 @@ const doSubmit = () => {
   padding: 12px 14px;
   border-radius: 8px;
   border: 1px dashed var(--line);
-  background: #f7fafb;
+  background: var(--surface-soft);
   font-size: 13px;
   line-height: 1.6;
   color: var(--muted);
@@ -422,17 +422,17 @@ const doSubmit = () => {
 }
 
 .trial-note {
-  color: #7b8790;
+  color: var(--text-3);
 }
 
 .form-footer {
   margin: 24px 0 0;
   text-align: center;
   font-size: 12px;
-  color: #b0b6c0;
+  color: var(--text-3);
 
   a {
-    color: #b0b6c0;
+    color: var(--text-3);
     text-decoration: none;
     transition: color 0.2s;
 

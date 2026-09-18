@@ -61,7 +61,7 @@ const TYPE_MAP = {
   success: 'var(--green)',
   warning: '#d97706',
   danger: '#e56b5b',
-  info: '#8b95a8',
+  info: 'var(--text-3)',
 }
 
 const emit = defineEmits(['click'])

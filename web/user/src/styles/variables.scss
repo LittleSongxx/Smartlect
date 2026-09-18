@@ -10,6 +10,7 @@ $color-primary-soft: ds.$color-primary-soft;
 $color-primary-muted: ds.$color-primary-muted;
 $color-brand-yellow: ds.$color-brand-yellow;
 $color-brand-yellow-hover: ds.$color-brand-yellow-hover;
+$color-brand-yellow-text: ds.$color-brand-yellow-text;
 
 $color-search-btn: ds.$color-brand-yellow;
 $color-search-btn-text: ds.$color-brand-yellow-text;
@@ -60,10 +61,13 @@ $color-card: #FFFFFF;
 $color-elevated: #FFFFFF;
 $color-surface-inset: ds.$color-surface-soft;
 
+$color-text: ds.$color-text;
+$color-text-2: ds.$color-text-2;
+$color-text-3: ds.$color-text-3;
 $color-text-title: ds.$color-text;
-$color-text-body: ds.$color-text-2;
+$color-text-body: ds.$color-text;
 $color-text-muted: ds.$color-text-2;
-$color-text-secondary: $color-text-muted;
+$color-text-secondary: ds.$color-text-2;
 $color-text-disabled: ds.$color-text-3;
 $color-border: ds.$color-border;
 $color-border-light: ds.$color-border-soft;

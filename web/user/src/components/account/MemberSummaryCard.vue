@@ -69,9 +69,9 @@ const badgeStyle = computed(() => {
     };
   }
   return {
-    background: 'var(--ios-fill-muted, #f5f5f7)',
-    color: '#3c3c43',
-    border: '1px solid var(--ios-separator, rgba(60, 60, 67, 0.1))'
+    background: 'var(--ios-fill-muted, #f3efe8)',
+    color: '#333029',
+    border: '1px solid var(--ios-separator, rgba(60, 48, 36, 0.1))'
   };
 });
 
@@ -81,9 +81,9 @@ const lvStyle = computed(() => {
     return { color: '#8b7355' };
   }
   if (code >= 2) {
-    return { color: '#4a4a4f' };
+    return { color: '#6c6560' };
   }
-  return { color: '#333333' };
+  return { color: '#333029' };
 });
 </script>
 
@@ -124,7 +124,7 @@ const lvStyle = computed(() => {
   box-shadow: var(--ios-surface-shadow);
 
   .level-lv {
-    color: #636366;
+    color: #6c6560;
   }
 }
 
