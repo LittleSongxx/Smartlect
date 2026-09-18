@@ -371,7 +371,7 @@ onMounted(async () => {
 
   .site-search-row {
     height: $pc-search-row-height;
-    background: transparent;
+    background: linear-gradient(180deg, #fff8e1 0%, #ffffff 72%);
   }
 
   .search-row-inner {
@@ -575,17 +575,18 @@ onMounted(async () => {
       transition: background $transition-fast, box-shadow $transition-fast, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), filter $transition-fast;
 
       &:hover {
-        background: #f0c400;
-        box-shadow: 0 4px 16px rgba(255, 80, 0, 0.18);
+        background: $color-brand-yellow-hover;
+        box-shadow: 0 4px 16px rgba($color-primary, 0.18);
         transform: translateY(-1px);
         filter: brightness(1.03);
       }
 
       &:active {
         transform: scale(0.94);
-        background: #e0b700;
-        box-shadow: 0 2px 8px rgba(255, 80, 0, 0.12);
-        filter: brightness(0.96);
+        background: $color-primary;
+        color: #fff;
+        box-shadow: 0 2px 8px rgba($color-primary, 0.12);
+        filter: none;
       }
     }
   }

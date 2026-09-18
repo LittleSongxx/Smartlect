@@ -559,7 +559,7 @@ const logout = () => {
           width: 28px;
           height: 28px;
           border-radius: 50%;
-          background: linear-gradient(135deg, var(--accent) 0%, #1d4ed8 100%);
+          background: linear-gradient(135deg, var(--accent) 0%, var(--brand-yellow) 100%);
           color: #fff;
           font-size: 12px;
           font-weight: 600;

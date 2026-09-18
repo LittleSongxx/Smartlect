@@ -213,7 +213,7 @@ const doSubmit = () => {
 .panel-brand {
   position: relative;
   padding: 48px 40px;
-  background: var(--grad-cta, linear-gradient(100deg, #149aad, #2479c9));
+  background: var(--grad-cta);
   color: var(--brand-ink);
   overflow: hidden;
 

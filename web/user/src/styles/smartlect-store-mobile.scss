@@ -9,12 +9,13 @@
       }
 
       .search-field {
-        border: 1px solid $color-border-gray;
-        background: rgba(255, 255, 255, 0.62);
+        border: none;
+        background: #fff;
       }
 
       .home-search-header__actions .icon-btn {
-        color: $color-text-body;
+        color: #fff;
+        background: rgba(255, 255, 255, 0.22);
       }
     }
 
@@ -36,7 +37,7 @@
         }
 
         &.active {
-          color: var(--m-gold, #2563eb);
+          color: var(--m-gold, #ff6b33);
         }
       }
     }

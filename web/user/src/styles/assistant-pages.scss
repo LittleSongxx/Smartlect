@@ -63,7 +63,7 @@
   }
 
   button:hover:enabled {
-    border-color: rgba(255, 80, 0, 0.35);
+    border-color: rgba($color-primary, 0.35);
     background: $color-primary-soft;
   }
 

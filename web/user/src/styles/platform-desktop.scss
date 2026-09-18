@@ -184,7 +184,7 @@ html[data-platform='desktop'] {
     }
 
     .site-search-row {
-      background: $color-card !important;
+      background: linear-gradient(180deg, #fff8e1 0%, #ffffff 72%) !important;
     }
   }
 
@@ -204,8 +204,8 @@ html[data-platform='desktop'] {
       color: $color-search-btn-text !important;
 
       &:hover {
-        background: #f0c400 !important;
-        box-shadow: 0 4px 16px rgba(255, 80, 0, 0.18) !important;
+        background: $color-brand-yellow-hover !important;
+        box-shadow: 0 4px 16px rgba($color-primary, 0.18) !important;
       }
     }
 

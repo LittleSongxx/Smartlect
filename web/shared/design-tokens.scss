@@ -6,15 +6,19 @@
 //   2) 运行期用 CSS 变量（var(--x)），编译期用 SCSS 变量（$x），两者在本文件成对出现；
 //   3) 各端只在一个入口 include `tokens-root`，var(--x) 全局可用。
 
-// ── 颜色：动作与品牌 ────────────────────────────────────────────────────────
-$color-primary: #2563eb; // 主操作（按钮/链接/导航激活）
-$color-primary-hover: #1d4ed8;
-$color-primary-soft: #eff6ff; // 导航激活底、信息块底
-$color-primary-muted: rgba(37, 99, 235, 0.14);
+// ── 颜色：动作与品牌（淘宝橙黄系）──────────────────────────────────────────
+$color-primary: #ff6b33; // 淘宝橙（略浅）：主操作（按钮/链接/导航激活）
+$color-primary-hover: #f25a1c;
+$color-primary-active: #e04e12;
+$color-primary-soft: #fff7f1; // 导航激活底、信息块底
+$color-primary-muted: rgba(255, 107, 51, 0.14);
+$color-brand-yellow: #ffdc4d; // 淘宝黄（略浅）：搜索按钮、店招条
+$color-brand-yellow-hover: #f5d03d;
+$color-brand-yellow-text: #4a3000;
 $color-money: #0f766e; // 金额、正向指标
 $color-money-soft: #ecfdf5;
-$color-price: #f5533d; // 价格、促销、折扣
-$color-price-soft: #fff3f0;
+$color-price: #ff6b33; // 价格与主色统一
+$color-price-soft: #fff7f1;
 // 会员等级（金/银/普通）：等级区分是产品语义，集中在这里定义，页面不得再写裸 hex
 $level-gold: #b08d3f;
 $level-gold-soft: #fdf6e8;
@@ -32,12 +36,12 @@ $color-warning: #faad14;
 $color-text: #172033;
 $color-text-2: #64748b;
 $color-text-3: #94a3b8;
-$color-page: #f5f7fa;
+$color-page: #f5f5f5;
 $color-surface: #ffffff;
-$color-surface-soft: #f8fafc;
+$color-surface-soft: #fffaf3;
 $color-border: #e5e7eb;
 $color-border-soft: #eceff5;
-$color-header-border: #e8ecf1;
+$color-header-border: #eee6dc;
 
 // ── 圆角 / 阴影 / 字体 ──────────────────────────────────────────────────────
 $radius-lg: 12px;
@@ -62,10 +66,11 @@ $sidebar-w: 220px;
 $menu-row-h: 50px;
 $page-gutter: 16px;
 
-// ── 渐变（登录/引导页等暗色展示面）────────────────────────────────────────────
-$grad-cta: linear-gradient(100deg, #149aad, #2479c9);
-$grad-hero: linear-gradient(145deg, #081421 0%, #0c2230 58%, #0c2d3d 100%);
-$grad-commerce: linear-gradient(120deg, #ff6a5e, #ff9068);
+// ── 渐变（登录/店招/促销条）────────────────────────────────────────────────
+$grad-cta: linear-gradient(100deg, #ff6b33, #ffa03d);
+$grad-hero: linear-gradient(145deg, #2a1208 0%, #4a1e0c 58%, #6b2a0a 100%);
+$grad-commerce: linear-gradient(120deg, #ff6b33, #ffdc4d);
+$grad-store-header: linear-gradient(180deg, #ff6b33 0%, #ffb04a 48%, #ffdc4d 100%);
 
 // ── 页面范式：页头卡片 + 卡片规格（两端一致）─────────────────────────────────
 $page-heading-padding: 20px 22px;
@@ -75,8 +80,12 @@ $page-heading-gap: 12px;
     :root {
         --primary: #{$color-primary};
         --primary-hover: #{$color-primary-hover};
+        --primary-active: #{$color-primary-active};
         --primary-soft: #{$color-primary-soft};
         --primary-muted: #{$color-primary-muted};
+        --brand-yellow: #{$color-brand-yellow};
+        --brand-yellow-hover: #{$color-brand-yellow-hover};
+        --brand-yellow-text: #{$color-brand-yellow-text};
         --money: #{$color-money};
         --money-soft: #{$color-money-soft};
         --price: #{$color-price};
@@ -121,6 +130,10 @@ $page-heading-gap: 12px;
         --gold: #{$color-primary};
         --gold-soft: #{$color-primary-soft};
         --gold-muted: #{$color-primary-muted};
+        --grad-cta: #{$grad-cta};
+        --grad-hero: #{$grad-hero};
+        --grad-commerce: #{$grad-commerce};
+        --grad-store-header: #{$grad-store-header};
         // 强调色（Layout 导航条/圆点、登录页）：与主操作同色，不再单独一套
         --accent: #{$color-primary};
         --accent-hover: #{$color-primary-hover};
@@ -130,7 +143,7 @@ $page-heading-gap: 12px;
         --shadow-float: #{$shadow-hero};
         --page-bg-end: #{$color-page};
         --surface-elevated: #{$color-surface};
-        // 侧边栏（浅色，2026-09 对齐 Smartore）：激活项是浅蓝底 + 蓝字
+        // 侧边栏（浅色）：激活项是浅橙底 + 橙字
         --sidebar-bg: #{$color-surface};
         --sidebar-bg-end: #{$color-surface};
         --sidebar-text: #{$color-text-2};

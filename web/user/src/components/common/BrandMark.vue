@@ -37,10 +37,10 @@ const props = withDefaults(
   { variant: 'default' }
 );
 
-// 品牌色与管理端同一个 token（动作蓝），不再单独用橙色
+// 品牌色与管理端同一个 token（淘宝橙），浅色变体用橙勾 + 淘宝黄点缀
 const tileColor = computed(() => (props.variant === 'light' ? '#ffffff' : 'var(--primary)'));
 const checkColor = computed(() => (props.variant === 'light' ? 'var(--primary)' : '#ffffff'));
-const sparkColor = computed(() => (props.variant === 'light' ? 'var(--primary-soft)' : '#ffffff'));
+const sparkColor = computed(() => (props.variant === 'light' ? 'var(--brand-yellow)' : '#fffdf8'));
 </script>
 
 <style scoped lang="scss">

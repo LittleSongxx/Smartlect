@@ -64,17 +64,21 @@ const goAgent = () => openAgent();
   top: 0;
   left: 0;
   right: 0;
-  background: #fff;
+  background: $grad-store-header;
   padding: 0;
   padding-top: env(safe-area-inset-top, 0);
   padding-bottom: 6px;
   min-height: calc($home-search-bar-height + env(safe-area-inset-top, 0));
   border-radius: 0;
-  border-bottom: 1px solid var(--glass-border-soft);
-  box-shadow: var(--glass-shadow-sm);
+  border-bottom: none;
+  box-shadow: none;
 
   :deep(.liquid-glass-surface__content) {
     width: 100%;
+  }
+
+  :deep(.category-item) {
+    color: #5a3d00;
   }
 }
 
@@ -99,21 +103,22 @@ const goAgent = () => openAgent();
   gap: 10px;
   height: 42px;
   padding: 0 16px;
-  border: 1px solid rgba(120, 120, 128, 0.12);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.55);
+  border: none;
+  border-radius: $radius-pill;
+  background: #fff;
   cursor: pointer;
   text-align: left;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 1px 0 rgba($color-primary, 0.12);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 
   &:active {
-    background: rgba(255, 255, 255, 0.72);
-    border-color: rgba(120, 120, 128, 0.18);
+    background: #fffdf5;
+    box-shadow: 0 0 0 2px rgba($color-primary, 0.18);
   }
 
   .search-icon {
     flex-shrink: 0;
-    color: $color-text-muted;
+    color: $color-primary;
   }
 
   .placeholder {
@@ -138,8 +143,8 @@ const goAgent = () => openAgent();
   height: 40px;
   padding: 0;
   border: none;
-  background: rgba(255, 255, 255, 0.38);
-  color: $color-text-body;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -147,7 +152,7 @@ const goAgent = () => openAgent();
   transition: background 0.2s ease, transform 0.15s ease;
 
   &:active {
-    background: rgba(255, 255, 255, 0.62);
+    background: rgba(255, 255, 255, 0.36);
     transform: scale(0.96);
   }
 }

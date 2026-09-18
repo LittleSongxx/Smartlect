@@ -222,7 +222,7 @@ const submit = async () => {
   align-items: center;
   gap: 14px;
   padding: 30px 28px 26px;
-  background: linear-gradient(135deg, $color-primary 0%, $color-primary-hover 100%);
+  background: $grad-cta;
   position: relative;
 
   &::after {

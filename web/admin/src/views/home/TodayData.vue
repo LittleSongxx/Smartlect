@@ -69,7 +69,7 @@ const todayDataField = ref([
     name: '今日销售额',
     icon: 'sale-amount',
     color: '#fff',
-    bg: 'linear-gradient(135deg, #149aad 0%, #2479c9 100%)',
+    bg: 'var(--grad-cta)',
     key: 'orderAmount',
     amount: true,
     dataValue: {},
@@ -85,8 +85,8 @@ const todayDataField = ref([
   {
     name: '新增用户',
     icon: 'user-add',
-    color: '#0071e3',
-    bg: 'rgba(0, 113, 227, 0.12)',
+    color: 'var(--primary)',
+    bg: 'var(--primary-soft)',
     key: 'userCount',
     dataValue: {},
   },
@@ -171,7 +171,7 @@ onMounted(() => {
 
   &--orderAmount {
     grid-area: hero;
-    background: linear-gradient(145deg, #149aad 0%, #2479c9 100%);
+    background: var(--grad-cta);
     border-color: rgba(255, 255, 255, 0.08);
 
     .metric-label,

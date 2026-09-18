@@ -710,7 +710,7 @@ html[data-platform='desktop'] {
         font-size: 16px;
 
         &:hover {
-          background: #f0c400;
+          background: $color-brand-yellow-hover;
           color: $color-search-btn-text;
         }
       }

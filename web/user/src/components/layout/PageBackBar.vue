@@ -106,7 +106,7 @@ const goBack = () => {
 
   &:hover {
     background: rgba(255, 255, 255, 0.78);
-    color: var(--m-gold, #2563eb);
+    color: var(--m-gold, #ff6b33);
   }
 
   &:active {

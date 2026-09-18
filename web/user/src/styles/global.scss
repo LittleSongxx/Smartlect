@@ -39,17 +39,21 @@
 
   --m-radius: 8px;
   --m-radius-sm: 6px;
-  --m-gold: #2563EB;
-  --m-gold-soft: rgba(37, 99, 235, 0.14);
+  --m-gold: #{$color-primary};
+  --m-gold-soft: #{$color-primary-muted};
   --m-ink: #17202A;
   --m-ink-2: #4B5B63;
   --m-ink-3: #73848C;
 }
 
+.home-search-header.ignore.liquid-glass-surface {
+  background: var(--grad-store-header);
+  border-bottom: none;
+}
+
 .home-search-header.ignore,
 .tab-page-header.ignore,
 .sub-top-bar.ignore {
-  background: #fff !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 
@@ -58,6 +62,11 @@
   .liquid-glass-surface__shine {
     display: none;
   }
+}
+
+.tab-page-header.ignore,
+.sub-top-bar.ignore {
+  background: #fff !important;
 }
 
 .page-texture {
@@ -402,7 +411,7 @@ select {
 
   &.active {
     border-color: transparent;
-    background: linear-gradient(135deg, $color-primary, $color-primary-hover);
+    background: $grad-cta;
     color: #fff;
     font-weight: 600;
     box-shadow: 0 4px 12px rgba($color-primary, 0.28);

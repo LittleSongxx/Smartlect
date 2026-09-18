@@ -118,7 +118,7 @@ onMounted(() => { if (!usingTrial.value) void captcha(); });
 
 .auth-brand {
   padding: 28px 28px 22px;
-  background: linear-gradient(135deg, $color-primary 0%, $color-primary-hover 100%);
+  background: $grad-cta;
   color: #fff;
 }
 

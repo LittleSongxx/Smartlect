@@ -210,7 +210,7 @@ const { barJelly, glassJelly, onTabPress } = useTabBarJelly();
   }
 
   &.active {
-    color: var(--m-gold, #2563eb);
+    color: var(--m-gold, #ff6b33);
 
     .label {
       font-weight: 600;
@@ -221,7 +221,7 @@ const { barJelly, glassJelly, onTabPress } = useTabBarJelly();
     }
 
     .el-icon {
-      color: var(--m-gold, #2563eb);
+      color: var(--m-gold, #ff6b33);
     }
   }
 }
