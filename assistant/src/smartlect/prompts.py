@@ -16,7 +16,7 @@ import re
 from smartlect.business_skills import USER_SKILLS, load_skill
 from smartlect.state import SessionStore, StateError, _actor, _integer, _public, _text
 
-SYSTEM_LABEL_PREFIX = {"shopping": "shopping-react"}
+SYSTEM_LABEL_PREFIX = {"shopping": "shopping-react", "rerank": "homepage-semantic-rerank"}
 SKILL_KEYS = ("skill_id", "version", "intents", "knowledge", "tools",
               "output_contract", "instructions", "stop_conditions")
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
