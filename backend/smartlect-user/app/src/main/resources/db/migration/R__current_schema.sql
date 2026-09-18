@@ -249,6 +249,22 @@ create table if not exists user_sign_record_detail
     constraint uk_user_sign_date unique (user_id, sign_date)
 ) comment '用户签到明细' charset = utf8mb4;
 
+create table if not exists sign_bitmap
+(
+    user_id     varchar(32) not null comment '用户ID',
+    year_month  char(6)     not null comment '月份 yyyyMM',
+    bits        int unsigned default 0 not null comment '位图：第N天=1<<(N-1)，与明细表对账的权威防重层',
+    update_time datetime(3) default current_timestamp(3) not null on update current_timestamp(3),
+    primary key (user_id, year_month)
+) comment '签到权威位图' charset = utf8mb4;
+
+-- 从明细表幂等回填（OR 合并；R__ 重复执行与增量明细都安全）
+insert into sign_bitmap (user_id, year_month, bits) as incoming
+select user_id, left(sign_date, 6), bit_or(1 << (cast(right(sign_date, 2) as unsigned) - 1))
+from user_sign_record_detail
+group by user_id, left(sign_date, 6)
+on duplicate key update bits = sign_bitmap.bits | incoming.bits;
+
 create table if not exists user_notification
 (
     notification_id varchar(32)          not null primary key,

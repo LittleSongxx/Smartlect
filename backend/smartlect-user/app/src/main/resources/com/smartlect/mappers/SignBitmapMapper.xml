@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smartlect.mappers.SignBitmapMapper">
+
+    <insert id="insertBitIfAbsent">
+        insert ignore into sign_bitmap (user_id, year_month, bits)
+        values (#{userId}, #{yearMonth}, #{mask})
+    </insert>
+
+    <update id="setBitIfMissing">
+        update sign_bitmap
+        set bits = bits | #{mask}
+        where user_id = #{userId}
+          and year_month = #{yearMonth}
+          and (bits &amp; #{mask}) = 0
+    </update>
+
+    <select id="totalSignDays" resultType="java.lang.Integer">
+        select coalesce(sum(bit_count(bits)), 0)
+        from sign_bitmap
+        where user_id = #{userId}
+    </select>
+</mapper>
