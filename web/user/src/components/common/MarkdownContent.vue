@@ -62,6 +62,42 @@ const html = computed(() => {
     margin: 8px 0;
   }
 
+  :deep(p:first-child) {
+    margin-top: 0;
+  }
+
+  :deep(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  :deep(ul),
+  :deep(ol) {
+    margin: 8px 0;
+    padding-left: 1.25em;
+  }
+
+  :deep(li) {
+    margin: 4px 0;
+    line-height: 1.65;
+  }
+
+  :deep(h1),
+  :deep(h2),
+  :deep(h3),
+  :deep(h4) {
+    margin: 12px 0 6px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: $color-text-title;
+  }
+
+  :deep(h1:first-child),
+  :deep(h2:first-child),
+  :deep(h3:first-child) {
+    margin-top: 0;
+  }
+
   :deep(a) {
     color: $color-primary;
     text-decoration: none;

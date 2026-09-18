@@ -58,8 +58,9 @@ const statusLabel = (status: string) => CHECK_STATUS_LABEL[status] || status;
 
 .decision summary {
   cursor: pointer;
-  color: $color-text-body;
-  font-weight: 600;
+  color: $color-text-muted;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .decision dl {

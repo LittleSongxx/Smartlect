@@ -3,11 +3,10 @@
     <header v-if="!compact" class="chat-header">
       <div>
         <h2>导购与客服</h2>
-        <p>{{ connection }}</p>
-        <p v-if="capability" class="capability">{{ capability }}</p>
+        <p v-if="statusLine">{{ statusLine }}</p>
       </div>
       <div class="actions-inline">
-        <button type="button" :disabled="busy" @click="restore()">刷新会话</button>
+        <button type="button" :disabled="busy" @click="restore()">刷新</button>
         <button type="button" :disabled="busy" @click="newConversation">新会话</button>
       </div>
     </header>
@@ -18,7 +17,7 @@
       {{ handoff.status === 'TAKEN_OVER' ? '人工客服已接管本会话' : '本会话已提交人工处理' }} · 工单 {{ handoff.ticket_id }}。处理期间AI不会继续执行。
       <button type="button" :disabled="busy" @click="restore()">刷新回复</button>
     </div>
-    <div v-else-if="conversationId" class="human-entry"><button type="button" :disabled="busy" @click="requestHandoff">需要人工协助</button></div>
+    <div v-else-if="conversationId && messages.length" class="human-entry"><button type="button" :disabled="busy" @click="requestHandoff">需要人工协助</button></div>
     <AgentChatList />
     <AgentSendPanel />
   </div>
@@ -30,15 +29,15 @@ import AgentChatList from '@/views/agent/AgentChatList.vue';
 import AgentSendPanel from '@/views/agent/AgentSendPanel.vue';
 import { HANDOFF_SYNC_INTERVAL_MS, useAgentSession } from '@/composables/useAgentSession';
 import { ownerKey, session } from '@/api/client';
-import { skillBanner } from '@/utils/agentDecision';
 
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false });
 
 const route = useRoute();
-const { busy, error, connection, pending, conversationId, handoff, requestHandoff, restore, newConversation, send, syncConversation, visibleRuns } = useAgentSession();
-const capability = computed(() => {
-  const run = [...visibleRuns.value].reverse().find((item) => item.result?.decision || item.result?.skill_versions);
-  return skillBanner(run?.result?.decision || (run?.result?.skill_versions ? { skill_versions: run.result.skill_versions, model_mode: run.model_mode, prompt_version: run.result.prompt_version } : null));
+const { busy, error, connection, pending, conversationId, messages, handoff, requestHandoff, restore, newConversation, send, syncConversation } = useAgentSession();
+const statusLine = computed(() => {
+  const text = connection.value;
+  if (!text || ['可以开始对话', '已从服务器恢复', '事件已连接'].includes(text)) return '';
+  return text;
 });
 function requestedConversation() {
   const value = route.query.conversation;
@@ -91,54 +90,53 @@ onUnmounted(() => {
 .chat-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
-  padding: 20px 24px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid $color-border-light;
 }
 
 .chat-header h2 {
   margin: 0;
-  font-size: 22px;
+  font-size: 16px;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
 .chat-header p {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: $color-text-muted;
   font-size: 12px;
-}
-
-.capability {
-  max-width: 36em;
-  overflow-wrap: anywhere;
 }
 
 .actions-inline {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px;
   align-items: center;
 }
 
 .actions-inline button,
 .human-entry button {
   white-space: nowrap;
-  padding: 8px 14px;
-  font-size: 13px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 0;
   border-radius: $radius-btn;
+  background: transparent;
+  color: $color-text-muted;
+}
+
+.actions-inline button:hover:enabled,
+.human-entry button:hover:enabled {
+  color: $color-text-title;
+  background: $color-bg-subtle;
 }
 
 .human-entry {
   display: flex;
   justify-content: flex-end;
-  padding: 8px 24px 0;
-}
-
-.human-entry button {
-  border: 0;
-  color: $color-text-muted;
-  background: transparent;
+  padding: 4px 16px 0;
 }
 
 .notice {
@@ -173,7 +171,7 @@ onUnmounted(() => {
 
 .compact {
   .human-entry {
-    padding: 6px 14px 0;
+    padding: 4px 12px 0;
   }
 
   .notice {
@@ -181,109 +179,23 @@ onUnmounted(() => {
     padding: 10px 12px;
   }
 
-  :deep(.agent-welcome) {
-    margin: 28px auto;
-    padding: 0 12px;
-  }
-
-  :deep(.welcome-mark) {
-    width: 56px;
-    height: 56px;
-    border-radius: 18px;
-    font-size: 26px;
-  }
-
-  :deep(.agent-welcome h1) {
-    font-size: 22px;
-    margin: 16px 0 8px;
-  }
-
-  :deep(.agent-welcome p),
-  :deep(.welcome-features) {
-    font-size: 13px;
-  }
-
   :deep(.agent-chat-list) {
-    padding: 14px 16px;
+    padding: 16px 14px;
   }
 
   :deep(.agent-composer-stack) {
-    padding: 12px 14px;
+    padding: 10px 12px 12px;
   }
-}
-
-:deep(.agent-welcome) {
-  max-width: 560px;
-  text-align: center;
-  margin: 48px auto;
-  padding: 0 16px;
-}
-
-:deep(.welcome-mark) {
-  display: inline-grid;
-  place-items: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 24px;
-  background: $color-primary;
-  color: #fff;
-  font-size: 34px;
-  font-weight: 650;
-}
-
-:deep(.agent-welcome h1) {
-  font-size: clamp(26px, 3vw, 34px);
-  letter-spacing: 0;
-  margin: 22px 0 12px;
-  line-height: 1.35;
-}
-
-:deep(.agent-welcome p),
-:deep(.welcome-features) {
-  color: $color-text-muted;
-  font-size: 15px;
-  line-height: 1.7;
-}
-
-:deep(.welcome-features) {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px 18px;
-  margin-top: 28px;
-  font-size: 12px;
 }
 
 :deep(.agent-chat-list) {
   flex: 1;
   min-height: 0;
-  padding: 20px 24px;
+  padding: 16px;
   overflow-y: auto;
 }
 
 :deep(.agent-composer-stack) {
   flex-shrink: 0;
-}
-
-:deep(.quick-tips) {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-:deep(.tip-chip),
-:deep(.btn-send-native) {
-  white-space: nowrap;
-}
-
-:deep(.btn-send-native) {
-  min-width: 88px;
-  height: 44px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: 12px;
-  background: $color-primary;
-  color: #fff;
 }
 </style>

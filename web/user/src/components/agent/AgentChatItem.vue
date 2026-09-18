@@ -75,9 +75,9 @@ const selectProduct = (item: Record<string, any>) => {
 .bubble {
   width: fit-content;
   max-width: min(75%, 520px);
-  padding: 14px 16px;
-  font-size: 15px;
-  line-height: 1.65;
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.7;
   border-radius: 18px;
   word-break: break-word;
   flex: 0 1 auto;
@@ -190,7 +190,7 @@ const selectProduct = (item: Record<string, any>) => {
 }
 
 :deep(.markdown-content) {
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.7;
   max-width: 100%;
 
@@ -198,8 +198,18 @@ const selectProduct = (item: Record<string, any>) => {
     margin: 0;
 
     & + p {
-      margin-top: 6px;
+      margin-top: 8px;
     }
+  }
+
+  ul,
+  ol {
+    margin: 8px 0;
+    padding-left: 1.2em;
+  }
+
+  li + li {
+    margin-top: 4px;
   }
 }
 

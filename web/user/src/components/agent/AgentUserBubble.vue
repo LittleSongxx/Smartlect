@@ -21,9 +21,9 @@ defineProps<{ userMessage: string }>();
 .bubble {
   width: fit-content;
   max-width: min(75%, 520px);
-  padding: 12px 16px;
-  font-size: 15px;
-  line-height: 1.6;
+  padding: 10px 16px;
+  font-size: 14px;
+  line-height: 1.65;
   border-radius: 18px;
   word-break: break-word;
   flex: 0 1 auto;
