@@ -80,9 +80,9 @@
 
   &.active,
   &.is-active {
-    background: $color-primary !important;
-    border-color: $color-primary !important;
-    color: #fff !important;
+    background: $color-primary-soft !important;
+    border-color: $color-primary-muted !important;
+    color: $color-primary !important;
   }
 }
 

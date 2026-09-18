@@ -118,8 +118,9 @@ onMounted(() => { if (!usingTrial.value) void captcha(); });
 
 .auth-brand {
   padding: 28px 28px 22px;
-  background: $grad-cta;
-  color: #fff;
+  background: $color-card;
+  color: $color-text-title;
+  border-bottom: 1px solid $color-border-light;
 }
 
 .eyebrow {
@@ -127,21 +128,21 @@ onMounted(() => { if (!usingTrial.value) void captcha(); });
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.78);
+  color: $color-primary;
 }
 
 h1 {
   margin: 0 0 8px;
   font-size: 26px;
   line-height: 1.3;
-  color: #fff;
+  color: $color-text-title;
 }
 
 .brand-tip {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.82);
+  color: $color-text-muted;
 }
 
 .auth-form {

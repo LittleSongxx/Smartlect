@@ -156,12 +156,12 @@ watch(() => [owner.value, keyword.value, categoryId.value, priceFrom.value, pric
 </script>
 
 <style scoped>
-.browse-search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-bottom: 18px; padding: 18px; background: #fffdf9; border: 1px solid #e4d9c8; border-radius: 20px; }
+.browse-search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-bottom: 18px; padding: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .browse-search label { flex: 1; min-width: 130px; margin: 0; }
 .browse-search button { min-height: 44px; }
 .category-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
-.category-nav button { padding: 8px 16px; border: 1px solid #e4d9c8; border-radius: 999px; background: #fffdf9; font-size: 13px; cursor: pointer; }
-.category-nav button.selected { background: $color-primary; border-color: $color-primary; color: #fff; }
+.category-nav button { padding: 8px 16px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 13px; cursor: pointer; }
+.category-nav button.selected { background: var(--primary-soft); border-color: var(--primary-muted); color: var(--primary); }
 .browse :deep(.agent-products) { max-height: none; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 .browse-pager { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 24px; }
 @media(max-width: 1050px) { .browse :deep(.agent-products) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

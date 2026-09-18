@@ -1,56 +1,55 @@
 // Smartlect 前端**唯一**设计 token 源：web/admin 与 web/user 共用这一份。
 //
-// 取值来自参考项目 Smartore 的设计语言（平面卡片 + 细边框 + 8px 圆角 + 无阴影），
-// 两端只靠变量取值区分，不各自新建平行体系。规则：
+// 视觉口径对齐 Newsclaw 的工作台：浅灰底 + 白卡 + 1px 细边 + 主色只当 6–10% 提示。
+// 主色保留淘宝橙，但不再拿橙黄渐变去刷店招、登录栏和看板。规则：
 //   1) 新增颜色/圆角/阴影/字号一律先加到这里，页面里不再出现裸 hex；
 //   2) 运行期用 CSS 变量（var(--x)），编译期用 SCSS 变量（$x），两者在本文件成对出现；
 //   3) 各端只在一个入口 include `tokens-root`，var(--x) 全局可用。
 
-// ── 颜色：动作与品牌（淘宝橙黄系）──────────────────────────────────────────
-$color-primary: #ff6b33; // 淘宝橙（略浅）：主操作（按钮/链接/导航激活）
+// ── 颜色：动作与品牌（淘宝橙，克制使用）──────────────────────────────────
+$color-primary: #ff6b33; // 主按钮、价格、导航激活字
 $color-primary-hover: #f25a1c;
 $color-primary-active: #e04e12;
-$color-primary-soft: #fff7f1; // 导航激活底、信息块底
-$color-primary-muted: rgba(255, 107, 51, 0.14);
-$color-brand-yellow: #ffdc4d; // 淘宝黄（略浅）：搜索按钮、店招条
+$color-primary-soft: #fff4ee; // 导航激活底、信息块底
+$color-primary-muted: rgba(255, 107, 51, 0.10);
+$color-brand-yellow: #ffdc4d; // 仅搜索按钮
 $color-brand-yellow-hover: #f5d03d;
 $color-brand-yellow-text: #4a3000;
-$color-money: #0f766e; // 金额、正向指标
+$color-money: #0f766e;
 $color-money-soft: #ecfdf5;
-$color-price: #ff6b33; // 价格与主色统一
-$color-price-soft: #fff7f1;
-// 会员等级（金/银/普通）：等级区分是产品语义，集中在这里定义，页面不得再写裸 hex
+$color-price: #ff6b33;
+$color-price-soft: #fff4ee;
 $level-gold: #b08d3f;
 $level-gold-soft: #fdf6e8;
 $level-silver: #8a8f98;
 $level-silver-soft: #f3f4f6;
-$level-base: #a89888;
-$level-base-soft: #f6f1ea;
+$level-base: #8a8580;
+$level-base-soft: #f4f4f5;
 
 $color-success: #16a34a;
 $color-danger: #dc2626;
 $color-danger-hover: #b91c1c;
-$color-warning: #faad14;
+$color-warning: #d97706;
 
-// ── 颜色：文本与表面 ────────────────────────────────────────────────────────
-$color-text: #333029;
-$color-text-2: #6c6560;
-$color-text-3: #9a948c;
-$color-page: #f5f5f5;
+// ── 颜色：文本与表面（中性灰，不再奶油黄）────────────────────────────────
+$color-text: #1f1c19;
+$color-text-2: #5c5752;
+$color-text-3: #8b8680;
+$color-page: #f4f5f7;
 $color-surface: #ffffff;
-$color-surface-soft: #fffaf3;
-$color-border: #e8e2da;
-$color-border-soft: #f0ebe4;
-$color-header-border: #eee6dc;
+$color-surface-soft: #f3f4f6;
+$color-border: #e5e2dc;
+$color-border-soft: #eeebe6;
+$color-header-border: #ece9e4;
 
 // ── 圆角 / 阴影 / 字体 ──────────────────────────────────────────────────────
 $radius-lg: 12px;
 $radius: 8px;
 $radius-sm: 6px;
 $radius-pill: 999px;
-$shadow-header: 0 1px 3px rgba(0, 0, 0, 0.05);
-$shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
-$shadow-hero: 0 28px 80px rgba(60, 32, 12, 0.14);
+$shadow-header: none;
+$shadow-card: none;
+$shadow-hero: 0 8px 32px rgba(17, 24, 39, 0.08);
 $font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue',
     'Microsoft YaHei', '微软雅黑', sans-serif;
 $font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
@@ -65,16 +64,14 @@ $header-h: 60px;
 $sidebar-w: 220px;
 $menu-row-h: 50px;
 $page-gutter: 16px;
-
-// ── 渐变（登录/店招/促销条）────────────────────────────────────────────────
-$grad-cta: linear-gradient(100deg, #ff6b33, #ffa03d);
-$grad-hero: linear-gradient(145deg, #2a1208 0%, #4a1e0c 58%, #6b2a0a 100%);
-$grad-commerce: linear-gradient(120deg, #ff6b33, #ffdc4d);
-$grad-store-header: linear-gradient(180deg, #ff6b33 0%, #ffb04a 48%, #ffdc4d 100%);
-
-// ── 页面范式：页头卡片 + 卡片规格（两端一致）─────────────────────────────────
 $page-heading-padding: 20px 22px;
 $page-heading-gap: 12px;
+
+// 历史变量名保留：不再是大面积渐变，调用方刷底时只会得到安静的实色/浅底。
+$grad-cta: $color-primary;
+$grad-hero: $color-surface;
+$grad-commerce: $color-primary-soft;
+$grad-store-header: $color-surface;
 
 @mixin tokens-root {
     :root {
@@ -126,7 +123,6 @@ $page-heading-gap: 12px;
         --detail-bg: #{$color-surface-soft};
         --detail-fs: #{$fs-xs};
 
-        // 兼容既有页面的历史别名（值收敛到上面的调色板）
         --link: #{$color-primary};
         --link2: #{$color-primary-hover};
         --green: #{$color-success};
@@ -139,16 +135,17 @@ $page-heading-gap: 12px;
         --grad-hero: #{$grad-hero};
         --grad-commerce: #{$grad-commerce};
         --grad-store-header: #{$grad-store-header};
-        // 强调色（Layout 导航条/圆点、登录页）：与主操作同色，不再单独一套
         --accent: #{$color-primary};
         --accent-hover: #{$color-primary-hover};
         --accent-soft: #{$color-primary-soft};
         --accent-muted: #{$color-primary-muted};
-        --shadow-sm: 0 1px 2px rgba(60, 40, 20, 0.05);
+        --nav-hover: rgba(255, 107, 51, 0.06);
+        --nav-active: rgba(255, 107, 51, 0.10);
+        --nav-active-border: rgba(255, 107, 51, 0.18);
+        --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.05);
         --shadow-float: #{$shadow-hero};
         --page-bg-end: #{$color-page};
         --surface-elevated: #{$color-surface};
-        // 侧边栏（浅色）：激活项是浅橙底 + 橙字
         --sidebar-bg: #{$color-surface};
         --sidebar-bg-end: #{$color-surface};
         --sidebar-text: #{$color-text-2};
@@ -159,7 +156,7 @@ $page-heading-gap: 12px;
     }
 }
 
-/// 统一卡片：白底 + 细边框 + 8px 圆角 + 无阴影（Smartore 的平面卡片）
+/// 统一卡片：白底 + 细边框 + 8px 圆角 + 无阴影
 @mixin card-surface($padding: 16px) {
     background: $color-surface;
     border: 1px solid $color-border;

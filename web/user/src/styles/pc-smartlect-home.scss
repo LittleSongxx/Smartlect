@@ -3,7 +3,8 @@
 html[data-platform='desktop'] {
   .sl-screen-nav-wrap.ignore {
     width: 100%;
-    background: $color-accent-gradient;
+    background: $color-card;
+    border-bottom: 1px solid $color-border-light;
     margin-top: 0;
   }
 
@@ -41,19 +42,20 @@ html[data-platform='desktop'] {
       font: inherit;
       font-size: 13px;
       font-weight: 500;
-      color: rgba(255, 255, 255, 0.88);
+      color: $color-text-body;
       text-decoration: none;
-      border-radius: $radius-pill;
+      border-radius: $radius-sm;
       cursor: pointer;
       transition: background $transition-fast, color $transition-fast;
 
       &:hover {
-        color: #fff8d0;
-        background: rgba(255, 255, 255, 0.14);
+        color: $color-primary;
+        background: $color-primary-soft;
       }
 
       &.router-link-exact-active {
-        color: #fff8d0;
+        color: $color-primary;
+        font-weight: 600;
       }
     }
   }
@@ -95,11 +97,11 @@ html[data-platform='desktop'] {
 
   .sl-cat-item {
     &.active .sl-cat-link {
-      background: $color-primary;
-      color: #fff;
+      background: $color-primary-soft;
+      color: $color-primary;
 
       .sl-cat-arrow {
-        color: #fff;
+        color: $color-primary;
       }
     }
   }
@@ -131,11 +133,11 @@ html[data-platform='desktop'] {
     }
 
     &:hover {
-      background: $color-primary;
-      color: #fff;
+      background: $color-primary-soft;
+      color: $color-primary;
 
       .sl-cat-arrow {
-        color: #fff;
+        color: $color-primary;
       }
     }
   }
@@ -442,7 +444,7 @@ html[data-platform='desktop'] {
       line-height: 30px;
       text-align: center;
       color: #fff;
-      background: $color-accent-gradient;
+      background: $color-primary;
       border-radius: $radius-sm;
       font-size: 13px;
       font-weight: 600;
@@ -673,8 +675,8 @@ html[data-platform='desktop'] {
         }
 
         &.select {
-          background: $color-accent-gradient;
-          color: #fff;
+          background: $color-primary-soft;
+          color: $color-primary;
           font-weight: 700;
           border-radius: $radius-xs $radius-xs 0 0;
         }

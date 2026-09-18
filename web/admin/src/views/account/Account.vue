@@ -4,7 +4,7 @@
       <section class="panel-brand" aria-hidden="true">
         <div class="brand-glow" />
         <div class="brand-content">
-          <BrandMark variant="light" class="brand-mark" />
+          <BrandMark class="brand-mark" />
           <h1 class="brand-name">Smartlect</h1>
           <p class="brand-tagline">智选商城 · 运营后台</p>
           <p class="brand-desc">
@@ -177,8 +177,8 @@ const doSubmit = () => {
   --accent: var(--primary);
   --accent-hover: var(--primary-hover);
   --accent-soft: var(--primary-soft);
-  --brand-ink: #ffffff;
-  --brand-muted: rgba(255, 255, 255, 0.78);
+  --brand-ink: var(--text);
+  --brand-muted: var(--text-2);
   --ink: var(--text);
   --muted: var(--text-2);
   --line: var(--border);
@@ -201,19 +201,18 @@ const doSubmit = () => {
   grid-template-columns: minmax(280px, 1fr) 400px;
   width: min(920px, 100%);
   min-height: 520px;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--panel);
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  box-shadow:
-    0 0 0 1px rgba(22, 22, 26, 0.04),
-    0 20px 50px rgba(22, 22, 26, 0.1);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-float);
 }
 
 .panel-brand {
   position: relative;
   padding: 48px 40px;
-  background: var(--grad-cta);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
   color: var(--brand-ink);
   overflow: hidden;
 

@@ -43,9 +43,8 @@ const props = defineProps({
   },
 })
 
-// 品牌渐变与 token 里的 --grad-cta 同源（淘宝橙 → 淘宝黄）。
-// light 变体用于深色/图片背景：白底 + 橙勾。
-const tileFill = computed(() => (props.variant === 'light' ? '#ffffff' : 'url(#brand-cta)'))
+// 默认实心橙底白勾；light 变体用于深色背景：白底 + 橙勾。
+const tileFill = computed(() => (props.variant === 'light' ? '#ffffff' : 'var(--primary)'))
 const checkColor = computed(() => (props.variant === 'light' ? 'var(--primary)' : '#ffffff'))
 const sparkColor = computed(() => (props.variant === 'light' ? 'var(--brand-yellow)' : '#fff8dc'))
 </script>

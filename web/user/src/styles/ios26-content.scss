@@ -6,10 +6,10 @@
   --ios-surface-shadow: none;
   --ios-surface-radius: 8px;
   --ios-surface-radius-sm: 6px;
-  --ios-fill-muted: #f3efe8;
+  --ios-fill-muted: #{$color-surface-inset};
   --ios-fill-elevated: #ffffff;
-  --ios-separator: rgba(60, 48, 36, 0.1);
-  --ios-hero-bg: #{$color-primary};
+  --ios-separator: #{$color-border-light};
+  --ios-hero-bg: #{$color-card};
   --ios-page-bg: #{$color-bg};
 }
 
@@ -145,7 +145,8 @@ $ios-content-selectors: (
 
   .account-page:not(.user-center-layout) .smartlect-user-top {
     background: var(--ios-hero-bg);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid var(--ios-surface-border);
+    box-shadow: none;
   }
 
   .account-page:not(.user-center-layout) .order-card,

@@ -48,8 +48,8 @@ defineProps<{ coupon: Record<string, any> }>();
 .card-left {
   width: 108px;
   flex-shrink: 0;
-  background: $color-accent-gradient-gold;
-  color: #fff;
+  background: $color-primary-soft;
+  color: $color-primary;
   display: flex;
   flex-direction: column;
   align-items: center;

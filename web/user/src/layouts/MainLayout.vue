@@ -561,24 +561,23 @@ onMounted(() => {
     height: 100%;
     padding: 0 20px;
     border: none;
-    background: linear-gradient(90deg, $color-primary-hover, $color-primary);
-    color: #fff;
+    background: $color-search-btn;
+    color: $color-search-btn-text;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 4px;
-    transition: filter $transition-fast, transform $transition-fast;
+    transition: background $transition-fast;
 
     &:hover {
-      filter: brightness(1.05);
-      transform: translateY(-1px);
+      background: $color-brand-yellow-hover;
     }
 
     &:active {
-      filter: brightness(0.95);
-      transform: translateY(1px) scale(0.98);
+      background: $color-primary;
+      color: #fff;
     }
 
     &:focus-visible {
@@ -600,7 +599,7 @@ onMounted(() => {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.95);
+    color: $color-text-body;
     font-size: 13px;
     line-height: 1.2;
     padding: 6px 10px;
@@ -608,8 +607,8 @@ onMounted(() => {
     transition: background $transition-fast, color $transition-fast;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.15);
-      color: #fff;
+      background: $color-primary-soft;
+      color: $color-primary;
     }
 
     &.highlight {
@@ -624,13 +623,13 @@ onMounted(() => {
     padding: 4px 10px 4px 4px;
     border: none;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
+    background: $color-bg-subtle;
+    color: $color-text-body;
     cursor: pointer;
     transition: background $transition-fast;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.22);
+      background: $color-primary-soft;
     }
 
     .user-name {
@@ -652,10 +651,10 @@ onMounted(() => {
     padding: 4px 8px;
     border: none;
     background: transparent;
-    color: #fff;
+    color: $color-text-body;
     cursor: pointer;
     border-radius: $radius-btn;
-    transition: background $transition-fast, transform $transition-fast;
+    transition: background $transition-fast, color $transition-fast;
     text-align: center;
 
     .el-icon {
@@ -672,7 +671,8 @@ onMounted(() => {
     }
 
     &:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: $color-primary-soft;
+      color: $color-primary;
     }
 
     &:active {
@@ -709,8 +709,8 @@ onMounted(() => {
   max-width: $content-width;
   padding: 8px 16px;
   border-radius: 10px;
-  background: #fff7e6;
-  color: #8a5a00;
+  background: $color-surface-inset;
+  color: $color-text-2;
   font-size: 13px;
 }
 

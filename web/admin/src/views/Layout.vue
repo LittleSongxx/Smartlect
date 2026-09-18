@@ -559,7 +559,7 @@ const logout = () => {
           width: 28px;
           height: 28px;
           border-radius: 50%;
-          background: linear-gradient(135deg, var(--accent) 0%, var(--brand-yellow) 100%);
+          background: var(--primary);
           color: #fff;
           font-size: 12px;
           font-weight: 600;
@@ -598,8 +598,8 @@ const logout = () => {
       margin: 0 20px 0;
       padding: 8px 12px;
       border-radius: 8px;
-      background: #fff7e6;
-      color: #8a5a00;
+      background: var(--surface-soft);
+      color: var(--text-2);
       font-size: 13px;
     }
 

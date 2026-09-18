@@ -40,9 +40,9 @@
     <div class="table-panel">
       <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData">
         <template #slotType="{ index, row }">
-          <el-tag v-if="row.couponType == 1" effect="dark" type="primary">满减券</el-tag>
-          <el-tag v-if="row.couponType == 2" effect="dark" type="warning">折扣券</el-tag>
-          <el-tag v-if="row.couponType == 3" effect="dark" type="success">无门槛券</el-tag>
+          <el-tag v-if="row.couponType == 1" type="info">满减券</el-tag>
+          <el-tag v-if="row.couponType == 2" type="warning">折扣券</el-tag>
+          <el-tag v-if="row.couponType == 3" type="success">无门槛券</el-tag>
         </template>
 
         <template #slotAmount="{ index, row }">
@@ -68,10 +68,10 @@
         </template>
 
         <template #slotStatus="{ index, row }">
-          <el-tag v-if="row.status == 0" effect="dark" type="info">已停用</el-tag>
-          <el-tag v-if="row.status == 1" effect="dark" type="success">进行中</el-tag>
-          <el-tag v-if="row.status == 2" effect="dark" type="danger">已过期</el-tag>
-          <el-tag v-if="row.status == 3" effect="dark" type="warning">已发完</el-tag>
+          <el-tag v-if="row.status == 0" type="info">已停用</el-tag>
+          <el-tag v-if="row.status == 1" type="success">进行中</el-tag>
+          <el-tag v-if="row.status == 2" type="info">已过期</el-tag>
+          <el-tag v-if="row.status == 3" type="warning">已发完</el-tag>
         </template>
 
         <template #slotOp="{ index, row }">

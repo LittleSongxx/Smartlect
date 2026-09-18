@@ -305,10 +305,10 @@ onMounted(async () => {
     margin: 0;
     padding: 6px 16px;
     text-align: center;
-    background: #fff7e6;
-    color: #8a5a00;
+    background: $color-surface-inset;
+    color: $color-text-2;
     font-size: 12px;
-    border-bottom: 1px solid #f0d9a6;
+    border-bottom: 1px solid $color-border-light;
   }
 
   .topbar-inner {
@@ -376,7 +376,7 @@ onMounted(async () => {
 
   .site-search-row {
     height: $pc-search-row-height;
-    background: linear-gradient(180deg, #fff8e1 0%, #ffffff 72%);
+    background: $color-card;
   }
 
   .search-row-inner {
@@ -419,7 +419,7 @@ onMounted(async () => {
     .brand-en {
       font-size: 12px;
       font-weight: 500;
-      color: $color-brand-yellow-text;
+      color: $color-text-2;
       letter-spacing: 0;
       text-transform: none;
       margin-left: 0;
@@ -577,21 +577,15 @@ onMounted(async () => {
       font-size: 16px;
       font-weight: 600;
       cursor: pointer;
-      transition: background $transition-fast, box-shadow $transition-fast, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), filter $transition-fast;
+      transition: background $transition-fast;
 
       &:hover {
         background: $color-brand-yellow-hover;
-        box-shadow: 0 4px 16px rgba($color-primary, 0.18);
-        transform: translateY(-1px);
-        filter: brightness(1.03);
       }
 
       &:active {
-        transform: scale(0.94);
         background: $color-primary;
         color: #fff;
-        box-shadow: 0 2px 8px rgba($color-primary, 0.12);
-        filter: none;
       }
     }
   }

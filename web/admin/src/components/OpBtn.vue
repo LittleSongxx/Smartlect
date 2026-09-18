@@ -85,11 +85,11 @@ const handleClick = (event) => {
     width: 30px;
     height: 30px;
     background: var(--primary-muted);
-    border: 1px solid rgba(37, 99, 235, 0.20);
+    border: 1px solid var(--border);
 
     &:hover {
       background: var(--primary-soft);
-      border-color: rgba(37, 99, 235, 0.32);
+      border-color: var(--primary-muted);
     }
 
     .iconfont {
@@ -103,7 +103,7 @@ const handleClick = (event) => {
     height: 30px;
     padding: 0 10px;
     background: var(--primary-muted);
-    border: 1px solid rgba(37, 99, 235, 0.20);
+    border: 1px solid var(--border);
 
     &:hover {
       background: var(--primary-soft);

@@ -611,11 +611,11 @@ const openReport = (payload: { orderId: string; commentContent?: string }) => {
     --el-button-bg-color: #{$color-primary};
     --el-button-text-color: #fff;
     --el-button-border-color: #{$color-primary};
-    --el-button-hover-bg-color: #FF4400;
+    --el-button-hover-bg-color: #{$color-primary-hover};
     --el-button-hover-text-color: #fff;
-    --el-button-hover-border-color: #FF4400;
-    --el-button-active-bg-color: #E13C00;
-    --el-button-active-border-color: #E13C00;
+    --el-button-hover-border-color: #{$color-primary-hover};
+    --el-button-active-bg-color: #{$color-primary-active};
+    --el-button-active-border-color: #{$color-primary-active};
   }
 }
 

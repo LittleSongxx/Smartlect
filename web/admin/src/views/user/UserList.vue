@@ -39,8 +39,8 @@
         </template>
 
         <template #slotStatus="{ index, row }">
-          <el-tag v-if="row.status == 0" effect="dark" type="danger">已禁用</el-tag>
-          <el-tag v-if="row.status == 1" effect="dark" type="success">正常</el-tag>
+          <el-tag v-if="row.status == 0" type="info">已禁用</el-tag>
+          <el-tag v-if="row.status == 1" type="success">正常</el-tag>
         </template>
 
         <template #slotOperation="{ index, row }">

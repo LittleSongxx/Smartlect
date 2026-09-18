@@ -7,10 +7,7 @@
 .liquid-glass-surface__effect,
 .liquid-glass-surface__tint,
 .liquid-glass-surface__shine {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
+  display: none;
 }
 
 .liquid-glass-surface__effect {

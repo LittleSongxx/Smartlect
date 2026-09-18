@@ -166,13 +166,13 @@ watch(selected, (sku) => {
 });
 </script>
 <style scoped>
-.recommendation-search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-bottom: 22px; padding: 18px; background: #fffdf9; border: 1px solid #e4d9c8; border-radius: 20px; }
+.recommendation-search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-bottom: 22px; padding: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .recommendation-search label { flex: 1; min-width: 140px; margin: 0; }
 .recommendation-search button { min-height: 44px; }
 .pdp-layout { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.15fr); gap: 28px; align-items: start; }
 .detail-media { display: grid; gap: 14px; }
-.detail-media :deep(.product-image) { width: 100%; border-radius: 18px; background: #efe9df; }
-.detail-desc { margin: 0; color: #4d473e; }
+.detail-media :deep(.product-image) { width: 100%; border-radius: 8px; background: var(--surface-soft); }
+.detail-desc { margin: 0; color: var(--text-2); }
 .detail-desc :deep(img) { max-width: 100%; height: auto; border-radius: 12px; }
 .pdp-buy { min-width: 0; }
 @media (max-width: 800px) { .pdp-layout { grid-template-columns: 1fr; } }

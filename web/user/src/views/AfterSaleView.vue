@@ -415,7 +415,7 @@ onUnmounted(() => {
   &.is-coupon {
     display: grid;
     place-items: center;
-    background: linear-gradient(135deg, #fff7e6, #ffe7ba);
+    background: $color-primary-soft;
 
     .coupon-icon {
       font-size: 28px;

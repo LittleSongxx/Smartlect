@@ -252,7 +252,7 @@ const submit = async () => {
   align-items: center;
   gap: 14px;
   padding: 30px 28px 26px;
-  background: $grad-cta;
+  background: $color-card;
   position: relative;
 
   &::after {
@@ -278,7 +278,7 @@ const submit = async () => {
   h2 {
     margin: 0;
     font-size: 20px;
-    color: #fff;
+    color: $color-text-title;
   }
 
   .brand-name {
@@ -292,7 +292,7 @@ const submit = async () => {
   .brand-tip {
     margin: 0;
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.78);
+    color: $color-text-muted;
   }
 }
 

@@ -29,7 +29,7 @@ const formatted = computed(() => {
 <style lang="scss" scoped>
 .price {
   display: flex;
-  color: #ff0f23;
+  color: var(--price);
   font-weight: bold;
   align-items: flex-end;
 }

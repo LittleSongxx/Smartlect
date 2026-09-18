@@ -148,8 +148,8 @@ const getChartOption = () => {
         barMaxWidth: 14,
         itemStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(37, 99, 235, 0.55)' },
-            { offset: 1, color: 'rgba(37, 99, 235, 0.12)' },
+            { offset: 0, color: 'rgba(255, 107, 51, 0.55)' },
+            { offset: 1, color: 'rgba(255, 107, 51, 0.12)' },
           ]),
           borderRadius: [4, 4, 0, 0],
         },

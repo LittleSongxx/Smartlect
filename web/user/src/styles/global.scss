@@ -47,8 +47,8 @@
 }
 
 .home-search-header.ignore.liquid-glass-surface {
-  background: var(--grad-store-header);
-  border-bottom: none;
+  background: var(--surface);
+  border-bottom: 1px solid var(--header-border);
 }
 
 .home-search-header.ignore,
@@ -410,11 +410,11 @@ select {
     box-shadow $transition-fast;
 
   &.active {
-    border-color: transparent;
-    background: $grad-cta;
-    color: #fff;
+    border-color: $color-primary-muted;
+    background: $color-primary-soft;
+    color: $color-primary;
     font-weight: 600;
-    box-shadow: 0 4px 12px rgba($color-primary, 0.28);
+    box-shadow: none;
   }
 }
 

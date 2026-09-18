@@ -353,27 +353,33 @@ defineExpose({ show });
   }
 
   &--logistics {
-    background: linear-gradient(160deg, #64d2ff 0%, #0a84ff 100%);
+    background: $color-primary-soft;
+    color: $color-primary;
   }
 
   &--coupon {
-    background: linear-gradient(160deg, #ffe066 0%, #ff9f0a 100%);
+    background: $color-primary-soft;
+    color: $color-primary;
   }
 
   &--coupon-warn {
-    background: linear-gradient(160deg, #ffb340 0%, #ff6723 100%);
+    background: $color-warning-soft;
+    color: $color-warning;
   }
 
   &--order {
-    background: linear-gradient(160deg, #bf5af2 0%, #5e5ce6 100%);
+    background: $color-surface-inset;
+    color: $color-text-2;
   }
 
   &--member {
-    background: linear-gradient(160deg, $level-gold-soft 0%, $level-gold 100%);
+    background: $level-gold-soft;
+    color: $level-gold;
   }
 
   &--sign {
-    background: linear-gradient(160deg, #63e6a8 0%, #30d158 100%);
+    background: $color-success-soft;
+    color: $color-success;
   }
 }
 
@@ -384,8 +390,7 @@ defineExpose({ show });
 
 .ios-type-icon {
   font-size: 20px;
-  color: #fff;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12));
+  color: inherit;
 }
 
 .ios-notification-copy {

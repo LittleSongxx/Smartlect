@@ -74,7 +74,7 @@
         margin: 0;
         font-size: 17px;
         font-weight: 600;
-        color: #fff;
+        color: $color-text-title;
       }
 
       .smartlect-user-setting {
@@ -82,8 +82,8 @@
         height: 36px;
         border: none;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.12);
-        color: #fff;
+        background: $color-bg-subtle;
+        color: $color-text-body;
         display: grid;
         place-items: center;
         cursor: pointer;
@@ -95,34 +95,34 @@
       }
 
       .profile-main {
-        color: #fff;
+        color: $color-text-title;
 
         .nick {
-          color: #fff;
+          color: $color-text-title;
           font-size: 18px;
         }
 
         .account {
-          color: rgba(255, 255, 255, 0.65);
+          color: $color-text-muted;
         }
 
         .profile-arrow {
-          color: rgba(255, 255, 255, 0.4);
+          color: $color-text-disabled;
         }
       }
 
       .wallet-strip-top {
         margin: 12px 0 0;
         padding: 12px 0 0;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        border-top: 1px solid $color-border-light;
       }
 
       .wallet-value-top {
-        color: #fff;
+        color: $color-text-title;
       }
 
       .wallet-label-top {
-        color: rgba(255, 255, 255, 0.55);
+        color: $color-text-muted;
       }
 
       .member-summary-card {

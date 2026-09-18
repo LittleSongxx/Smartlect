@@ -12,7 +12,7 @@ const props = defineProps({
   size: { type: String, default: 'small' },
 })
 
-const TONE_TO_TAG = { ok: 'success', wait: 'primary', warn: 'warning', danger: 'danger', info: 'info' }
+const TONE_TO_TAG = { ok: 'success', wait: 'info', warn: 'warning', danger: 'danger', info: 'info' }
 
 const tagType = computed(() => TONE_TO_TAG[props.tone] || props.tone || 'info')
 </script>

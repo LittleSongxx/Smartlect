@@ -90,8 +90,8 @@ const quickAsk = (prompt: string) => {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  background: $color-primary-soft;
-  border: 1px solid $color-primary-muted;
+  background: $color-card;
+  border: 1px solid $color-border;
   border-radius: $radius-card;
   cursor: pointer;
   position: relative;
@@ -126,13 +126,8 @@ const quickAsk = (prompt: string) => {
   color: $color-primary;
   display: grid;
   place-items: center;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-  animation: aiPulse 3s ease-in-out infinite;
-}
-
-@keyframes aiPulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
-  50% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.06); }
+  box-shadow: none;
+  border: 1px solid $color-border-light;
 }
 
 .ai-text {

@@ -68,8 +68,8 @@ const todayDataField = ref([
   {
     name: '今日销售额',
     icon: 'sale-amount',
-    color: '#fff',
-    bg: 'var(--grad-cta)',
+    color: 'var(--primary)',
+    bg: 'var(--primary-soft)',
     key: 'orderAmount',
     amount: true,
     dataValue: {},
@@ -93,8 +93,8 @@ const todayDataField = ref([
   {
     name: '今日退款',
     icon: 'refund-amount',
-    color: '#ff3b30',
-    bg: 'rgba(255, 59, 48, 0.12)',
+    color: 'var(--danger)',
+    bg: 'var(--surface-soft)',
     key: 'refundAmount',
     amount: true,
     dataValue: {},
@@ -162,32 +162,19 @@ onMounted(() => {
   border-radius: 8px;
   background: var(--surface);
   border: 1px solid var(--header-border);
-  box-shadow: var(--shadow-card);
-  transition: box-shadow 0.2s ease;
+  box-shadow: none;
+  transition: border-color 0.15s ease;
 
   &:hover {
-    box-shadow: var(--shadow-float);
+    border-color: var(--border);
   }
 
   &--orderAmount {
     grid-area: hero;
-    background: var(--grad-cta);
-    border-color: rgba(255, 255, 255, 0.08);
-
-    .metric-label,
-    .metric-yesterday {
-      color: rgba(255, 255, 255, 0.55);
-    }
 
     .metric-value {
       font-size: 22px;
-      color: #fff;
-    }
-
-    .trend-pill {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.12);
-      color: rgba(255, 255, 255, 0.85);
+      color: var(--primary);
     }
   }
 
@@ -241,15 +228,15 @@ onMounted(() => {
   }
 
   &.is-up {
-    color: #c44;
-    background: rgba(255, 59, 48, 0.08);
-    border-color: rgba(255, 59, 48, 0.15);
+    color: var(--danger);
+    background: transparent;
+    border-color: var(--header-border);
   }
 
   &.is-down {
-    color: #1c8c3c;
-    background: rgba(52, 199, 89, 0.1);
-    border-color: rgba(52, 199, 89, 0.2);
+    color: var(--money);
+    background: transparent;
+    border-color: var(--header-border);
   }
 
   &.is-flat {

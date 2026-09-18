@@ -49,9 +49,9 @@
         </template>
 
         <template #slotStatus="{ index, row }">
-          <el-tag v-if="row.status == 0" effect="dark" type="danger">未上架</el-tag>
-          <el-tag v-if="row.status == 1" effect="dark" type="success">已上架</el-tag>
-          <el-tag v-if="row.status == -1" effect="dark" type="danger">已删除</el-tag>
+          <el-tag v-if="row.status == 0" type="info">未上架</el-tag>
+          <el-tag v-if="row.status == 1" type="success">已上架</el-tag>
+          <el-tag v-if="row.status == -1" type="danger">已删除</el-tag>
         </template>
 
         <template #slotPrice="{ index, row }">
@@ -69,8 +69,8 @@
         </template>
 
         <template #commend="{ index, row }">
-          <el-tag v-if="row.commendType == 0" effect="dark" type="danger">未推荐</el-tag>
-          <el-tag v-if="row.commendType == 1" effect="dark" type="success">已推荐</el-tag>
+          <el-tag v-if="row.commendType == 0" type="info">未推荐</el-tag>
+          <el-tag v-if="row.commendType == 1" type="success">已推荐</el-tag>
         </template>
 
         <template #slotOp="{ index, row }">

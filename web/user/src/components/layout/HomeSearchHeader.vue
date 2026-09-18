@@ -64,13 +64,13 @@ const goAgent = () => openAgent();
   top: 0;
   left: 0;
   right: 0;
-  background: $grad-store-header;
+  background: $color-card;
   padding: 0;
   padding-top: env(safe-area-inset-top, 0);
   padding-bottom: 6px;
   min-height: calc($home-search-bar-height + env(safe-area-inset-top, 0));
   border-radius: 0;
-  border-bottom: none;
+  border-bottom: 1px solid $color-border-light;
   box-shadow: none;
 
   :deep(.liquid-glass-surface__content) {
@@ -78,7 +78,7 @@ const goAgent = () => openAgent();
   }
 
   :deep(.category-item) {
-    color: #5a3d00;
+    color: $color-text-body;
   }
 }
 
@@ -112,8 +112,8 @@ const goAgent = () => openAgent();
   transition: background 0.2s ease, box-shadow 0.2s ease;
 
   &:active {
-    background: #fffdf5;
-    box-shadow: 0 0 0 2px rgba($color-primary, 0.18);
+    background: $color-primary-soft;
+    box-shadow: 0 0 0 2px $color-primary-muted;
   }
 
   .search-icon {
@@ -143,8 +143,8 @@ const goAgent = () => openAgent();
   height: 40px;
   padding: 0;
   border: none;
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  background: $color-bg-subtle;
+  color: $color-text-body;
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -152,7 +152,7 @@ const goAgent = () => openAgent();
   transition: background 0.2s ease, transform 0.15s ease;
 
   &:active {
-    background: rgba(255, 255, 255, 0.36);
+    background: $color-primary-soft;
     transform: scale(0.96);
   }
 }

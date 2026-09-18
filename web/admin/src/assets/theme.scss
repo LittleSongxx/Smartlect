@@ -116,7 +116,7 @@ body {
     --el-table-border-color: #{ds.$color-border-soft};
     --el-table-header-bg-color: #{ds.$color-surface-soft};
     --el-table-header-text-color: #{ds.$color-text-2};
-    --el-table-row-hover-bg-color: #{ds.$color-primary-soft};
+    --el-table-row-hover-bg-color: #{ds.$color-page};
     font-size: 13px;
 }
 
@@ -125,7 +125,7 @@ body {
 }
 
 .el-table__body tr.current-row > td.el-table__cell {
-    background-color: ds.$color-primary-soft !important;
+    background-color: ds.$color-surface-soft !important;
 }
 
 // 分页
