@@ -159,6 +159,7 @@ class ShoppingMySQLTests(unittest.TestCase):
     # and one actor instead of each registering those ids into a scope of their own. The rest
     # of the class keeps a private scope per test.
     CATALOG_TESTS = {"test_selection_gate_forces_selection_before_insufficient_closeout",
+                     "test_rollback_authorization_substitutes_server_side_without_repair_round",
                      "test_recommend_skus_uses_constraint_retrieve_not_homepage_routes",
                      "test_observed_product_facts_do_not_handoff_on_mislabeled_closeout",
                      "test_product_focus_spec_question_templates_from_skus"}
@@ -580,7 +581,7 @@ class ShoppingMySQLTests(unittest.TestCase):
         provider = FakeProvider([tool('search_knowledge', {'query': '退款确认'}),
             self._cited_finish('退款需要本人确认；受理不代表完成。您账户下暂无可用优惠券。')])
         run, lease = self.begin('账户的退款规则是什么？')
-        with patch('smartlect.agents.shopping.bounded_messages', choked):
+        with patch('smartlect.agents.shopping.session.bounded_messages', choked):
             result = asyncio.run(self.execute(provider, run, lease))
         self.assertEqual(result['state'], 'COMPLETED')
         self.assertEqual(result['result']['model_mode'], 'live')
@@ -613,6 +614,25 @@ class ShoppingMySQLTests(unittest.TestCase):
         self.assertTrue(result['context']['selection_repair_done'])
         self.assertEqual([r['error'] for r in result['context']['answer_rejections']], ['GuardViolation'])
         self.assertEqual(result['context']['answer_repairs'], 0)
+
+    def test_rollback_authorization_substitutes_server_side_without_repair_round(self):
+        # 回退授权（"按可售来"）降级为确定性控制器动作：硬约束撞空时服务端把必含词
+        # 移入 query 重检，有可售件直接出替代收口——不再消耗模型修复轮。
+        commerce = FakeCommerce()
+        attribution = self.catalog_attribution()
+        provider = FakeProvider([
+            tool('recommend_skus', {'query': '键盘', 'required_terms': ['亚克力']}),
+            tool('finish_answer', {'answer': '没有找到可售的亚克力键盘。', 'request_kind': 'inquire_fact',
+                'handoff_requested': False, 'grounding': 'user_facts'})])
+        run, lease = self.begin('要亚克力键盘，没有就按可售来')
+        result = asyncio.run(self.execute(provider, run, lease, commerce=commerce, attribution=attribution))
+        self.assertEqual(result['state'], 'COMPLETED')
+        self.assertTrue(result['context']['rollback_repair_done'])
+        self.assertNotIn('answer_rejections', result['context'])
+        self.assertEqual(result['result']['closeout'], 'rollback_substitution_template')
+        self.assertIn('按可售来', result['result']['answer'])
+        self.assertTrue(result['result']['products'])
+        self.assertEqual(result['context']['model_calls'], 2)
 
     def test_support_insufficient_closeout_without_product_signal_stays(self):
         # The gate must stay narrow: a bare policy question closing insufficient

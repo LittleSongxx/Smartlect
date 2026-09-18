@@ -57,6 +57,7 @@ def empty_mission():
         'query': '',
         'quantity': None,
         'rollback_authorized': False,
+        'rollback_applied': False,
     }
 
 
@@ -111,6 +112,7 @@ def normalize_mission(value):
         'quantity': quantity,
         # Authorization persists for the conversation once given ("按可售来").
         'rollback_authorized': bool(data.get('rollback_authorized')),
+        'rollback_applied': bool(data.get('rollback_applied')),
     }
 
 
@@ -350,6 +352,9 @@ def merge_mission(previous, extracted, explicit=None):
         # of the same purchase conversation too.
         'rollback_authorized': bool(previous.get('rollback_authorized')
                                     or extracted.get('rollback_authorized')),
+        # Controller-applied substitution is sticky: once the hard gate was lifted
+        # under user authorization, later merges must not re-harden it.
+        'rollback_applied': bool(previous.get('rollback_applied')),
         'required_terms': required,
         'comparison_targets': targets,
         'comparison_required': comparison_required,
