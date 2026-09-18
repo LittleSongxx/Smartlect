@@ -71,6 +71,16 @@ class LedgerMySQLTests(unittest.TestCase):
         self.pay = "it-" + uuid.uuid4().hex
         self.item = "item-" + uuid.uuid4().hex
 
+    def scope_events(self, scope):
+        """Nonfinancial scope isolation lives in commerce_attribution_meta (frozen at
+        ingest); commerce_attribution projection rows are financial-only by design."""
+        with self.connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT e.event_id,e.event_type FROM commerce_event e "
+                           "JOIN commerce_attribution_meta m ON m.event_id=e.event_id "
+                           "WHERE m.execution_scope_id=%s AND e.status='APPLIED' "
+                           "ORDER BY e.received_at,e.event_id", (scope,))
+            return [(row['event_type'], row['event_id']) for row in cursor.fetchall()]
+
     def scope_metadata(self, event_id):
         with self.connect() as connection, connection.cursor() as cursor:
             cursor.execute('SELECT * FROM commerce_attribution_meta WHERE event_id=%s', (event_id,))
@@ -98,16 +108,16 @@ class LedgerMySQLTests(unittest.TestCase):
             self.assertEqual(row['raw_json'], canonical(event))
             self.assertEqual(row['fingerprint'], hashlib.sha256(canonical(event).encode()).hexdigest())
             self.assertIsNone(row['amount_cents'])
-        report = store.summary(merchant)
-        cancelled = [e for e in report['events'] if e['event_type'] == 'CANCEL']
-        self.assertEqual([e['event_id'] for e in cancelled], [cancel['eventId']])
-        self.assertTrue(all(e['status'] == 'APPLIED' for e in cancelled))
+        # 非金融事件的 scope 冻结在 commerce_attribution_meta；summary 是金钱视图
+        #（只投影 PAYMENT/REFUND），这里用 meta 联合事件表断言隔离与幂等。
+        report_events = self.scope_events(scope)
+        self.assertEqual([event_id for kind, event_id in report_events if kind == 'CANCEL'],
+                         [cancel['eventId']])
         self.assertEqual(store.totals(merchant), {'paid_cents': 0, 'refunded_cents': 0, 'net_cents': 0,
                                                   'payment_conversions': 0})
-        other_view = store.summary(merchant.model_copy(update={'execution_scope_id': other_scope}))
-        self.assertEqual([e for e in other_view['events'] if e['event_type'] == 'CANCEL'], [])
+        self.assertEqual([row for row in self.scope_events(other_scope) if row[0] == 'CANCEL'], [])
         self.ledger.ingest(batch(cancel, view))
-        self.assertEqual(store.summary(merchant)['events'], report['events'])
+        self.assertEqual(self.scope_events(scope), report_events)
 
     def test_default_nonfinancial_scope_does_not_follow_later_registration_or_replay(self):
         owner, scope = 'late-' + uuid.uuid4().hex, 'late-scope-' + uuid.uuid4().hex
@@ -120,12 +130,11 @@ class LedgerMySQLTests(unittest.TestCase):
         self.ledger.ingest(batch(original))
         self.assertEqual(self.scope_metadata(original['eventId']), before)
         merchant = ActorContext(subject_type='merchant', actor_id='admin', session_id='synthetic', permissions=('admin:legacy',), execution_scope_id=scope)
-        self.assertEqual(store.summary(merchant)['events'], [])
+        self.assertEqual(self.scope_events(scope), [])
         new = outcome('CANCEL', userId=owner, source='ORDER', payload={})
         self.ledger.ingest(batch(new))
         self.assertEqual(self.scope_metadata(new['eventId'])['execution_scope_id'], scope)
-        self.assertEqual([(e['event_type'], e['event_id']) for e in store.summary(merchant)['events']],
-                         [('CANCEL', new['eventId'])])
+        self.assertEqual(self.scope_events(scope), [('CANCEL', new['eventId'])])
 
     def test_out_of_order_refund_and_duplicates_reconcile_to_one_payment(self):
         refund = outcome("REFUND", self.pay, self.item)
