@@ -7,6 +7,8 @@ public class ProductPropertyValueVO {
 
     private  String propertyCover;
 
+    private String propertyGallery;
+
     private String propertyRemark;
 
     public String getPropertyValueId() {
@@ -31,6 +33,14 @@ public class ProductPropertyValueVO {
 
     public void setPropertyCover(String propertyCover) {
         this.propertyCover = propertyCover;
+    }
+
+    public String getPropertyGallery() {
+        return propertyGallery;
+    }
+
+    public void setPropertyGallery(String propertyGallery) {
+        this.propertyGallery = propertyGallery;
     }
 
     public String getPropertyRemark() {

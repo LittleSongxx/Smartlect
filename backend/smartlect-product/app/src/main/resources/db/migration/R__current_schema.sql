@@ -28,6 +28,7 @@ create table if not exists product_property_value
     cover_type        tinyint(1)   null comment '0:无需传封面 1:需传封面',
     property_value_id varchar(15)  not null,
     property_cover    varchar(60)  null comment '属性封面',
+    property_gallery  varchar(500) null comment '属性值图集（逗号分隔，空则回退商品级 cover）',
     property_value    varchar(100) null comment '属性值',
     property_remark   varchar(100) null comment '备注',
     sort              int          null comment '属性值排序',
@@ -159,6 +160,21 @@ SET @sql = IF(
     ),
     'SELECT 1',
     'ALTER TABLE local_message_outbox ADD INDEX idx_outbox_dispatch (status, next_retry_time, lease_until, id)'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = IF(
+    EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'product_property_value'
+          AND column_name = 'property_gallery'
+    ),
+    'SELECT 1',
+    'ALTER TABLE product_property_value ADD COLUMN property_gallery varchar(500) NULL COMMENT ''per-value image gallery, comma separated, empty falls back to product cover'''
 );
 PREPARE stmt FROM @sql;
 EXECUTE stmt;

@@ -335,6 +335,7 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 			productPropertyValueVO.setPropertyValueId(productPropertyValue.getPropertyValueId());
 			productPropertyValueVO.setPropertyValue(productPropertyValue.getPropertyValue());
 			productPropertyValueVO.setPropertyCover(productPropertyValue.getPropertyCover());
+			productPropertyValueVO.setPropertyGallery(productPropertyValue.getPropertyGallery());
 			productPropertyValueVO.setPropertyRemark(productPropertyValue.getPropertyRemark());
 			// 如果Map中没有，则创建,并添加属性，添加到Map中
 			if (productPropertyVO == null){

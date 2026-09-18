@@ -6,10 +6,12 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SQL = ROOT / "backend/data/02_catalog_seed.sql"
+GALLERY_FIX = ROOT / "backend/data/03_catalog_value_gallery.sql"
 ASSET_SOURCE = ROOT / "run/catalog-source/file"
 UPLOADS = ROOT / "run/uploads/file"
 VERSION_MARKER = ROOT / "run/uploads/.catalog-version"
-CATALOG_VERSION = "catalog-mirror-a7d6063f05a397a6"
+# -valuegallery1: per-value color gallery backfill layered via 03_catalog_value_gallery.sql
+CATALOG_VERSION = "catalog-mirror-a7d6063f05a397a6-valuegallery1"
 PRODUCT_COUNT = 47
 
 
@@ -79,9 +81,18 @@ def apply_sql():
     if current == (CATALOG_VERSION, PRODUCT_COUNT):
         print(f"Catalog {CATALOG_VERSION} already installed ({PRODUCT_COUNT} products).")
         return
+    # The seed mirrors the authorized catalog and re-inserts property rows, so the
+    # gallery backfill must ride along after it inside the same install pass.
+    statements = SQL.read_text()
+    if GALLERY_FIX.is_file():
+        statements += "\n" + GALLERY_FIX.read_text()
+    statements += (
+        f"\nUPDATE catalog_install_meta SET catalog_version = '{CATALOG_VERSION}' "
+        "WHERE catalog_key = 'default';"
+    )
     compose("exec", "-T", "mysql", "sh", "-ec",
             'MYSQL_PWD="$SMARTLECT_FLYWAY_PASSWORD" mysql -usmartlect_flyway smartlect_product',
-            input_text=SQL.read_text(), capture=True)
+            input_text=statements, capture=True)
     print(f"Installed catalog {CATALOG_VERSION} into smartlect_product / smartlect_stock.")
 
 

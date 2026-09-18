@@ -19,6 +19,8 @@
 		<result column="property_value_id" property="propertyValueId"  />
 		<!--属性封面-->
 		<result column="property_cover" property="propertyCover"  />
+		<!--属性值图集-->
+		<result column="property_gallery" property="propertyGallery"  />
 		<!--属性值-->
 		<result column="property_value" property="propertyValue"  />
 		<!--备注-->
@@ -31,7 +33,7 @@
 	<!-- 通用查询结果列-->
 	<sql id="base_column_list">
 		 p.product_id,p.property_id,p.property_name,p.property_sort,p.cover_type,
-		 p.property_value_id,p.property_cover,p.property_value,p.property_remark,p.sort
+		 p.property_value_id,p.property_cover,p.property_gallery,p.property_value,p.property_remark,p.sort
 		 
 	</sql>
 
@@ -143,6 +145,9 @@
 			<if test="bean.propertyCover != null">
 				 property_cover,
 			</if>
+			<if test="bean.propertyGallery != null">
+				 property_gallery,
+			</if>
 			<if test="bean.propertyValue != null">
 				 property_value,
 			</if>
@@ -152,8 +157,8 @@
 			<if test="bean.sort != null">
 				 sort,
 			</if>
-		 </trim>
-		 <trim prefix="values (" suffix=")" suffixOverrides="," >
+		</trim>
+		<trim prefix="values (" suffix=")" suffixOverrides="," >
 			<if test="bean.productId!=null">
 				 #{bean.productId},
 			</if>
@@ -174,6 +179,9 @@
 			</if>
 			<if test="bean.propertyCover!=null">
 				 #{bean.propertyCover},
+			</if>
+			<if test="bean.propertyGallery!=null">
+				 #{bean.propertyGallery},
 			</if>
 			<if test="bean.propertyValue!=null">
 				 #{bean.propertyValue},
@@ -212,6 +220,9 @@
 			<if test="bean.propertyCover != null">
 				 property_cover,
 			</if>
+			<if test="bean.propertyGallery != null">
+				 property_gallery,
+			</if>
 			<if test="bean.propertyValue != null">
 				 property_value,
 			</if>
@@ -221,8 +232,8 @@
 			<if test="bean.sort != null">
 				 sort,
 			</if>
-		 </trim>
-		 <trim prefix="values (" suffix=")" suffixOverrides=",">
+		</trim>
+		<trim prefix="values (" suffix=")" suffixOverrides=",">
 			<if test="bean.productId!=null">
 				 #{bean.productId},
 			</if>
@@ -244,6 +255,9 @@
 			<if test="bean.propertyCover!=null">
 				 #{bean.propertyCover},
 			</if>
+			<if test="bean.propertyGallery!=null">
+				 #{bean.propertyGallery},
+			</if>
 			<if test="bean.propertyValue!=null">
 				 #{bean.propertyValue},
 			</if>
@@ -253,9 +267,9 @@
 			<if test="bean.sort!=null">
 				 #{bean.sort},
 			</if>
-		 </trim>
-		 on DUPLICATE key update 
-		 <trim prefix="" suffix="" suffixOverrides=",">
+		</trim>
+	 on DUPLICATE key update
+		<trim prefix="" suffix="" suffixOverrides=",">
 			<if test="bean.productId!=null">
 				 product_id = VALUES(product_id),
 			</if>
@@ -276,6 +290,9 @@
 			</if>
 			<if test="bean.propertyCover!=null">
 				 property_cover = VALUES(property_cover),
+			</if>
+			<if test="bean.propertyGallery!=null">
+				 property_gallery = VALUES(property_gallery),
 			</if>
 			<if test="bean.propertyValue!=null">
 				 property_value = VALUES(property_value),
@@ -299,6 +316,7 @@
 			 cover_type,
 			 property_value_id,
 			 property_cover,
+			 property_gallery,
 			 property_value,
 			 property_remark,
 			 sort
@@ -312,6 +330,7 @@
 				 #{item.coverType},
 				 #{item.propertyValueId},
 				 #{item.propertyCover},
+				 #{item.propertyGallery},
 				 #{item.propertyValue},
 				 #{item.propertyRemark},
 				 #{item.sort}
@@ -329,6 +348,7 @@
 			 cover_type,
 			 property_value_id,
 			 property_cover,
+			 property_gallery,
 			 property_value,
 			 property_remark,
 			 sort
@@ -342,6 +362,7 @@
 				 #{item.coverType},
 				 #{item.propertyValueId},
 				 #{item.propertyCover},
+				 #{item.propertyGallery},
 				 #{item.propertyValue},
 				 #{item.propertyRemark},
 				 #{item.sort}
@@ -355,6 +376,7 @@
 			cover_type = VALUES(cover_type),
 			property_value_id = VALUES(property_value_id),
 			property_cover = VALUES(property_cover),
+			property_gallery = VALUES(property_gallery),
 			property_value = VALUES(property_value),
 			property_remark = VALUES(property_remark),
 			sort = VALUES(sort)
@@ -384,6 +406,9 @@
 			</if>
 			<if test="bean.propertyCover != null">
 				 property_cover = #{bean.propertyCover},
+			</if>
+			<if test="bean.propertyGallery != null">
+				 property_gallery = #{bean.propertyGallery},
 			</if>
 			<if test="bean.propertyValue != null">
 				 property_value = #{bean.propertyValue},
@@ -423,6 +448,9 @@
 			<if test="bean.propertyCover != null">
 				 property_cover = #{bean.propertyCover},
 			</if>
+			<if test="bean.propertyGallery != null">
+				 property_gallery = #{bean.propertyGallery},
+			</if>
 			<if test="bean.propertyValue != null">
 				 property_value = #{bean.propertyValue},
 			</if>
@@ -459,6 +487,9 @@
 					</if>
 				<if test="item.propertyCover != null">
 					property_cover = #{item.propertyCover},
+				</if>
+				<if test="item.propertyGallery != null">
+					property_gallery = #{item.propertyGallery},
 				</if>
 				<if test="item.propertyValue != null">
 					property_value = #{item.propertyValue},

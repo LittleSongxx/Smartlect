@@ -7,6 +7,7 @@ import { openImagePreview } from '@/composables/imagePreview';
 import { useProductSkuSheet } from '@/composables/useProductSkuSheet';
 import { useAuthStore } from '@/stores/auth';
 import { isProductOnSale, pickDefaultSku } from '@/utils/product';
+import { resolveValueGallery } from '@/utils/productGallery';
 import { parseProductContent } from '@/utils/productContent';
 import { normalizeProductDesc } from '@/utils/productDesc';
 import { resolveImageUrl } from '@/utils/image';
@@ -39,7 +40,6 @@ export function useProductDetailPage() {
   const quantity = ref(1);
   const selectedSku = ref<any>({});
   const selectedProperty = reactive<Record<string, string>>({});
-  const propertyImageMap = reactive<Record<string, string>>({});
   const activeImageIndex = ref(0);
   const favorited = ref(false);
   const favoriteLoading = ref(false);
@@ -59,7 +59,14 @@ export function useProductDetailPage() {
       .filter(Boolean);
   });
 
-  const galleryImages = computed(() => thumbList.value);
+  // 图集跟随 SKU：属性值配了 propertyGallery 就整组切换，否则回退商品级 cover
+  const galleryImages = computed(() =>
+    resolveValueGallery(productPropertyList.value, selectedProperty, productInfo.value?.cover)
+  );
+
+  watch(galleryImages, () => {
+    activeImageIndex.value = 0;
+  });
 
   const displayPrice = computed(() =>
     Number(selectedSku.value?.price ?? productInfo.value?.minPrice ?? 0).toFixed(2)
@@ -71,7 +78,7 @@ export function useProductDetailPage() {
     return {
       productId: String(p.productId),
       productName: String(p.productName || '商品'),
-      cover: thumbList.value[0] || '',
+      cover: galleryImages.value[0] || '',
       minPrice: displayPrice.value
     };
   });
@@ -85,11 +92,6 @@ export function useProductDetailPage() {
 
   const buildSkuKey = (map: Record<string, string>) =>
     productPropertyList.value.map((p) => map[p.propertyId]).filter(Boolean).join('-');
-
-  const syncCarouselByImage = (imgPath: string) => {
-    const idx = galleryImages.value.findIndex((img) => img === imgPath);
-    if (idx >= 0) activeImageIndex.value = idx;
-  };
 
   const touchStartX = ref(0);
   const touchDeltaX = ref(0);
@@ -162,13 +164,7 @@ export function useProductDetailPage() {
     productPropertyList.value.forEach((prop, index) => {
       const valId = ids[index];
       if (valId) selectedProperty[prop.propertyId] = valId;
-      prop.propertyValues?.forEach((val: any) => {
-        if (val.propertyCover) propertyImageMap[val.propertyValueId] = val.propertyCover;
-      });
     });
-    const coverFromSku = propertyImageMap[ids[0]];
-    if (coverFromSku) syncCarouselByImage(coverFromSku);
-    else activeImageIndex.value = 0;
   };
 
   const selectProperty = (property: any, propertyValue: any) => {
@@ -185,7 +181,6 @@ export function useProductDetailPage() {
     }
     selectedProperty[property.propertyId] = propertyValue.propertyValueId;
     selectedSku.value = matched;
-    if (propertyValue.propertyCover) syncCarouselByImage(propertyValue.propertyCover);
     if (quantity.value > matched.stock) quantity.value = matched.stock;
   };
 

@@ -26,6 +26,8 @@ public class ProductPropertyValue implements Serializable {
 
 	private String propertyCover;
 
+	private String propertyGallery;
+
 	@NotEmpty
 	private String propertyValue;
 
@@ -89,6 +91,14 @@ public class ProductPropertyValue implements Serializable {
 		return this.propertyCover;
 	}
 
+	public void setPropertyGallery(String propertyGallery){
+		this.propertyGallery = propertyGallery;
+	}
+
+	public String getPropertyGallery(){
+		return this.propertyGallery;
+	}
+
 	public void setPropertyValue(String propertyValue){
 		this.propertyValue = propertyValue;
 	}
@@ -115,6 +125,6 @@ public class ProductPropertyValue implements Serializable {
 
 	@Override
 	public String toString (){
-		return "商品ID:"+(productId == null ? "空" : productId)+"，属性ID:"+(propertyId == null ? "空" : propertyId)+"，属性名称:"+(propertyName == null ? "空" : propertyName)+"，属性排序:"+(propertySort == null ? "空" : propertySort)+"，0:无需传封面 1:需传封面:"+(coverType == null ? "空" : coverType)+"，propertyValueId:"+(propertyValueId == null ? "空" : propertyValueId)+"，属性封面:"+(propertyCover == null ? "空" : propertyCover)+"，属性值:"+(propertyValue == null ? "空" : propertyValue)+"，备注:"+(propertyRemark == null ? "空" : propertyRemark)+"，属性值排序:"+(sort == null ? "空" : sort);
+		return "商品ID:"+(productId == null ? "空" : productId)+"，属性ID:"+(propertyId == null ? "空" : propertyId)+"，属性名称:"+(propertyName == null ? "空" : propertyName)+"，属性排序:"+(propertySort == null ? "空" : propertySort)+"，0:无需传封面 1:需传封面:"+(coverType == null ? "空" : coverType)+"，propertyValueId:"+(propertyValueId == null ? "空" : propertyValueId)+"，属性封面:"+(propertyCover == null ? "空" : propertyCover)+"，属性值图集:"+(propertyGallery == null ? "空" : propertyGallery)+"，属性值:"+(propertyValue == null ? "空" : propertyValue)+"，备注:"+(propertyRemark == null ? "空" : propertyRemark)+"，属性值排序:"+(sort == null ? "空" : sort);
 	}
 }

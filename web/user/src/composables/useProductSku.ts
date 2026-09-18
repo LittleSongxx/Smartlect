@@ -22,7 +22,14 @@ export function useProductSku(getProductId: () => string) {
     return Math.max(1, Math.min(stock, MAX_CART_QTY));
   });
 
+  // 头图跟随已选规格：与订单快照同规则——第一个非空属性封面，否则商品 cover 首图
   const coverImage = computed(() => {
+    for (const prop of productPropertyList.value) {
+      const valId = selectedProperty[prop.propertyId];
+      const val = prop.propertyValues?.find((v: any) => v.propertyValueId === valId);
+      const cover = String(val?.propertyCover || '').trim();
+      if (cover) return cover;
+    }
     const cover = productInfo.value?.cover;
     if (!cover) return '';
     return String(cover).split(',')[0]?.trim() || '';

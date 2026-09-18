@@ -15,19 +15,33 @@
         </div>
       </div>
       <div class="sku-values">
-        <div v-for="(propItem, vIndex) in property.propertyValues" :key="vIndex" class="sku-value-row">
-          <div class="number">{{ vIndex + 1 }}.</div>
-          <div class="cover" v-if="property.coverType === 1">
-            <ImageSelect v-model="propItem.propertyCover" :cutWidth="150" :width="30" :scale="1"></ImageSelect>
+        <div v-for="(propItem, vIndex) in property.propertyValues" :key="vIndex">
+          <div class="sku-value-row">
+            <div class="number">{{ vIndex + 1 }}.</div>
+            <div class="cover" v-if="property.coverType === 1">
+              <ImageSelect v-model="propItem.propertyCover" :cutWidth="150" :width="30" :scale="1"></ImageSelect>
+            </div>
+            <el-input v-model="propItem.propertyValue" placeholder="属性值" class="value-input" clearable></el-input>
+            <el-input v-model="propItem.propertyRemark" placeholder="备注（可选）" class="remark-input" clearable></el-input>
+            <div class="sku-op-panel">
+              <div
+                class="iconfont icon-delete"
+                @click="removePropertyValue(pIndex, vIndex)"
+                v-if="property.propertyValues.length > 1"
+              ></div>
+            </div>
           </div>
-          <el-input v-model="propItem.propertyValue" placeholder="属性值" class="value-input" clearable></el-input>
-          <el-input v-model="propItem.propertyRemark" placeholder="备注（可选）" class="remark-input" clearable></el-input>
-          <div class="sku-op-panel">
-            <div
-              class="iconfont icon-delete"
-              @click="removePropertyValue(pIndex, vIndex)"
-              v-if="property.propertyValues.length > 1"
-            ></div>
+          <div v-if="property.coverType === 1" class="sku-gallery-row">
+            <span class="gallery-label">图集</span>
+            <div class="gallery-list">
+              <ImageSelect
+                v-for="(_, gIndex) in propItem.propertyGalleryArray"
+                :key="gIndex"
+                v-model="propItem.propertyGalleryArray[gIndex]"
+                :cutWidth="200"
+                :width="60"
+              ></ImageSelect>
+            </div>
           </div>
         </div>
       </div>
@@ -71,6 +85,7 @@ const createDefaultPropertyValues = (index = 0) => [
   {
     propertyValueId: `${Date.now()}${index}`,
     propertyCover: '',
+    propertyGalleryArray: Array(proxy.productMainImageCount).fill(''),
     propertyValue: '',
     propertyRemark: '',
   },
@@ -80,6 +95,7 @@ const addPropertyValue = (propertyIndex) => {
   productEditStore.productPropertyList[propertyIndex].propertyValues.push({
     propertyValueId: `${Date.now()}`,
     propertyCover: '',
+    propertyGalleryArray: Array(proxy.productMainImageCount).fill(''),
     propertyValue: '',
     propertyRemark: '',
   })
@@ -191,7 +207,7 @@ watch(
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 10px;
+      margin-bottom: 4px;
 
       .number {
         font-size: 14px;
@@ -221,6 +237,26 @@ watch(
         .iconfont {
           cursor: pointer;
         }
+      }
+    }
+
+    .sku-gallery-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-left: 20px;
+
+      .gallery-label {
+        flex-shrink: 0;
+        margin-right: 8px;
+        font-size: 12px;
+        color: var(--text3);
+      }
+
+      .gallery-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
       }
     }
   }
