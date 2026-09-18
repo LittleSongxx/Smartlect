@@ -368,7 +368,7 @@ onUnmounted(() => { alive = false; stopPolling(); });
 
       > strong {
         font-size: 22px;
-        color: var(--money);
+        color: var(--text);
       }
     }
   }
