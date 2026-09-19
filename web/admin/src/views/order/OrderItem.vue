@@ -9,7 +9,7 @@
       <div class="order-status">{{ data.orderStatusName }}</div>
     </div>
     <div class="sub-item-list">
-      <div class="order-sub-item" v-for="(sub, index) in data.orderItemList">
+      <div class="order-sub-item" v-for="(sub, index) in data.orderItemList" :key="index">
         <CouponOrderCover v-if="isCouponItem(sub)" :width="80" />
         <Cover v-else :source="sub.cover" :width="80"></Cover>
         <div class="product-name-panel">
@@ -62,7 +62,7 @@ const isTrial = inject('isTrialAdmin', false)
 const props = defineProps({
   data: {
     type: Object,
-    default: {},
+    default: () => ({}),
   },
 })
 

@@ -26,17 +26,17 @@
   <el-card class="table-data-card">
     <div class="table-panel">
       <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData">
-        <template #slotCommentSnapshot="{ index, row }">
+        <template #slotCommentSnapshot="{ row }">
           <div class="snapshot-text">{{ row.commentSnapshot || '--' }}</div>
         </template>
 
-        <template #slotStatus="{ index, row }">
+        <template #slotStatus="{ row }">
           <el-tag v-if="row.status === 0" type="warning" size="small">待处理</el-tag>
           <el-tag v-else-if="row.status === 1" type="success" size="small">已处理</el-tag>
           <el-tag v-else-if="row.status === 2" type="info" size="small">已驳回</el-tag>
         </template>
 
-        <template #slotOperation="{ index, row }">
+        <template #slotOperation="{ row }">
           <div class="list-op-panel">
             <OpBtn
               v-if="row.status === 0"

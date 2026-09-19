@@ -39,13 +39,13 @@
   <el-card class="table-data-card">
     <div class="table-panel">
       <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData">
-        <template #slotType="{ index, row }">
+        <template #slotType="{ row }">
           <el-tag v-if="row.couponType == 1" type="info">满减券</el-tag>
           <el-tag v-if="row.couponType == 2" type="warning">折扣券</el-tag>
           <el-tag v-if="row.couponType == 3" type="success">无门槛券</el-tag>
         </template>
 
-        <template #slotAmount="{ index, row }">
+        <template #slotAmount="{ row }">
           <div v-if="row.couponType == 2">
             {{ (row.discountRate * 10).toFixed(1) }}折
           </div>
@@ -54,11 +54,11 @@
           </div>
         </template>
 
-        <template #slotStock="{ index, row }">
+        <template #slotStock="{ row }">
           {{ row.remainCount || 0 }} / {{ row.totalCount == 0 ? '不限' : row.totalCount }}
         </template>
 
-        <template #slotValidTime="{ index, row }">
+        <template #slotValidTime="{ row }">
           {{ row.validStartTime || '--' }} ~ {{ row.validEndTime || '--' }}
         </template>
 
@@ -67,14 +67,14 @@
           <span v-else class="text-muted">—</span>
         </template>
 
-        <template #slotStatus="{ index, row }">
+        <template #slotStatus="{ row }">
           <el-tag v-if="row.status == 0" type="info">已停用</el-tag>
           <el-tag v-if="row.status == 1" type="success">进行中</el-tag>
           <el-tag v-if="row.status == 2" type="info">已过期</el-tag>
           <el-tag v-if="row.status == 3" type="warning">已发完</el-tag>
         </template>
 
-        <template #slotOp="{ index, row }">
+        <template #slotOp="{ row }">
           <div v-if="!isTrial" class="list-op-panel">
             <OpBtn icon="icon-edit" tips="修改" @click="showEdit(row.couponId)"></OpBtn>
             <OpBtn :icon="row.status == 0 ? 'icon-shangjia' : 'icon-xiajia'"

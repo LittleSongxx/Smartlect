@@ -11,7 +11,7 @@
           <img :src="previewsImage" />
         </div>
         <el-upload :multiple="false" :show-file-list="false" :http-request="selectFile" :accept="proxy.imageAccept">
-          <el-button class="select-btn" type="primary" @click="">选择图片</el-button>
+          <el-button class="select-btn" type="primary" >选择图片</el-button>
         </el-upload>
       </div>
     </div>

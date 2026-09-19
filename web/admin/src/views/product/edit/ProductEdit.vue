@@ -38,6 +38,7 @@ const router = useRouter()
 const route = useRoute()
 
 import { useProductEditStore } from '@/stores/productEditStore'
+import { fillCoverDefault, joinGallerySlots, normalizeValueGalleries } from '@/utils/productEditGallery'
 const productEditStore = useProductEditStore()
 
 const activeName = ref('base')
@@ -77,7 +78,7 @@ const aiStatusText = computed(() => ({
 }[aiStatus.value] || '尚未投影'))
 
 const applyContent = (info) => {
-  let parsed = {}
+  let parsed
   try {
     parsed = info.contentJson ? JSON.parse(info.contentJson) : {}
   } catch {
@@ -162,21 +163,8 @@ const getProductInfo = async () => {
     cover: (result.data.productInfo.cover || '').split(',').filter(Boolean),
   })
   loadAiStatus()
-  productEditStore.productPropertyList = result.data.productPropertyList.map((property) => ({
-    ...property,
-    propertyValues: property.propertyValues.map((value) => {
-      const gallery = String(value.propertyGallery || '').split(',').filter(Boolean)
-      return {
-        ...value,
-        propertyCover: value.propertyCover || '',
-        // 图集编辑用固定槽位数组，保存时再 join 回逗号串
-        propertyGalleryArray: [
-          ...gallery,
-          ...Array(Math.max(0, proxy.productMainImageCount - gallery.length)).fill(''),
-        ],
-      }
-    }),
-  }))
+  productEditStore.productPropertyList = normalizeValueGalleries(
+    result.data.productPropertyList, proxy.productMainImageCount)
   productEditStore.skuData = new Map(
     result.data.skuList.map((sku) => [sku.propertyValueIdHash, sku])
   )
@@ -213,11 +201,11 @@ const submitProduct = async (sensitiveConfirmPwd) => {
   for (const property of productEditStore.productPropertyList) {
     for (const [index, value] of property.propertyValues.entries()) {
       // 图集传了而色卡没传时，用图集首张兜底，保证订单/购物车快照有图可用
-      const gallery = (value.propertyGalleryArray || []).filter(Boolean)
-      if (property.coverType === 1 && !value.propertyCover && gallery.length) {
-        value.propertyCover = gallery[0]
+      const filled = fillCoverDefault(value, property.coverType)
+      if (filled !== value) {
+        Object.assign(property.propertyValues[index], filled)
       }
-      if (property.coverType === 1 && !value.propertyCover) {
+      if (property.coverType === 1 && !filled.propertyCover) {
         proxy.Message.warning(
           `请上传【${property.propertyName}】属性第(${index + 1})行的图片`
         )
@@ -256,7 +244,7 @@ const submitProduct = async (sensitiveConfirmPwd) => {
       const resultValue = {
         ...property,
         ...propertyValue,
-        propertyGallery: (propertyValue.propertyGalleryArray || []).filter(Boolean).join(','),
+        propertyGallery: joinGallerySlots(propertyValue.propertyGalleryArray),
         sort: index,
       }
       delete resultValue.categoryId

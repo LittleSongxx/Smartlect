@@ -5,7 +5,7 @@
       <div class="product-image-panel">
         <div class="image-list">
           <div :class="['image-item', { active: image == selectedImage }]"
-            v-for="image in productInfo?.cover?.split(',')">
+            v-for="(image, index) in productInfo?.cover?.split(',')" :key="index">
             <Cover :source="image" :width="100" @click="selectImage(image)"></Cover>
           </div>
         </div>
@@ -19,12 +19,12 @@
           <Price :price="selectedSku.price" :size="26"></Price>
         </div>
         <div class="property-list">
-          <div class="property-item" v-for="property in productPropertyList">
+          <div class="property-item" v-for="property in productPropertyList" :key="property.propertyId">
             <div class="property-name">{{ property.propertyName }}</div>
             <div class="property-values">
               <div
                 :class="['property-value-panel', { active: selectedProperty[property.propertyId] == value.propertyValueId }]"
-                v-for="value in property.propertyValues" @click="selectProperty(property, value)">
+                v-for="value in property.propertyValues" :key="value.propertyValueId" @click="selectProperty(property, value)">
                 <Cover v-if="value.propertyCover" :source="value.propertyCover" :width="25"></Cover>
                 <div class="property-value">
                   {{ value.propertyValue }}
@@ -101,22 +101,23 @@ const show = (productId) => {
 
 const selectedSku = ref({})
 const selectedProperty = ref({})
-const propertyImageMap = ref({})
+// 与 C 端同优先级：属性值图集首图优先，色卡兜底（两者常是同内容异名文件）
+const valueImage = (value) =>
+  String(value.propertyGallery || '').split(',').filter(Boolean)[0] || value.propertyCover || ''
 const initDefaultPropertySelected = () => {
   selectedSku.value = skuList.value[0]
   const propertyValueIdArray = selectedSku.value.propertyValueIds.split('-')
-  
+
   let initSelect = null
   for (let [index, property] of productPropertyList.value.entries()) {
     selectedProperty.value[property.propertyId] = propertyValueIdArray[index]
     for (const prop of property.propertyValues) {
-      if (prop.propertyCover) {
-        propertyImageMap.value[prop.propertyValueId] = prop.propertyCover
-        
+      const image = valueImage(prop)
+      if (image) {
         if (initSelect == null) {
-          selectImage(prop.propertyCover)
+          selectImage(image)
         }
-        initSelect = prop.propertyCover
+        initSelect = image
       }
     }
   }
@@ -143,8 +144,8 @@ const selectProperty = (property, propertyValue) => {
   }
   selectedProperty.value[property.propertyId] = propertyValue.propertyValueId
   selectedSku.value = matchedSku
-  
-  const image = propertyImageMap.value[propertyValue.propertyValueId]
+
+  const image = valueImage(propertyValue)
   if (image) {
     selectImage(image)
   }

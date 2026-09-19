@@ -47,7 +47,7 @@ const props = defineProps({
   },
   options: {
     type: Object,
-    default: {},
+    default: () => ({}),
   },
   columns: Array,
   fetch: Function,

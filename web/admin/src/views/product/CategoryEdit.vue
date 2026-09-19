@@ -3,7 +3,7 @@
     @close="dialogConfig.show = false">
     <el-form :model="formData" :rules="rules" ref="formDataRef" label-width="80px" @submit.prevent>
       <el-form-item label="分类名称" prop="categoryName">
-        <el-input :maxLength="10" v-model="formData.categoryName" :show-word-limit="true" :maxlength="30" />
+        <el-input :maxlength="10" v-model="formData.categoryName" :show-word-limit="true" />
       </el-form-item>
     </el-form>
   </Dialog>

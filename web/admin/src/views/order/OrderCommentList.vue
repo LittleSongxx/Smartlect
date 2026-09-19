@@ -22,14 +22,14 @@
   <el-card class="table-data-card">
     <div class="table-panel">
       <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData">
-        <template #slotUser="{ index, row }">
+        <template #slotUser="{ row }">
           <div class="user-panel">
             <Avatar :avatar="row.avatar" :width="50"></Avatar>
             <div class="nick-name">{{row.nickName}}</div>
           </div>
         </template>
 
-        <template #slotProduct="{ index, row }">
+        <template #slotProduct="{ row }">
           <div class="product-panel">
             <Cover :source="row.cover?.split(',')[0]" :width="100"></Cover>
             <div class="product-name">
@@ -39,12 +39,12 @@
           </div>
         </template>
 
-        <template #slotCommentContent="{ index, row }">
+        <template #slotCommentContent="{ row }">
           <CommentDetail :data="row" />
           <div class="biz-comment" v-if="row.commentBizReply">商家回复：{{row.commentBizReply}}</div>
         </template>
 
-        <template #slotOperation="{ index, row }">
+        <template #slotOperation="{ row }">
           <div class="list-op-panel">
             <OpBtn icon="icon-edit" tips="商家回复" @click="commentHandler(row.orderId)" />
             <OpBtn icon="icon-delete" type="danger" tips="删除" @click="delComment(row)" />

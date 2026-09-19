@@ -90,7 +90,7 @@ const props = defineProps({
   },
   preImageList: {
     type: Array,
-    default: [],
+    default: () => [],
   },
 })
 

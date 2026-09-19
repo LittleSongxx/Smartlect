@@ -49,19 +49,19 @@
 <script setup>
 import EditorMarkdown from '@/components/markdown/EditorMarkdown.vue'
 import ImageSelect from '@/components/ImageSelect.vue'
-import { ref, getCurrentInstance, onMounted, watch, computed } from 'vue'
+import { ref, getCurrentInstance, onMounted, watch } from 'vue'
 const { proxy } = getCurrentInstance()
 import { useRoute } from 'vue-router'
 const route = useRoute()
-const isMobileAdmin = computed(() => route.path.startsWith('/m/'))
 
 import { useProductEditStore } from '@/stores/productEditStore'
+import { createPropertyValue } from './valueTemplate.js'
 const productEditStore = useProductEditStore()
 
 const props = defineProps({
   productInfo: {
     type: Object,
-    default: {},
+    default: () => ({}),
   },
 })
 
@@ -90,14 +90,7 @@ const loadCategory = async () => {
 
 const createPropertyWithDefaultValue = (property, index = 0) => ({
   ...property,
-  propertyValues: [
-    {
-      propertyValueId: `${Date.now()}${index}`,
-      propertyCover: '',
-      propertyValue: '',
-      propertyRemark: '',
-    },
-  ],
+  propertyValues: [createPropertyValue(proxy.productMainImageCount, index)],
 })
 
 const getProductPropertyList = (data) => {

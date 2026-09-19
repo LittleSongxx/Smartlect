@@ -1,13 +1,13 @@
 <template>
   <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData" :showPagination="false">
-    <template #slotProduct="{ index, row }">
+    <template #slotProduct="{ row }">
       <div class="product-info-panel">
         <Cover :source="row.productCover" :width="70" class="cover"></Cover>
         <div class="product-info">
           <div class="product-name">{{ row.productName }}</div>
           <div class="product-id">ID:{{ row.productId }}</div>
           <div class="property-name">
-            <div v-for="(item, index) in row.propertyData">
+            <div v-for="(item, index) in row.propertyData" :key="index">
               {{ item.propertyName }}:{{ item.propertyValue }} <el-divider direction="vertical"
                 v-if="index < row.propertyData.length - 1" />
             </div>
@@ -16,7 +16,7 @@
         </div>
       </div>
     </template>
-    <template #slotStock="{ index, row }">
+    <template #slotStock="{ row }">
       {{ row.stock }} <span class="iconfont icon-edit" @click="updateStock(row)"></span>
     </template>
   </Table>

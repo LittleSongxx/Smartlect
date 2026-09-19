@@ -1,6 +1,6 @@
 <template>
   <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData" :showPagination="false">
-    <template #slotOrder="{ index, row }">
+    <template #slotOrder="{ row }">
       <OrderItem :data="row" @delivery="deliveryHandler"></OrderItem>
     </template>
   </Table>

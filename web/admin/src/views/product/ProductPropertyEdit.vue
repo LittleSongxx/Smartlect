@@ -3,8 +3,7 @@
     @close="dialogConfig.show = false">
     <el-form :model="formData" :rules="rules" ref="formDataRef" label-width="110px" @submit.prevent>
       <el-form-item label="SKU属性名称" prop="propertyName">
-        <el-input :maxLength="10" placeholder="请输入SKU属性名称，比如颜色" v-model="formData.propertyName" :show-word-limit="true"
-          :maxlength="30" />
+        <el-input :maxlength="10" placeholder="请输入SKU属性名称，比如颜色" v-model="formData.propertyName" :show-word-limit="true" />
       </el-form-item>
       <el-form-item label="是否包含图片" prop="coverType">
         <el-radio-group v-model="formData.coverType">

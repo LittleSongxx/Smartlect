@@ -9,7 +9,7 @@
     <div class="comment-inner">
       <div class="comment-info">{{ data.commentContent }}</div>
       <div class="comment-images" v-if="data.commentImages?.length > 0">
-        <div class="comment-image-item" v-for="(item, index) in data.commentImages">
+        <div class="comment-image-item" v-for="(item, index) in data.commentImages" :key="index">
           <Cover fit="cover" :source="item" :preImageList="data.commentImages"></Cover>
         </div>
       </div>
@@ -24,7 +24,7 @@
     <div class="comment-inner">
       <div class="comment-info">{{ data.recommentContent }}</div>
       <div class="comment-images" v-if="data.recommentImages?.length > 0">
-        <div class="comment-image-item" v-for="(item, index) in data.recommentImages">
+        <div class="comment-image-item" v-for="(item, index) in data.recommentImages" :key="index">
           <Cover fit="cover" :source="item" :preImageList="data.recommentImages"></Cover>
         </div>
       </div>
@@ -42,7 +42,7 @@ const route = useRoute()
 const props = defineProps({
   data: {
     type: Object,
-    default: {},
+    default: () => ({}),
   },
 })
 </script>

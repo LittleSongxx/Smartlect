@@ -14,6 +14,7 @@
 </template>
 
 <script setup>
+const emit = defineEmits(['reload'])
 import CommentDetail from './CommentDetail.vue'
 import { ref, reactive, getCurrentInstance, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'

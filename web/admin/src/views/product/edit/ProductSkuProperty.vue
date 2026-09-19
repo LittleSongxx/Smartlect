@@ -69,12 +69,9 @@ import ProductSkuBuild from './ProductSkuBuild.vue'
 import ImageSelect from '@/components/ImageSelect.vue'
 import { ref, computed, getCurrentInstance, watch } from 'vue'
 const { proxy } = getCurrentInstance()
-import { useRoute } from 'vue-router'
-const route = useRoute()
 import { useProductEditStore } from '@/stores/productEditStore'
+import { createPropertyValue } from './valueTemplate.js'
 const productEditStore = useProductEditStore()
-
-const isMobileAdmin = computed(() => route.path.startsWith('/m/'))
 
 const availableDimensions = computed(() => {
   const activeIds = new Set(productEditStore.productPropertyList.map((item) => item.propertyId))
@@ -82,23 +79,13 @@ const availableDimensions = computed(() => {
 })
 
 const createDefaultPropertyValues = (index = 0) => [
-  {
-    propertyValueId: `${Date.now()}${index}`,
-    propertyCover: '',
-    propertyGalleryArray: Array(proxy.productMainImageCount).fill(''),
-    propertyValue: '',
-    propertyRemark: '',
-  },
+  createPropertyValue(proxy.productMainImageCount, index),
 ]
 
 const addPropertyValue = (propertyIndex) => {
-  productEditStore.productPropertyList[propertyIndex].propertyValues.push({
-    propertyValueId: `${Date.now()}`,
-    propertyCover: '',
-    propertyGalleryArray: Array(proxy.productMainImageCount).fill(''),
-    propertyValue: '',
-    propertyRemark: '',
-  })
+  productEditStore.productPropertyList[propertyIndex].propertyValues.push(
+    createPropertyValue(proxy.productMainImageCount)
+  )
 }
 
 const removePropertyValue = (propertyIndex, valueIndex) => {
@@ -277,13 +264,6 @@ watch(
       margin: 0 8px 8px 0;
       cursor: pointer;
     }
-  }
-}
-
-.m-sku-property {
-  .value-input,
-  .remark-input {
-    width: 100%;
   }
 }
 </style>

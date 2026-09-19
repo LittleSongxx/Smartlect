@@ -59,7 +59,7 @@
 </template>
 
 <script setup>
-import { computed, getCurrentInstance, inject } from 'vue'
+import { getCurrentInstance, inject } from 'vue'
 const { proxy } = getCurrentInstance()
 import { useRoute } from 'vue-router'
 const route = useRoute()
@@ -74,7 +74,6 @@ const props = defineProps({
   },
 })
 
-const isMobileAdmin = computed(() => route.path.startsWith('/m/'))
 const isTrial = inject('isTrialAdmin', false)
 
 const removeSku = (index) => {
@@ -138,28 +137,6 @@ const updateSkuStock = async (row) => {
   .stock-input {
     margin: 0px 10px;
     width: 120px;
-  }
-}
-
-.m-sku-list-wrap {
-  width: 100%;
-}
-
-.sku-mobile-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.sku-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  .sku-index {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--m-ink);
   }
 }
 </style>

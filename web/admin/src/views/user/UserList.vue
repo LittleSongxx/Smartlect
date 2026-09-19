@@ -25,25 +25,25 @@
   <el-card class="table-data-card">
     <div class="table-panel">
       <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData">
-        <template #slotAvatar="{ index, row }">
+        <template #slotAvatar="{ row }">
           <Avatar :avatar="row.avatar || undefined" :width="50"></Avatar>
         </template>
 
-        <template #slotNickName="{ index, row }">
+        <template #slotNickName="{ row }">
           {{row.nickName}} ({{SEX_MAP[row.sex]||"未知"}})
         </template>
 
-        <template #slotJoinTime="{ index, row }">
+        <template #slotJoinTime="{ row }">
           <div>加入时间：{{ row.joinTime }}</div>
           <div>最后登录时间：{{ row.lastLoginTime }}</div>
         </template>
 
-        <template #slotStatus="{ index, row }">
+        <template #slotStatus="{ row }">
           <el-tag v-if="row.status == 0" type="info">已禁用</el-tag>
           <el-tag v-if="row.status == 1" type="success">正常</el-tag>
         </template>
 
-        <template #slotOperation="{ index, row }">
+        <template #slotOperation="{ row }">
           <a href="javascript:void(0)" class="a-link" @click="changeStatus(row)">{{ row.status == 0 ? "启用" : "禁用" }}</a>
         </template>
       </Table>

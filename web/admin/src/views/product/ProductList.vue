@@ -35,7 +35,7 @@
   <el-card class="table-data-card">
     <div class="table-panel">
       <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData">
-        <template #slotProduct="{ index, row }">
+        <template #slotProduct="{ row }">
           <div class="product-info-panel">
             <Cover :source="(row.cover || '').split(',')[0]" :alt="row.productName || ''" :width="70" class="cover"></Cover>
             <div class="product-info">
@@ -48,13 +48,13 @@
           </div>
         </template>
 
-        <template #slotStatus="{ index, row }">
+        <template #slotStatus="{ row }">
           <el-tag v-if="row.status == 0" type="info">未上架</el-tag>
           <el-tag v-if="row.status == 1" type="success">已上架</el-tag>
           <el-tag v-if="row.status == -1" type="danger">已删除</el-tag>
         </template>
 
-        <template #slotPrice="{ index, row }">
+        <template #slotPrice="{ row }">
           <div class="price-panel">
             <Price :price="row.minPrice" :size="16"></Price>
             <div class="line">~</div>
@@ -62,18 +62,18 @@
           </div>
         </template>
 
-        <template #slotStock="{ index, row }">
+        <template #slotStock="{ row }">
           <div v-if="row.status != -1">
             {{ row.totalStock }} <span class="iconfont icon-edit" @click="updateStock(row)"></span>
           </div>
         </template>
 
-        <template #commend="{ index, row }">
+        <template #commend="{ row }">
           <el-tag v-if="row.commendType == 0" type="info">未推荐</el-tag>
           <el-tag v-if="row.commendType == 1" type="success">已推荐</el-tag>
         </template>
 
-        <template #slotOp="{ index, row }">
+        <template #slotOp="{ row }">
           <div class="list-op-panel" v-if="row.status != -1">
             <OpBtn icon="icon-view" tips="预览" @click="viewProduct(row)"></OpBtn>
             <OpBtn

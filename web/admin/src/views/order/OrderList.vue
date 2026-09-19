@@ -11,7 +11,7 @@
         <el-col :span="5">
           <el-form-item label="状态" prop="">
             <el-select clearable placeholder="请选择状态" v-model="searchForm.orderStatus">
-              <el-option :value="item.status" :label="item.desc" v-for="item in orderStatusList"></el-option>
+              <el-option :key="item.status" :value="item.status" :label="item.desc" v-for="item in orderStatusList"></el-option>
             </el-select>
           </el-form-item>
         </el-col>
@@ -24,7 +24,7 @@
   <el-card class="table-data-card">
     <div class="table-panel">
       <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData">
-        <template #slotOrder="{ index, row }">
+        <template #slotOrder="{ row }">
           <OrderItem :data="row" @delivery="deliveryHandler" @comment="commentHandler"></OrderItem>
         </template>
       </Table>

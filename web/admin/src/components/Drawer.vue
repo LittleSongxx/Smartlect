@@ -9,7 +9,7 @@
     </template>
     <template #footer v-if="(buttons && buttons.length > 0) || showCancel">
       <el-button link @click="close" v-if="showCancel"> 取消 </el-button>
-      <el-button v-for="btn in buttons" :type="btn.type || 'primary'" @click="btn.click">
+      <el-button v-for="btn in buttons" :key="btn.text" :type="btn.type || 'primary'" @click="btn.click">
         {{ btn.text }}
       </el-button>
     </template>

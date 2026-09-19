@@ -2,7 +2,7 @@
   <PageHeader title="商品属性" description="商品规格属性定义，发布商品时按所选类目套用。" />
   <el-tree class="category-tree" :expand-on-click-node="false" default-expand-all :data="categoryList"
     node-key="categoryId">
-    <template #default="{ node, data }">
+    <template #default="{ data }">
       <div class="tree-node">
         <div class="node-label">{{ data.categoryName }}</div>
         <div class="sku-name">

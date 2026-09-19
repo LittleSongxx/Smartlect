@@ -3,7 +3,7 @@
   <el-button @click="showEdit({ pCategoryId: '0' })" type="primary">新增分类</el-button>
   <el-tree class="category-tree" :expand-on-click-node="false" :data="categoryList" draggable default-expand-all
     node-key="categoryId" :allow-drop="allowDrop" @node-drop="handleDrop">
-    <template #default="{ node, data }">
+    <template #default="{ data }">
       <div class="tree-node">
         <div class="node-label">{{ data.categoryName }}</div>
         <div class="node-actions">
@@ -105,7 +105,7 @@ const allowDrop = (draggingNode, dropNode, type) => {
   return false
 }
 const handleDrop = async (draggingNode, dropNode, dropType, event) => {
-  let targetCategoryList = []
+  let targetCategoryList
   if (dropNode.data.pCategoryId == '0') {
     targetCategoryList = categoryList.value
   } else {
