@@ -35,3 +35,4 @@ web/admin/BROWSER_CHECK.md
 
 # ZCode 会话产物（计划/临时）
 .zcode/
+.zcodeignore
