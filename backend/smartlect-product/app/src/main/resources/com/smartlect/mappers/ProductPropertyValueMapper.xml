@@ -473,11 +473,6 @@
 	<select id="selectByProductIdAndPropertyValueId" resultMap="base_result_map" >
 		select <include refid="base_column_list" /> from product_property_value p where product_id=#{productId} and property_value_id=#{propertyValueId}
 	</select>
-<!--	根据ProductId查询列表-->
-	<select id="selectListByProductId" resultMap="base_result_map" >
-		select <include refid="base_column_list" /> from product_property_value p where product_id=#{productId}
-	</select>
-
 <!--	传入productId和List<ProductPropertyValue>：updateList，批量更新数据:updateBatch-->
 	<update id="updateBatch">
 			<foreach collection="updateList" item="item" separator=";">

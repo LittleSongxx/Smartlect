@@ -13,10 +13,6 @@ public interface ProductPropertyValueMapper<T,P> extends BaseMapper<T,P> {
 
 	 T selectByProductIdAndPropertyValueId(@Param("productId") String productId,@Param("propertyValueId") String propertyValueId);
 
-    ProductPropertyValue selectListByProductId(String productId);
-
-	ProductPropertyValue selectByProductId(String productId);
-
 	void updateBatch(@Param("productId") String productId,@Param("updateList")  List<ProductPropertyValue> updateList);
 
 	void deleteBatch(@Param("productId") String productId,@Param("deleteList")  List<ProductPropertyValue> deleteList);

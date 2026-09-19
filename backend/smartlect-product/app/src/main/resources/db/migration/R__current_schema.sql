@@ -174,7 +174,7 @@ SET @sql = IF(
           AND column_name = 'property_gallery'
     ),
     'SELECT 1',
-    'ALTER TABLE product_property_value ADD COLUMN property_gallery varchar(500) NULL COMMENT ''per-value image gallery, comma separated, empty falls back to product cover'''
+    'ALTER TABLE product_property_value ADD COLUMN property_gallery varchar(500) NULL COMMENT ''属性值图集（逗号分隔，空则回退商品级 cover）'' AFTER property_cover'
 );
 PREPARE stmt FROM @sql;
 EXECUTE stmt;

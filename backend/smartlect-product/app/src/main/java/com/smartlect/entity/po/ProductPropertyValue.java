@@ -2,6 +2,7 @@ package com.smartlect.entity.po;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 
 import java.io.Serializable;
 
@@ -26,6 +27,7 @@ public class ProductPropertyValue implements Serializable {
 
 	private String propertyCover;
 
+	@Size(max = 500)
 	private String propertyGallery;
 
 	@NotEmpty
