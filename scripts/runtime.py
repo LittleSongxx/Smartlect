@@ -1,5 +1,7 @@
 """Local Smartlect middleware operations; credentials never leave run/."""
 import base64
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -20,6 +22,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 ENV_FILE = ROOT / "run/runtime.env"
 PROCESS_FILE = ROOT / "run/processes.json"
+PROCESS_LOCK = ROOT / "run/processes.lock"
 DATABASES = ("admin", "user", "product", "stock", "cart", "order", "pay", "coupon")
 APPS = ("assistant-worker", "assistant", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
 PORTS = {"MYSQL": 13306, "POSTGRES": 15432, "REDIS": 16379, "RABBIT": 15672,
@@ -298,8 +301,26 @@ def owned_process(record):
     if identity is None:
         return False
     if any(identity[key] != record[key] for key in identity) or identity["cwd"] != str(ROOT):
-        raise RuntimeError(f"PID {record['pid']} identity changed; refusing to signal it")
+        # 身份不匹配 = 该 PID 已被系统复用为他人进程：视为非本方进程。
+        # 绝不信号（安全性不变），但也不 raise——陈旧台账记录曾两次把整批 up/down
+        # 卡死成停机（2026-09-16/19）；返回 False 让调用方跳过并随批次覆盖自愈。
+        return False
     return True
+
+
+@contextlib.contextmanager
+def ledger_lock():
+    """up/down 整批互斥：台账是无锁的读-改-写，并发批次会互相覆盖登记
+    （2026-09-19 线上部署事故根因）。读者不加锁——save 的 tmp+replace 保证原子可见。"""
+    if PROCESS_LOCK.is_symlink():
+        raise RuntimeError(f"Process ledger lock is a symlink; refusing: {PROCESS_LOCK}")
+    PROCESS_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(PROCESS_LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
 
 
 def load_processes():
@@ -307,7 +328,8 @@ def load_processes():
 
 
 def save_processes(records):
-    temporary = PROCESS_FILE.with_suffix(".tmp")
+    # tmp 名带 pid：即使锁被绕过也不会两个写者互踩同一临时文件
+    temporary = PROCESS_FILE.with_suffix(f".{os.getpid()}.tmp")
     temporary.write_text(json.dumps(records, indent=2) + "\n")
     os.chmod(temporary, 0o600)
     temporary.replace(PROCESS_FILE)
@@ -348,13 +370,14 @@ def stop_process(record):
 
 
 def apps_down():
-    records = load_processes()
-    for service in reversed(APPS):
-        if service in records:
-            stop_process(records[service])
-            del records[service]
-            save_processes(records)
-            print(f"Stopped Smartlect {service}.", flush=True)
+    with ledger_lock():
+        records = load_processes()
+        for service in reversed(APPS):
+            if service in records:
+                stop_process(records[service])
+                del records[service]
+                save_processes(records)
+                print(f"Stopped Smartlect {service}.", flush=True)
 
 
 def app_health(service, record):
@@ -654,20 +677,21 @@ def apps_up(env):
     compose("exec", "-T", "mysql", "sh", "-ec",
             'MYSQL_PWD="$SMARTLECT_FLYWAY_PASSWORD" mysql -usmartlect_flyway -e "$1"',
             "seata-schema", (ROOT / "deploy/sql/16-seata-undo.sql").read_text())
-    records = load_processes()
-    # assistant-worker passively declares queues Java owns, and the assistant app's
-    # health requires a connected worker — so both start after the Java services
-    # have redeclared their queues (a volume reset otherwise leaves the worker
-    # in a 404 retry loop that fails the whole `up` batch).
-    for services in (APPS[2:9], ('assistant-worker', 'assistant'), ('admin', 'gateway'), ('web-user', 'web-admin')):
-        for service in services:
-            start_app(service, env, records)
-            # Warm one JVM at a time on the shared WSL host.
-            wait_apps((service,), records)
-            if service == "stock":
-                install_catalog(env)
-    apps_check(env)
-    print("Smartlect application startup smoke passed: nine Java services, AI API, Growth worker and both UI health.")
+    with ledger_lock():
+        records = load_processes()
+        # assistant-worker passively declares queues Java owns, and the assistant app's
+        # health requires a connected worker — so both start after the Java services
+        # have redeclared their queues (a volume reset otherwise leaves the worker
+        # in a 404 retry loop that fails the whole `up` batch).
+        for services in (APPS[2:9], ('assistant-worker', 'assistant'), ('admin', 'gateway'), ('web-user', 'web-admin')):
+            for service in services:
+                start_app(service, env, records)
+                # Warm one JVM at a time on the shared WSL host.
+                wait_apps((service,), records)
+                if service == "stock":
+                    install_catalog(env)
+        apps_check(env)
+        print("Smartlect application startup smoke passed: nine Java services, AI API, Growth worker and both UI health.")
 
 
 def apps_check(env):
@@ -817,18 +841,30 @@ def self_test():
             identity = process_identity(child.pid)
         assert empty_reads and identity["cmdline"] == child_command
         assert owned_process(identity)
-        try:
-            signal_process({**identity, "start_ticks": "wrong"}, signal.SIGTERM)
-            raise AssertionError("Tampered PID identity was accepted")
-        except RuntimeError:
-            assert child.poll() is None
+        # 篡改身份（PID 复用他人进程的模拟）：不得信号（子进程必须存活），也不得抛错卡死批次
+        signal_process({**identity, "start_ticks": "wrong"}, signal.SIGTERM)
+        assert child.poll() is None, "Tampered PID identity was signaled"
+        assert not owned_process({**identity, "start_ticks": "wrong"})
         stop_process(identity)
         assert child.wait(timeout=2) == -signal.SIGTERM
     finally:
         if child.poll() is None:
             child.terminate()
             child.wait(timeout=2)
-    print("Runtime checks passed: immutable JARs, full Python package hashes, ports, env, grants, credentials, process signaling.")
+    # 台账锁互斥：持锁期间他人 LOCK_NB 抢锁必败，释放后可得；锁文件权限 0600
+    lock_probe = ("import fcntl, sys\n"
+                  "fd = open(sys.argv[1], 'a+')\n"
+                  "try:\n"
+                  "    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+                  "except BlockingIOError:\n"
+                  "    sys.exit(3)\n")
+    with ledger_lock():
+        assert subprocess.run([sys.executable, "-c", lock_probe, str(PROCESS_LOCK)]).returncode == 3, \
+            "ledger lock is not exclusive"
+    assert subprocess.run([sys.executable, "-c", lock_probe, str(PROCESS_LOCK)]).returncode == 0, \
+        "ledger lock was not released"
+    assert PROCESS_LOCK.stat().st_mode & 0o777 == 0o600
+    print("Runtime checks passed: immutable JARs, full Python package hashes, ports, env, grants, credentials, process signaling, ledger lock.")
     calls = []
     with patch.dict(globals(), infra_check=lambda env: None, compose=lambda *a, **kw: None,
                     load_processes=lambda: {}, apps_check=lambda env: None,

@@ -9,7 +9,6 @@ SQL = ROOT / "backend/data/02_catalog_seed.sql"
 GALLERY_FIX = ROOT / "backend/data/03_catalog_value_gallery.sql"
 ASSET_SOURCE = ROOT / "run/catalog-source/file"
 UPLOADS = ROOT / "run/uploads/file"
-VERSION_MARKER = ROOT / "run/uploads/.catalog-version"
 # -valuegallery1: per-value color gallery backfill layered via 03_catalog_value_gallery.sql
 CATALOG_VERSION = "catalog-mirror-a7d6063f05a397a6-valuegallery1"
 PRODUCT_COUNT = 47
@@ -54,7 +53,6 @@ def copy_assets():
         if not destination.exists() or destination.stat().st_size != source.stat().st_size:
             shutil.copy2(source, destination)
             copied += 1
-    VERSION_MARKER.write_text(CATALOG_VERSION + "\n")
     print(f"Catalog images ready under run/uploads/file/ ({copied} file(s) copied).")
 
 
@@ -77,18 +75,21 @@ def installed_version():
 def apply_sql():
     if not SQL.is_file():
         raise RuntimeError("backend/data/02_catalog_seed.sql is missing")
+    if not GALLERY_FIX.is_file():
+        # 版本戳含 -valuegallery1：缺修复层还盖戳会让幂等检查永久跳过重放
+        raise RuntimeError("backend/data/03_catalog_value_gallery.sql is missing")
     current = installed_version()
     if current == (CATALOG_VERSION, PRODUCT_COUNT):
         print(f"Catalog {CATALOG_VERSION} already installed ({PRODUCT_COUNT} products).")
         return
     # The seed mirrors the authorized catalog and re-inserts property rows, so the
     # gallery backfill must ride along after it inside the same install pass.
-    statements = SQL.read_text()
-    if GALLERY_FIX.is_file():
-        statements += "\n" + GALLERY_FIX.read_text()
+    statements = SQL.read_text() + "\n" + GALLERY_FIX.read_text()
+    # meta 与 install 清单的版本串统一到当前生效版本（02 镜像里写的是基串）
     statements += (
         f"\nUPDATE catalog_install_meta SET catalog_version = '{CATALOG_VERSION}' "
         "WHERE catalog_key = 'default';"
+        f"\nUPDATE catalog_install_product SET catalog_version = '{CATALOG_VERSION}';"
     )
     compose("exec", "-T", "mysql", "sh", "-ec",
             'MYSQL_PWD="$SMARTLECT_FLYWAY_PASSWORD" mysql -usmartlect_flyway smartlect_product',
