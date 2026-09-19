@@ -9,13 +9,13 @@ owned memory and human handoff. Recommendations and immutable attribution are im
 execution remain F4–F5 work. No model tool can approve a transaction.
 
 ```bash
-python3.11 -m venv growth/.venv
-growth/.venv/bin/python -m pip install -r growth/requirements.lock
-growth/.venv/bin/python -m pip install --no-deps --no-build-isolation ./growth
-growth/.venv/bin/python -m pip check
-growth/.venv/bin/python -m unittest discover -s growth/tests -v
-growth/.venv/bin/python -m smartlect.app --check
-growth/.venv/bin/python -m smartlect.app
+python3.11 -m venv assistant/.venv
+assistant/.venv/bin/python -m pip install -r assistant/requirements.lock
+assistant/.venv/bin/python -m pip install --no-deps --no-build-isolation ./growth
+assistant/.venv/bin/python -m pip check
+assistant/.venv/bin/python -m unittest discover -s growth/tests -v
+assistant/.venv/bin/python -m smartlect.app --check
+assistant/.venv/bin/python -m smartlect.app
 ```
 
 Any Python >=3.11 may replace `python3.11`; the current WSL verification uses

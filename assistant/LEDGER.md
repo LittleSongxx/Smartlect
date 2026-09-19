@@ -68,7 +68,7 @@ and [PyMySQL transaction example](https://pymysql.readthedocs.io/en/latest/user/
 The following P2 records are historical; current F1 results are in
 `../artifacts/f1-validation.json` and `../artifacts/f1-amqp-replay.json`.
 
-Verified in the then-new `growth/.venv-p2` Python 3.13 environment: package installation
+Verified in the then-new `assistant/.venv-p2` Python 3.13 environment: package installation
 and `pip check` passed. The final real-database run passed all 20 checks (15
 foundation/contract/HTTP checks and 5 MySQL tests), without skips. An initial run
 caught an empty-tuple versus empty-list summary result; the API now returns a
@@ -76,7 +76,7 @@ consistent list and the rollback/replay check passed on rerun. The final log is
 `/tmp/smartlect-growth-p2-tests.log`. Run the real database suite serially with:
 
 ```bash
-SMARTLECT_RUN_MYSQL_TESTS=1 growth/.venv-p2/bin/python -m unittest discover -s growth/tests -v
+SMARTLECT_RUN_MYSQL_TESTS=1 assistant/.venv-p2/bin/python -m unittest discover -s growth/tests -v
 ```
 
 That suite creates its own 512 MB `smartlect-growth-it-*` MySQL container, applies

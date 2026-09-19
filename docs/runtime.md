@@ -8,7 +8,7 @@
 
 `./scripts/dev.sh infra-check` 实查 Nacos 中 Seata 健康注册地址与端口，以及 MySQL 中增长、迁移、商业应用身份的 schema 授权范围。此检查要求本项目中间件已启动。
 
-`./scripts/dev.sh up` 在独立中间件健康检查通过后启动 **13 个应用进程：九个 Java JAR、FastAPI AI API（growth）、Growth worker（growth-worker）及两个 Vue 前端（web-user/web-admin）**。先单独等待 worker 健康，再启动并等待 API 和七个商业服务，随后启动依赖跨库视图的 Admin 与 Gateway，最后两个前端；健康检查上限 240 秒，进程退出立即报错。这个顺序保证支持v1/v2的消费者先于新Java生产者就绪。HTTP 应用仅绑定 loopback，worker 没有监听端口。重复 up 复用相同内容/配置/命令的进程，内容或配置变化时重启相应进程。
+`./scripts/dev.sh up` 在独立中间件健康检查通过后启动 **13 个应用进程：九个 Java JAR、FastAPI AI API（assistant）、assistant worker及两个 Vue 前端（web-user/web-admin）**。先单独等待 worker 健康，再启动并等待 API 和七个商业服务，随后启动依赖跨库视图的 Admin 与 Gateway，最后两个前端；健康检查上限 240 秒，进程退出立即报错。这个顺序保证支持v1/v2的消费者先于新Java生产者就绪。HTTP 应用仅绑定 loopback，worker 没有监听端口。重复 up 复用相同内容/配置/命令的进程，内容或配置变化时重启相应进程。
 
 API 负责会话、严格工具参数、结构化提案、确认执行、状态查询和 SSE 回放；worker 独立运行 RabbitMQ 财务消费者，提交后 ACK，消费线程不等待模型。`/messages`立即返回持久运行并在后台执行有界Shopping图。SSE回放并等待增量事件；只显示经验证的回答与简短工具进度。Merchant同样由API持有有界任务，按新观测规划并由确定性执行器在稳定grant内执行，参见[经营合同](merchant-contract.md)。实际 API 合同见 [contracts.md](contracts.md)。
 
@@ -25,7 +25,7 @@ F3 API 新增自然entry、可信访客登录绑定、持久推荐列表和可�
 
 Java 实际运行 `run/apps/{service}/{sha256}.jar` 的只读副本。复制检查来源修改时间/大小/文件身份和 ZIP CRC，拒绝正在变化或尚未完成打包的 JAR；同一 hash 的副本不会覆盖。进程记录保留来源路径、SHA-256 和修改时间，后续 Maven 重建 `target/` 不会破坏现有 JVM 的延迟类加载或退出流程。旧 hash 副本保留，当前没有自动清理。
 
-两个 Python 进程分别使用 `growth/.venv/bin/python -I -m smartlect.app` 和 `... -I -m smartlect.worker`，来自同一个已安装 `smartlect` 包。更新判定按包内全部文件的相对路径与 SHA-256 计算内容指纹，包含 `.py`、打包的 SQL 迁移及其他资源，只排除 `__pycache__`/`.pyc`；SQL 改动也会触发更新。非 editable 安装需先重装包。`-I` 隔离当前目录、PYTHONPATH 和用户 site-packages 的导入影响，业务配置仍由进程环境显式传入。
+两个 Python 进程分别使用 `assistant/.venv/bin/python -I -m smartlect.app` 和 `... -I -m smartlect.worker`，来自同一个已安装 `smartlect` 包。更新判定按包内全部文件的相对路径与 SHA-256 计算内容指纹，包含 `.py`、打包的 SQL 迁移及其他资源，只排除 `__pycache__`/`.pyc`；SQL 改动也会触发更新。非 editable 安装需先重装包。`-I` 隔离当前目录、PYTHONPATH 和用户 site-packages 的导入影响，业务配置仍由进程环境显式传入。
 
 worker 每 0.5 秒原子更新 `run/worker-status.json`（权限 600），记录 PID、连接状态和时间。运行管理器核对 worker 进程归属、文件 PID 及 5 秒内心跳；API `/health` 同样检查消费者连接和心跳新鲜度，缺失/过期返回 degraded/503。单独重启 API 不会停止财务 worker。
 
@@ -37,11 +37,11 @@ Gateway 的 `/api/assistant/**` 和 `/admin-api/assistant/**` 保留原路径转
 
 `./scripts/dev.sh demo --seed 42` 保留已有真实 Java 交易场景（固定为 purchase_stockout，无 `--scenario` 参数）。Java 仅在本地 demo 开关及 mock 支付模式下初始化 100 用户/20 商品/40 SKU，使用生成密码签发正常 Redis 会话；重复初始化不改已有库存。场景覆盖下单/重放/支付/退款/售罄/取消及对账，事件消费启用时等待账本收齐。该入口本轮11项交易回归已通过，仍不是推荐投放效果实验。
 
-新增 F1 专项入口：应用 up 后执行 `growth/.venv/bin/python scripts/check_f1.py`。它只使用 Smartlect 合成用户/SKU、Java 报价及模拟支付，验证伪造头、归属/CSRF、变更金额拒绝、提案持久化、重复确认、SSE 回放和账本；中途核验进程身份后实际重启 **API 一个进程**，保持 worker 运行。已通过的结果见 [f1-live-confirmation.json](../artifacts/f1-live-confirmation.json)：实付/退款/净额 1000/1000/0 分，库存 5→5，`live_model_called=false`。这不是完整自然语言演示，也未使用真实资金。
+新增 F1 专项入口：应用 up 后执行 `assistant/.venv/bin/python scripts/check_f1.py`（该 F1 专项脚本已随后续重构下线，本节保留历史叙述）。它只使用 Smartlect 合成用户/SKU、Java 报价及模拟支付，验证伪造头、归属/CSRF、变更金额拒绝、提案持久化、重复确认、SSE 回放和账本；中途核验进程身份后实际重启 **API 一个进程**，保持 worker 运行。已通过的结果见 [f1-live-confirmation.json](../artifacts/f1-live-confirmation.json)：实付/退款/净额 1000/1000/0 分，库存 5→5，`live_model_called=false`。这不是完整自然语言演示，也未使用真实资金。
 
-新 bootstrap 默认 `SMARTLECT_GROWTH_EVENTS_ENABLED=true`；增长身份只访问独立增长库，worker 先提交事实/账本再 ACK。`growth/.venv/bin/python scripts/check_event_replay.py` 使用已有 Java 事实检查未 ACK 重投、实际 **growth-worker** 重启及 Broker ACK，要求前置队列已消费完毕，不造新金额。本轮 AMQP 重投26事实/原账本不变已通过，结果见 `artifacts/f1-amqp-replay.json`；新 `--output` 参数可指定产物，默认 `artifacts/amqp-replay.json` 不再覆盖历史P2证据；[growth/LEDGER.md](../growth/LEDGER.md) 保留原 v1 协议和历史证据，其中旧“app 内消费者”的进程说明由本节的 API/worker 分离结构取代。
+新 bootstrap 默认 `SMARTLECT_GROWTH_EVENTS_ENABLED=true`；增长身份只访问独立增长库，worker 先提交事实/账本再 ACK。`assistant/.venv/bin/python scripts/check_event_replay.py`（脚本已下线，保留历史叙述） 使用已有 Java 事实检查未 ACK 重投、实际 **growth-worker** 重启及 Broker ACK，要求前置队列已消费完毕，不造新金额。本轮 AMQP 重投26事实/原账本不变已通过，结果见 `artifacts/f1-amqp-replay.json`；新 `--output` 参数可指定产物，默认 `artifacts/amqp-replay.json` 不再覆盖历史P2证据；[assistant/LEDGER.md](../assistant/LEDGER.md) 保留原 v1 协议和历史证据，其中旧“app 内消费者”的进程说明由本节的 API/worker 分离结构取代。
 
-进程管理固定使用系统 `/usr/bin/python3`（可由支持pidfd的SMARTLECT_RUNTIME_PYTHON覆盖），增长使用独立venv。已发现本机Miniconda Python不提供pidfd接口，因此不能用它替代管理进程的系统解释器。
+进程管理固定使用系统 `/usr/bin/python3`（可由支持pidfd的SMARTLECT_RUNTIME_PYTHON覆盖），assistant 使用独立 venv。已发现本机Miniconda Python不提供pidfd接口，因此不能用它替代管理进程的系统解释器。
 
 应用归属记录在 `run/processes.json`，日志位于 `run/logs/smartlect-*.log`。停止前逐项核对 `/proc` 的 PID、启动时间、可执行文件、完整命令行和本项目工作目录；通过 Linux pidfd 发送信号，避免 PID 复用时误杀。身份变化直接报错。正常退出等待最多 40 秒，必要时仅强制结束已经核验的本项目进程。Java 默认堆上限 256 MiB，可用 `SMARTLECT_JAVA_XMX` 调整；不共享来源工程的 JVM 配置、类路径或 Python 导入路径。
 
@@ -56,8 +56,8 @@ Gateway 的 `/api/assistant/**` 和 `/admin-api/assistant/**` 保留原路径转
 | RabbitMQ | AMQP 15672；管理 15674 | 用户/vhost 均 `smartlect`，随机密码 |
 | Nacos | HTTP 18848；gRPC HTTP+1000 | 独立数据库/实例；内置 `nacos` 管理员使用新密码，group `SMARTLECT_GROUP` |
 | Seata | 18092 | `smartlect_seata` 数据库/用户；注册 `smartlect-seata`，group `SMARTLECT_SEATA_GROUP` |
-| Gateway / Growth API | 18080 / 18000 | 实际值以 `run/runtime.env` 为准；AI 路由指向同一 Growth API |
-| Growth worker | 无 | 独立进程，使用状态文件和进程身份检查，无第二套 HTTP 服务 |
+| Gateway / assistant API | 18080 / 18000 | 实际值以 `run/runtime.env` 为准；AI 路由指向同一 Growth API |
+| assistant worker | 无 | 独立进程，使用状态文件和进程身份检查，无第二套 HTTP 服务 |
 
 用户端由 `SMARTLECT_WEB_USER_PORT` 指定（默认18180）；构建产物、配置和lock hash决定重启。管理端由 `SMARTLECT_WEB_ADMIN_PORT` 指定（默认18181），入口 `/admin/`。两端都只获得端口/Gateway URL和少量系统环境字段，不获得业务或模型密钥；加入管理端端口的既有run配置用 `./scripts/dev.sh bootstrap`，保留原凭证/端口并增补同源列表。旧DASHBOARD字段不是运行工作台。
 
@@ -67,8 +67,8 @@ MySQL 首次初始化创建八个商业库以及独立的 `smartlect_growth`、`
 
 Growth SQL 将版本化的 ledger、agent_state、knowledge_memory、knowledge_index_attempt 迁移打包，API/worker 启动都调用同一迁移器。MySQL `GET_LOCK('smartlect_growth_schema',10)` 串行迁移，`schema_migration` 记录名称与 SHA-256；已应用版本缺失、哈希改变或补插较旧版本时失败。0001 保留既有账本，0002 新增会话/消息/运行/提案/工具/事件表，不覆盖 Java 交易成果。MySQL DDL 隐式提交，当前建表迁移可重放；未来 ALTER 需独立定义恢复，不能把普通事务 rollback 当成 DDL 回滚。
 
-F3另打包 [0005_attribution.sql](../growth/src/smartlect/migrations/0005_attribution.sql)（scope/资源、访客绑定、触点、不可变context、事件元数据与归因投影）和
-[0006_recommendation.sql](../growth/src/smartlect/migrations/0006_recommendation.sql)（策略/实验/分桶）。Java Order的
+F3另打包 [0005_attribution.sql](../assistant/src/smartlect/migrations/0005_attribution.sql)（scope/资源、访客绑定、触点、不可变context、事件元数据与归因投影）和
+[0006_recommendation.sql](../assistant/src/smartlect/migrations/0006_recommendation.sql)（策略/实验/分桶）。Java Order的
 [V2迁移](../backend/smartlect-order/app/src/main/resources/db/migration/V2__order_attribution_context.sql)增加订单来源侧表。
 这些新增表不覆盖既有交易或v1账本；已应用迁移禁止改哈希。v1 `raw_json/fingerprint`保留原文，来源缺失按`LEGACY_UNKNOWN`单列。
 
@@ -85,15 +85,15 @@ Growth冻结来源最多等待0.5秒，Java验签没有Growth网络依赖；来�
 
 Seata 的 AT DataSource 代理在 Flyway 之前检查 `undo_log`；因此初始化/应用 up 使用迁移身份幂等创建八个商业库的 Seata 元数据表。首次启动发现的缺表错误由这个部署前置条件修复，保持 Seata 事务功能启用。
 
-构建入口 `./scripts/dev.sh build` 先执行独立性扫描，再构建整个 Java reactor，按 `growth/requirements.lock` 安装依赖，以 `--no-deps --no-build-isolation -e growth` 安装包并执行 pip check。Python 需要 3.11+；已有 `growth/.venv` 优先复用，否则依次探测 `SMARTLECT_PYTHON`、已安装版本、用户 Miniconda 和系统 Python。`./scripts/dev.sh check` 执行独立性扫描、运行脚本自测、Java 测试、Growth unittest 与用户端 Node contract tests；需要真实 MySQL 的用例仍须显式开启，不能把默认跳过当作已通过。
+构建入口 `./scripts/dev.sh build` 先执行独立性扫描，再构建整个 Java reactor，按 `assistant/requirements.lock` 安装依赖，以 `--no-deps --no-build-isolation ./assistant` 非编辑安装本包并执行 pip check（锁缺失 langfuse 闭包或版本冲突会在这里红出来，CI assistant job 自 2026-09-19 起同样执行 pip check）。Python 需要 3.11+；已有 `assistant/.venv` 优先复用，否则依次探测 `SMARTLECT_PYTHON`、已安装版本、用户 Miniconda 和系统 Python。`./scripts/dev.sh check` 执行独立性扫描、运行脚本自测、Java 测试、Growth unittest 与用户端 Node contract tests；需要真实 MySQL 的用例仍须显式开启，不能把默认跳过当作已通过。
 
 命名检查 `python3 scripts/check_independence.py` 扫描业务、部署和脚本，排除冻结交接包、许可证/来源记录、迁移取材工具和构建产物；发现旧品牌、旧归因字段、旧路径依赖或越界软链接即失败。`python3 scripts/check_independence.py --self-test` 和 `python3 scripts/runtime.py self-test` 可独立验证扫描器、端口冲突选择、配置读取、SQL 权限隔离与非法凭证拒绝。
 
 本轮 F1 已完成检查点为 25 reactor/349 项 Java 单元、6 项状态 MySQL、1 项 HTTP＋mock Java 及上述真实 Java 确认链。此外原 demo 11项、Java金额/报价MySQL 4项、AMQP重投本轮通过；最终运行环境27项轻量通过，另12项MySQL曾实跑通过，详见 [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md)；不引用历史支付/共购测试充当本轮成绩。未实现 `eval`、完整三场景或 `reset-demo`，未对外发布、推送仓库、真实投放或真实付款。
 
-F2 知识初始化：`growth/.venv/bin/python scripts/seed_knowledge.py --live-embeddings` 发布32份仓库合成资料并记录真实索引元数据；不带参数只建词法索引。已有发布版本跳过，不重新消耗模型。`scripts/check_model.py` 为真实协议smoke，`scripts/check_f2.py` 为真实模型＋Java模拟资金纵切；二者不是完整质量评测，44例冻结RAG集留待F6。worker另在线程中每日清理30天前的聊天/trace，不删除交易提案与账本事实。
+F2 知识初始化：`assistant/.venv/bin/python scripts/seed_knowledge.py --live-embeddings` 发布32份仓库合成资料并记录真实索引元数据；不带参数只建词法索引。已有发布版本跳过，不重新消耗模型。历史专项 `scripts/check_model.py`/`scripts/check_f2.py`（真实协议 smoke、真实模型纵切）已下线；当前质量口径见 docs/quality-eval-v2.md 与 evals/，44例冻结RAG集留待F6。worker另在线程中每日清理30天前的聊天/trace，不删除交易提案与账本事实。
 
-F3命令已实跑：`scripts/check_f3.py`（真实Java交易＋合成广告触点）、`scripts/check_f3_model.py`（真实语义重排）、`scripts/check_event_replay.py --schema-version 2 --output artifacts/f3-amqp-replay.json`。重投脚本按原schema版本选择最多100条原事实，不把v2改成v1；不动其他项目。自动续行期间本项目中间件退出255、应用停止，经状态核验后只恢复本项目，原34条账本原文和指纹保留。完整结果见 [f3-validation.json](../artifacts/f3-validation.json)。
+F3 命令当时已实跑（check_f3.py / check_f3_model.py / check_event_replay.py，均已随后续重构下线，保留历史叙述）。重投脚本按原schema版本选择最多100条原事实，不把v2改成v1；不动其他项目。自动续行期间本项目中间件退出255、应用停止，经状态核验后只恢复本项目，原34条账本原文和指纹保留。完整结果见 [f3-validation.json](../artifacts/f3-validation.json)。
 
 
 ## 共享 WSL 下的资源控制
@@ -113,9 +113,10 @@ F3命令已实跑：`scripts/check_f3.py`（真实Java交易＋合成广告触�
    + 关注册；判定以启动日志为准（看到 `Started ... in ... seconds` 通过，看到
    `APPLICATION FAILED TO START` 失败），结束后主动回收进程。
 
-前端产物改由 CI 构建并下发：`web` job 上传 dist artifact，`deploy` job 打 tar.gz 经网关
-`upload-dist` 动词送到 `/root/deploy/incoming-dist.tar.gz`，服务器解包到 `web/*/dist` 并跳过本机
-npm 构建；文件缺失或比 bundle 旧时自动回退本机构建（回滚路径同样适用）。
+前端产物由 CI 构建并下发：`web` job 上传 dist artifact，`deploy` job 打 tar.gz 经网关
+`upload-dist` 动词送到 `/root/deploy/incoming-dist.tar.gz`，服务器解包到 `web/*/dist`。
+注意 `ci-deploy.sh` 当前在检测到 `web/` 目录有 diff 时仍会本机 `npm run build` 覆盖下发产物
+（回滚路径同样适用）——下发与本机构建并存值得后续收敛为只信下发产物。
 
 ## 前端样式约定：单一 token 源
 

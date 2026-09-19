@@ -8,7 +8,7 @@
 
 ```
 push/PR ──┬─ backend：mvn test（testcontainers 自带 MySQL，无需服务容器）
-          ├─ growth：pip 按锁文件装依赖 + 装本包 + unittest（369 项）
+          ├─ assistant：pip 按锁文件装依赖 + 装本包 + pip check（锁闭包完整性，2026-09-19 起）+ unittest（含真实 MySQL 契约）
           └─ web(user/admin)：npm ci + vitest（并行矩阵）
 
 workflow_dispatch ── 全部测试通过后 ── deploy job：
@@ -71,6 +71,8 @@ $ runtime.py apps-check                  → passed（13/9/8）
 2. **GitHub runner→ECS 的 SSH 撑不过 4 分钟无输出**（app 重启期间）：`systemctl restart` 本身交给 systemd 不受断连影响，但 job 会误报红。客户端 keepalive（`ServerAliveInterval=30`）解决。
 3. **scp 与 forced command 不兼容**（现代 scp 走 SFTP 子系统，command= 会劫持）：所以 bundle 上传用 `ssh upload < bundle`（stdin 流）而不是 scp。
 4. workflow 的 `needs:` 在测试失败时会 **skip**（而非 fail）deploy job——门禁语义是"测试不绿不部署"，真正的部署级失败由 apps-check 兜底。
+5. **2026-09-19：部署健康门禁被进程台账竞态击穿（上线 SKU 颜色图集那次）**。`systemctl restart smartlect-apps` 后 `runtime.py up` 刚登记 user 进程即报 `PID identity changed`，13 服务停在 failed，站点下线约 9 分钟。根因是 `run/processes.json` 无锁读-改-写（此前 2026-09-16 变配后已出现过一次，见 ha-cluster.md）。恢复：备份并清空台账后 restart（13 进程全绿），与cicd无关但暴露了"部署脚本之外重启"的无门禁窗口。根治：`runtime.py` 的 `apps_up/apps_down` 全批次加 `flock`（`run/processes.lock`），self-test 补锁互斥用例——同批修复随本次审计清账上线。
+6. **assistant 依赖锁曾漏锁 langfuse 闭包且 packaging/wrapt 与其元数据冲突**：本地 `dev.sh build` 在 `pip check` 断链（前端永不构建），CI 不跑 pip check 所以从未红。2026-09-19 重做 `assistant/requirements.lock`（补齐闭包、packaging 降 25.0、wrapt 降 1.17.3），CI assistant job 增加 pip check 步骤防再犯。
 
 ## 遗留说明
 

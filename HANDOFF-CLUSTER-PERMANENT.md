@@ -76,7 +76,7 @@ done
 
 ## 红线（全部有效）
 
-1. **绝不 `git add -A`**：工作区有未提交的 eval-track 文件（`evals/support-eval/questions.jsonl`、`scripts/eval_support_eval.py`、`growth/src/smartlect/answer_guards.py`、`growth/tests/test_answer_guards.py`）。
+1. **绝不 `git add -A`**：工作区有未提交的 eval-track 文件（`evals/support-eval/questions.jsonl`、`scripts/eval_support_eval.py`、`assistant/src/smartlect/answer_guards.py`、`assistant/tests/test_answer_guards.py`）。
 2. 不碰 evals/holdout 与评测基线。
 3. `run/runtime.env`、`run/model.env` 永不入库；文档不得含密钥（163 SMTP 授权码与新机 root 密码曾出现在聊天中，勿写入文件）。
 4. 改 `scripts/runtime.py` 或 growth 代码：本地 `./scripts/dev.sh check` 全绿再同步（runtime.py 当前版本 5f8e989 已在服务器，无需再动）。

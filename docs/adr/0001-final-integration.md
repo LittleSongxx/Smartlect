@@ -114,3 +114,12 @@ Starlette 1.6.0 的 TestClient 对 httpx 提示未来弃用，检查直接使用
 初次 smoke 因测试假定 JSON 没有空格失败，改为解析 SSE data 的 JSON 后通过；没有更改框架或删除安全检查。
 完整安装及检查证据记录在 [`artifacts/f0-python-stack.json`](../../artifacts/f0-python-stack.json)。
 这些检查仅证明依赖可安装和基本接口兼容，不代表 F1 身份/交易或 F2 真实模型能力已验收。
+
+
+---
+
+## 后记（2026-09-19，不改写上文）
+
+1. 本 ADR 所述 `growth/` 目录已随服务更名为 `assistant/`（数据库 `smartlect_growth` 与环境变量前缀 `SMARTLECT_GROWTH_*` 为线上兼容保留，未改名）。
+2. 41 行"不新增 Postgres"是当时的决策；后续 langgraph-checkpoint-postgres 引入 psycopg（依赖锁已含），与本 ADR 表述不再一致。
+3. 运行锁 `assistant/requirements.lock` 于 2026-09-19 重做：旧锁漏锁 langfuse/psycopg/langgraph-checkpoint-postgres 闭包且 packaging/wrapt 与 langfuse 元数据冲突（pip check 红）。新锁自 pyproject 直接依赖全量重解（packaging 25.0、wrapt 1.17.3），本文件 102-108 行的验证命令（含 pip check）即为重做流程；CI assistant job 同步增加 pip check。

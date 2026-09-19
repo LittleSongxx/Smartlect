@@ -41,6 +41,10 @@ jobs:
         run: |
           pip install -r assistant/requirements.lock
           pip install --no-deps --no-build-isolation ./assistant
+      # 2026-09-19 教训：旧锁漏 langfuse 闭包且 packaging/wrapt 与其元数据冲突，
+      # 本地 pip check 断链而 CI 不查——锁漂移必须在这里红出来
+      - name: pip check（锁闭包完整性）
+        run: pip check
       - name: unittest
         working-directory: assistant
         run: python -m unittest discover -s tests
