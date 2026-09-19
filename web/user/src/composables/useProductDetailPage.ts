@@ -7,7 +7,7 @@ import { openImagePreview } from '@/composables/imagePreview';
 import { useProductSkuSheet } from '@/composables/useProductSkuSheet';
 import { useAuthStore } from '@/stores/auth';
 import { isProductOnSale, pickDefaultSku } from '@/utils/product';
-import { resolveValueGallery } from '@/utils/productGallery';
+import { pickSkuCover, resolveValueGallery } from '@/utils/productGallery';
 import { parseProductContent } from '@/utils/productContent';
 import { normalizeProductDesc } from '@/utils/productDesc';
 import { resolveImageUrl } from '@/utils/image';
@@ -50,21 +50,13 @@ export function useProductDetailPage() {
   const productId = computed(() => String(route.params.productId || ''));
   const productContent = computed(() => parseProductContent(productInfo.value));
 
-  const thumbList = computed(() => {
-    const cover = productInfo.value?.cover;
-    if (!cover) return [];
-    return String(cover)
-      .split(',')
-      .map((s: string) => s.trim())
-      .filter(Boolean);
-  });
-
-  // 图集跟随 SKU：属性值配了 propertyGallery 就整组切换，否则回退商品级 cover
+  // 图集跟随 SKU：属性值配了 propertyGallery 就整组切换，否则回退商品级 cover。
+  // watch 按内容比较——切无关属性（如容量）不重置浏览位置。
   const galleryImages = computed(() =>
     resolveValueGallery(productPropertyList.value, selectedProperty, productInfo.value?.cover)
   );
 
-  watch(galleryImages, () => {
+  watch(() => galleryImages.value.join(','), () => {
     activeImageIndex.value = 0;
   });
 
@@ -299,7 +291,8 @@ export function useProductDetailPage() {
       ElMessage.warning('请选择商品规格');
       return;
     }
-    const cover = thumbList.value[0] || productInfo.value?.cover?.split(',')[0];
+    // 结算封面与订单快照同口径：已选颜色的属性封面优先，商品首图兜底
+    const cover = pickSkuCover(productPropertyList.value, selectedProperty, productInfo.value?.cover);
     const attribution = loadRecommendationAttribution(
       authStore.userInfo?.userId as string | undefined,
       String(productInfo.value.productId)

@@ -2,6 +2,7 @@ import { computed, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { productApi } from '@/api/modules';
 import { isProductOnSale, pickDefaultSku } from '@/utils/product';
+import { pickSkuCover } from '@/utils/productGallery';
 import { MAX_CART_QTY } from '@/constants/validation';
 
 export function useProductSku(getProductId: () => string) {
@@ -22,18 +23,10 @@ export function useProductSku(getProductId: () => string) {
     return Math.max(1, Math.min(stock, MAX_CART_QTY));
   });
 
-  // 头图跟随已选规格：与订单快照同规则——第一个非空属性封面，否则商品 cover 首图
-  const coverImage = computed(() => {
-    for (const prop of productPropertyList.value) {
-      const valId = selectedProperty[prop.propertyId];
-      const val = prop.propertyValues?.find((v: any) => v.propertyValueId === valId);
-      const cover = String(val?.propertyCover || '').trim();
-      if (cover) return cover;
-    }
-    const cover = productInfo.value?.cover;
-    if (!cover) return '';
-    return String(cover).split(',')[0]?.trim() || '';
-  });
+  // 头图跟随已选规格：与订单快照同规则（pickSkuCover）——第一个非空属性封面，否则商品 cover 首图
+  const coverImage = computed(() =>
+    pickSkuCover(productPropertyList.value, selectedProperty, productInfo.value?.cover)
+  );
 
   const buildSkuKey = (map: Record<string, string>) =>
     productPropertyList.value.map((p) => map[p.propertyId]).filter(Boolean).join('-');

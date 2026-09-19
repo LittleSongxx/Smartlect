@@ -200,7 +200,7 @@ const router = createRouter({
   }
 });
 
-router.beforeEach(async (to, from) => {
+router.beforeEach(async (to, _from) => {
   const deviceStore = useDeviceStore();
   deviceStore.sync();
   const authStore = useAuthStore();

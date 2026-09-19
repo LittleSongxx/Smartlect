@@ -121,7 +121,7 @@ const onConfirm = () => {
       settled = true;
       visible.value = false;
       _resolve?.(blob);
-    } catch (e) {
+    } catch {
       settled = true;
       visible.value = false;
       _reject?.();

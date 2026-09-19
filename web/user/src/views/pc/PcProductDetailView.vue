@@ -229,11 +229,9 @@ import MarkdownContent from '@/components/common/MarkdownContent.vue';
 import CommentReportDialog from '@/components/business/CommentReportDialog.vue';
 import { useProductDetailPage } from '@/composables/useProductDetailPage';
 import { maskCommenterName } from '@/utils/comment';
-import { productApi } from '@/api/modules';
 import { useSimilarProducts } from '@/composables/useSimilarProducts';
 import { useCommentLevels } from '@/composables/useCommentLevels';
 import { resolveAvatarUrl } from '@/utils/image';
-import { filterStorefrontProducts } from '@/utils/product';
 
 const route = useRoute();
 const router = useRouter();

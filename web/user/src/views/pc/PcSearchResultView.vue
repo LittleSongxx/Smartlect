@@ -56,7 +56,7 @@ import { useSearchPage } from '@/composables/useSearchPage';
 
 // 与移动端搜索结果页共用同一份查询/分页/缓存逻辑；这里只剩 PC 模板需要的绑定
 const {
-  query, sortMode, activeKeywords, loadError,
+  query, sortMode, activeKeywords,
   total, list, loading, loadingMore, finished,
   sentinelRef, onSearch, onSortChange, goDetail
 } = useSearchPage({ scope: 'pc' });

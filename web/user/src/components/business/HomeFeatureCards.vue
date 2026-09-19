@@ -21,11 +21,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from '@/stores/auth';
 import { Star, Medal, Check, Discount } from '@element-plus/icons-vue';
 
 const router = useRouter();
-const authStore = useAuthStore();
 
 const featureItems = ref([
   { icon: Star, label: '猜你喜欢', path: '#recommend-section', badge: '', isAnchor: true },

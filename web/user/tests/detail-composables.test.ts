@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
+import { defineComponent } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { productApi, userMemberApi } from '../src/api/modules';
 import { useSimilarProducts } from '../src/composables/useSimilarProducts';

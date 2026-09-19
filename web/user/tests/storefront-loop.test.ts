@@ -15,7 +15,6 @@ import { loginTarget, safeNext } from '../src/utils/navigation';
 import { DEMO_SHOPPER, isPublishedDemoLogin, TRIAL_VISITOR } from '../src/constants/trial';
 import { canPurchase, coverUrl, stockCap, uniqueCategories } from '../src/utils/productDisplay';
 import { clearProductScopeCache, inProductScope } from '../src/utils/productScope';
-import { orderAllowsRefund, remainingRefundCents, yuanToCents } from '../src/utils/orderRefund';
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 const visitor = { actor: { actor_id: 'v1', subject_type: 'visitor' as const, session_id: 's1', execution_scope_id: 'store' }, csrf_token: 'csrf' };

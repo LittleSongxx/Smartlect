@@ -167,7 +167,7 @@ import BrandMark from '@/components/common/BrandMark.vue';
 import { BRAND_EN, BRAND_SEARCH_PLACEHOLDER, BRAND_ZH } from '@/constants/brand';
 import { toast } from '@/utils/toast';
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     storeSearch?: boolean;
   }>(),

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveValueGallery } from '../src/utils/productGallery';
+import { pickSkuCover, resolveValueGallery } from '../src/utils/productGallery';
 
 // 图集解析的契约：属性值配了 propertyGallery 就整组切换，否则回退商品级 cover。
-// 这是「选颜色换整组图」的唯一数据入口，锁住优先级和回退语义。
+// pickSkuCover 与订单快照同口径：第一个非空属性封面，否则商品 cover 首图。
+// 这是「选颜色换整组图」与结算封面的唯一数据入口，锁住优先级和回退语义。
 
 const props = (overrides: Record<string, any> = {}) => [
   {
@@ -53,5 +54,23 @@ describe('详情页图集解析', () => {
     expect(resolveValueGallery(props(), {}, 'p1.jpg')).toEqual(['p1.jpg']);
     expect(resolveValueGallery(null, null, 'p1.jpg')).toEqual(['p1.jpg']);
     expect(resolveValueGallery(props(), { 1001: 'v1' }, undefined)).toEqual([]);
+  });
+});
+
+describe('结算/弹层封面口径（pickSkuCover）', () => {
+  it('已选值有属性封面时取第一个非空', () => {
+    expect(pickSkuCover(props(), { 1001: 'v2', 2002: 's1' }, 'p1.jpg,p2.jpg'))
+      .toBe('2026-06/blue.jpg');
+  });
+
+  it('属性封面为空时回退商品 cover 首图', () => {
+    const list = props({ v2: { propertyCover: '' } });
+    expect(pickSkuCover(list, { 1001: 'v2' }, 'p1.jpg,p2.jpg')).toBe('p1.jpg');
+    expect(pickSkuCover(props(), {}, 'p1.jpg,p2.jpg')).toBe('p1.jpg');
+  });
+
+  it('空入参安全', () => {
+    expect(pickSkuCover(null, null, 'p1.jpg')).toBe('p1.jpg');
+    expect(pickSkuCover(props(), {}, undefined)).toBe('');
   });
 });

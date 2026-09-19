@@ -14,11 +14,10 @@ import { toast } from '@/utils/toast';
 
 export type PaymentPageMode = 'mobile' | 'desktop';
 
-export function usePaymentPage(mode: PaymentPageMode = 'mobile') {
+// mode 保留在签名里以区分调用方（移动/PC 共用同一份状态逻辑），当前实现两端行为一致
+export function usePaymentPage(_mode: PaymentPageMode = 'mobile') {
   const route = useRoute();
   const router = useRouter();
-  const isMobile = mode === 'mobile';
-
   const orderInfo = ref<Record<string, any> | null>(null);
   const payAmount = ref(0);
   const payHtml = ref('');
