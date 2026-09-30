@@ -52,3 +52,13 @@ frontend/dist/
 
 # 设计文档、改动记录与图解仅在本地维护。
 /docs/
+
+# 本地工具目录与证据重物：向量快照与本地索引库可由评测命令再生，不入库
+.zcode/
+.zcodeignore
+.research/
+eval/verification/**/vectors.json
+eval/verification/**/index/
+eval/verification/rerun-20260930/agent-release/agent-release-report-*.manifest.json
+eval/verification/rerun-20260930/agent-release-r2/agent-release-report-*.manifest.json
+eval/verification/rerun-20260930/agent-release-fixed/agent-release-report-*.manifest.json
