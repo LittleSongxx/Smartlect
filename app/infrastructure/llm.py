@@ -507,14 +507,15 @@ class ThrottledChatModel(StreamClosingOpenAIChatModel):
                     delay = self._retry_base_seconds * (3**attempt)
                     logger.warning(
                         "模型 %s 遇上游瞬时故障，%.0fs 后重试（第 %d/%d 次）：%s",
-                        self.model, delay, attempt + 1, self._max_transient_retries, err,
+                        self.model, delay, attempt + 1, self._max_transient_retries, type(err).__name__,
                     )
                     await asyncio.sleep(delay)
 
         if self._fallback is None:
             raise last_error  # type: ignore[misc]
 
-        logger.warning("模型 %s 重试用尽，回退到 %s：%s", self.model, self._fallback.model, last_error)
+        logger.warning("模型 %s 重试用尽，回退到 %s：%s", self.model, self._fallback.model,
+                       type(last_error).__name__)
         if budget_call is not None:
             if not budget_call.acquire():
                 return self._budget_fallback()
@@ -528,11 +529,12 @@ class ThrottledChatModel(StreamClosingOpenAIChatModel):
     def _publish_fallback(self, reason: str) -> None:
         if self._bus is None or self._fallback is None:
             return
+        from app.infrastructure.security.output_guard import audit_output
         session_id = ShoppingContext.current_session_id()
         self._bus.publish(
             session_id,
             "model.fallback",
-            {"from": self.model, "to": self._fallback.model, "reason": reason},
+            {"from": self.model, "to": self._fallback.model, "reason": audit_output(reason)[1]},
         )
 
 
@@ -625,9 +627,17 @@ def create_chat_model(
         "max_retries": 0,
         "client_kwargs": {"max_retries": 0},
     }
+    def provider_body(model_name: str) -> dict | None:
+        # DeepSeek ChatCompletion 默认开启 thinking；该模式不支持指定工具。
+        # AgentScope 的原生审批/工具协议需要可用的 named tool_choice。
+        if "api.deepseek.com" in settings.llm_base_url and model_name.startswith("deepseek-"):
+            return {"thinking": {"type": "disabled"}}
+        return None
+
     fallback = (
         StreamClosingOpenAIChatModel(model=settings.llm_fallback_model,
-            formatter=PromptCacheFormatter(mode=settings.prompt_cache_mode, policy=settings.prompt_cache_policy), **common)
+            formatter=PromptCacheFormatter(mode=settings.prompt_cache_mode, policy=settings.prompt_cache_policy),
+            extra_body=provider_body(settings.llm_fallback_model), **common)
         if settings.llm_fallback_model and settings.llm_fallback_model != settings.llm_model
         else None
     )
@@ -638,5 +648,6 @@ def create_chat_model(
         max_transient_retries=settings.llm_max_retries,
         bus=bus,
         formatter=PromptCacheFormatter(mode=settings.prompt_cache_mode, policy=settings.prompt_cache_policy),
+        extra_body=provider_body(settings.llm_model),
         **common,
     )
