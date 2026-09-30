@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { SeriesIllustration, hasSeriesIllustration } from "./SeriesIllustrations";
 
 /**
  * 品类插画占位：仅用于"目录未提供商品图片"的商品，按品类给出统一的线稿示意。
@@ -10,6 +11,8 @@ import type { ReactElement } from "react";
 
 type Props = {
   category?: string | null;
+  /** 目录系列键（GX-xx 序号）：存在时优先展示产品级线稿 */
+  seriesKey?: string | null;
   className?: string;
 };
 
@@ -152,11 +155,18 @@ const BY_CATEGORY: Record<string, () => ReactElement> = {
   美妆个护: BeautyIcon,
 };
 
-export function CategoryIllustration({ category, className = "" }: Props): ReactElement {
+export function CategoryIllustration({ category, seriesKey = null, className = "" }: Props): ReactElement {
+  // 产品级系列线稿优先；没有系列键时退回品类线稿，最后才是通用图标。
+  // 注意：React 元素对象恒为真值，必须用 key 是否存在来判断，不能写 `series ?? fallback`。
+  const hasSeries = hasSeriesIllustration(seriesKey);
   const Illustration = (category && BY_CATEGORY[category]) || DefaultIcon;
   return (
-    <span className={`category-illustration ${className}`} data-category={category || "default"}>
-      <Illustration />
+    <span
+      className={`category-illustration ${className}`}
+      data-category={category || "default"}
+      data-series={hasSeries ? seriesKey : "none"}
+    >
+      {hasSeries ? <SeriesIllustration seriesKey={seriesKey} /> : <Illustration />}
     </span>
   );
 }

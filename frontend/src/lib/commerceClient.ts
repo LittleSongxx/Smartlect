@@ -170,6 +170,10 @@ export function readProducts(value: unknown): ProductCard[] {
       card.image_url = item.image_url;
     if (item.image_kind === "illustration" || item.image_kind === "placeholder")
       card.image_kind = item.image_kind;
+    // 目录系列键：仅接受两位数字系列号（GX-xx），其余忽略，避免把任意字符串当绘图指令
+    if (item.image_illustration === null) card.image_illustration = null;
+    else if (typeof item.image_illustration === "string" && /^\d{2}$/.test(item.image_illustration))
+      card.image_illustration = item.image_illustration;
     if (typeof item.rating_is_live === "boolean")
       card.rating_is_live = item.rating_is_live;
     if (item.rating_summary === null) card.rating_summary = null;

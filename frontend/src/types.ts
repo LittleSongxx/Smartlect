@@ -57,6 +57,8 @@ export interface ProductCard {
   image_url?: string | null;
   image_kind?: "illustration" | "placeholder";
   image_alt?: string;
+  /** 目录系列键（GX-xx 序号）：占位时用于选择产品级线稿示意 */
+  image_illustration?: string | null;
   source_platform?: string;
   source_price_major?: number;
   source_currency?: string;

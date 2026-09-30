@@ -82,6 +82,8 @@ class ProductCard:
     image_url: str | None = None
     image_kind: str = "placeholder"
     image_alt: str = "暂无商品图片"
+    # 目录系列键（GX-xx 序号）：placeholder 时前端据此绘制产品级线稿示意
+    image_illustration: str | None = None
     source_language: str = ""
     source_locale: str = ""
     data_provenance: str = ""
@@ -114,6 +116,7 @@ class ProductCard:
             "image_url": self.image_url,
             "image_kind": self.image_kind,
             "image_alt": self.image_alt,
+            "image_illustration": self.image_illustration,
         }
         if self.landed_price is not None:
             card["landed_price"] = self.landed_price
@@ -178,9 +181,10 @@ class CatalogSearchUseCase:
         recall_strategy = "keyword_2gram"
         rerank_applied = False
 
+        filtered_no_match = False
         if self._embedder is not None and self._vector_index is not None:
             try:
-                scored = await self._vector_recall(spec, adaptive=True)
+                scored, filtered_no_match = await self._vector_recall(spec, adaptive=True)
                 recall_strategy = "embedding_only"
             except Exception as err:  # noqa: BLE001 —— 召回基建异常必须降级而非失败
                 logger.warning("向量召回不可用，降级关键词召回：%s", err)
@@ -194,6 +198,9 @@ class CatalogSearchUseCase:
                 rerank_applied = True
             except Exception as err:  # noqa: BLE001
                 logger.warning("rerank 不可用，按向量分排序：%s", err)
+        elif not scored and filtered_no_match:
+            # 约束预过滤无匹配：embedding 链路的确定性空结论，不退关键词链路
+            recall_strategy = "embedding_rerank"
         elif not scored:
             scored = await self._keyword_recall(spec)
             recall_strategy = "keyword_2gram"
@@ -289,7 +296,8 @@ class CatalogSearchUseCase:
                         diagnostics["filter_mode"] = "authoritative_ids"
                         by_id = {p.product_id: p for p in products}
                         return [(h.score, by_id[h.product_id]) for h in hits if h.product_id in by_id]
-                return await self._vector_recall(spec, adaptive=True, embedding=embedding)
+                scored, _ = await self._vector_recall(spec, adaptive=True, embedding=embedding)
+                return scored
             except Exception as err:
                 logger.warning("Hybrid 向量侧不可用：%s", type(err).__name__)
                 return None
@@ -382,42 +390,94 @@ class CatalogSearchUseCase:
 
     # ---- 一阶段：向量召回 ----
 
-    async def _vector_recall(self, spec: ProductSearchSpec, adaptive: bool = False, embedding=None) -> list[tuple[float, Product]]:
+    async def _vector_recall(
+        self, spec: ProductSearchSpec, adaptive: bool = False, embedding=None,
+    ) -> tuple[list[tuple[float, Product]], bool]:
+        """返回 (候选池, 约束预过滤无匹配标记)。
+
+        无匹配标记为 True 时表示权威目录下不存在满足硬约束的商品——这是
+        确定性空结果而非召回降级，调用方不得再退关键词链路。
+        """
         if embedding is None:
             embedding = await self._embedder.embed(spec.normalized_query)
         top_n = max(self._recall_candidates, spec.top_k*4) if adaptive else _RECALL_TOP_N
+        # 约束主导查询的预过滤路径：当查询携带硬约束（品类/目的地/预算/材质）时，
+        # 正确答案常由结构化属性决定（如"预算内最便宜"），纯语义召回对其不判别
+        # ——语义相近的约束不符品会占满任意深度的召回窗（实测金标可排在 256 名外），
+        # 后置过滤则把候选全灭成空结果。改为先按目录权威属性过滤出合格集，
+        # 再在合格集内做向量排序（search_filtered），与 hybrid 路径同架构。
+        has_hard_constraints = any((
+            spec.category, spec.ship_to, spec.price_max_major is not None,
+            spec.required_material_tags, spec.excluded_material_tags,
+        ))
+        if adaptive and has_hard_constraints and hasattr(self._vector_index, "search_filtered"):
+            all_products = await self._product_repo.list_all()
+            permitted = [p for p in all_products if self._reject_reason(p, spec) is None]
+            if not permitted:
+                # 全目录无合格品：确定性空结果。仍取语义最近的被拒代表随池返回，
+                # 让 execute 的过滤循环把它们收进 filtered_out（如目的国不可达时
+                # 的 ship_to_unavailable 报告），不把"有但不可达"答成"没有"。
+                plain = await self._vector_index.search(embedding, top_n=16)
+                by_all = {p.product_id: p for p in all_products}
+                rejected = [(h.score, by_all[h.product_id]) for h in plain if h.product_id in by_all]
+                return self._diversify_pool(rejected, spec, _FILTERED_OUT_LIMIT), True
+            vector_hits = await self._vector_index.search_filtered(
+                embedding, top_n=min(top_n, len(permitted)),
+                product_ids=[p.product_id for p in permitted],
+            )
+            by_id = {p.product_id: p for p in permitted}
+            scored = [(hit.score, by_id[hit.product_id]) for hit in vector_hits if hit.product_id in by_id]
+            pool = self._diversify_pool(scored, spec, top_n)
+            # 预过滤会把"召回到但被硬约束挡掉"的候选彻底挡在视野外，丢失
+            # filtered_out 的如实报告（模型会把"有但超预算"答成"没有"）。
+            # 从无过滤小窗口的头部取语义最近的约束不符品附在池尾——
+            # execute 的过滤循环会把它们归入 filtered_out，不进 hits。
+            plain_hits = await self._vector_index.search(embedding, top_n=16)
+            plain_ids = {hit.product_id for hit in plain_hits} - set(by_id)
+            if plain_ids:
+                by_all = {p.product_id: p for p in all_products}
+                rejected = [(hit.score, by_all[hit.product_id]) for hit in plain_hits
+                            if hit.product_id in plain_ids and hit.product_id in by_all]
+                pool = [*pool, *self._diversify_pool(rejected, spec, _FILTERED_OUT_LIMIT)]
+            return pool, False
         while True:
             vector_hits = await self._vector_index.search(embedding, top_n=top_n)
             products = await self._product_repo.find_by_ids([hit.product_id for hit in vector_hits])
             by_id = {product.product_id: product for product in products}
             scored = [(hit.score, by_id[hit.product_id]) for hit in vector_hits if hit.product_id in by_id]
-            # 同款多平台变体会在向量空间聚簇，不限制时 top_n 名额可能只覆盖少数款，
-            # 深位的相关款永远进不了精排池。按 canonical 限流保持池的款多样性：
-            # 合格变体每款至多 cap 条参与精排竞争；被拒变体每款留 1 条代表，
-            # 既不让被拒变体挤占款名额（否则同款的合格变体会被裁掉），
-            # 又保住 filtered_out 对"召回到但被硬约束挡掉"的如实报告来源。
-            # 名额被同款占满时加深检索（翻倍至 256 上限），返回名额恒为 top_n，
-            # 精排成本不随检索深度增长。
-            diversified, eligible_per, rejected_per = [], {}, {}
-            for score, product in scored:
-                key = product.canonical_product_id or product.product_id
-                if self._reject_reason(product, spec) is None:
-                    if eligible_per.get(key, 0) >= _PER_CANONICAL_RECALL_CAP:
-                        continue
-                    eligible_per[key] = eligible_per.get(key, 0) + 1
-                else:
-                    if rejected_per.get(key, 0) >= 1:
-                        continue
-                    rejected_per[key] = 1
-                diversified.append((score, product))
-            eligible = sum(eligible_per.values())
+            diversified = self._diversify_pool(scored, spec, top_n)
+            eligible = sum(1 for _, p in diversified if self._reject_reason(p, spec) is None)
             if (not adaptive or len(vector_hits) < top_n or top_n >= 256
                     or (len(diversified) >= min(top_n, self._recall_candidates) and eligible >= spec.top_k)):
                 # 名额条件只在"还有更深款可挖"时约束池大小；目录尽头/深度上限时
                 # 返回多样化全量——截断会把窗口外的硬约束合格品永久丢掉
                 # （adaptive 窗口测试守护的正是这一点）。
-                return diversified
+                return diversified, False
             top_n = min(256, top_n*2)
+
+    def _diversify_pool(
+        self, scored: list[tuple[float, "Product"]], spec: ProductSearchSpec, top_n: int,
+    ) -> list[tuple[float, "Product"]]:
+        """召回池同款限流：多平台变体在向量空间聚簇，不限制时 top_n 名额可能
+        只覆盖少数款，深位的相关款永远进不了精排池。
+
+        合格变体每款至多 cap 条参与精排竞争；被拒变体每款留 1 条代表——
+        既不让被拒变体挤占款名额（否则同款的合格变体会被裁掉），又保住
+        filtered_out 对"召回到但被硬约束挡掉"的如实报告来源。
+        """
+        diversified, eligible_per, rejected_per = [], {}, {}
+        for score, product in scored:
+            key = product.canonical_product_id or product.product_id
+            if self._reject_reason(product, spec) is None:
+                if eligible_per.get(key, 0) >= _PER_CANONICAL_RECALL_CAP:
+                    continue
+                eligible_per[key] = eligible_per.get(key, 0) + 1
+            else:
+                if rejected_per.get(key, 0) >= 1:
+                    continue
+                rejected_per[key] = 1
+            diversified.append((score, product))
+        return diversified
 
     # ---- 二阶段：精排 ----
 
@@ -525,4 +585,5 @@ class CatalogSearchUseCase:
             image_url=media.image_url,
             image_kind=media.image_kind,
             image_alt=media.image_alt,
+            image_illustration=media.illustration,
         )

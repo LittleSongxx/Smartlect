@@ -26,7 +26,10 @@ export function ProductImage({
   if (!product.image_url || failed)
     return (
       <div className={`image-placeholder ${className}`}>
-        <CategoryIllustration category={product.category} />
+        <CategoryIllustration
+          category={product.category}
+          seriesKey={product.image_illustration}
+        />
         <span>{product.category || "好物详情"}</span>
         <small>暂未提供商品图片</small>
       </div>
