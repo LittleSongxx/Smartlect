@@ -21,19 +21,23 @@ Agent 根据需求调用检索与业务工具，页面随运行过程展示回�
 
 ## 质量指标（2026-09-30 当前配置基线）
 
-评测口径：聊天模型 `deepseek-flash` + 百炼 `qwen3.7` 系 embedding/reranker，全 live 路径真实运行。完整证据与失败样本见 [eval/verification/rerun-20260930/](eval/verification/rerun-20260930/)（含全指标严口径审计与 SHA256 指纹清单）。
+评测口径：聊天模型 `deepseek-flash` + 百炼 `qwen3.7` 系 embedding/reranker，全 live 路径真实运行。完整证据、失败样本与数值适用边界见 [eval/verification/rerun-20260930/](eval/verification/rerun-20260930/)（含 SHA256 指纹清单）。
 
-| 指标 | 结果 | 严读数（首位命中） |
+| 指标 | 结果 | 严读数（R@1＝首位命中任一金标） |
 | --- | --- | --- |
-| 商品召回正式门禁（45 例，K=3 业务口径） | **PASS**：Recall@3 0.946 / MRR 0.946 / NDCG@3 0.927 / 负例 8/8 / 同款重复 0 | R@1 0.811 |
-| 品类知识召回门禁（22 例） | **PASS**：Recall@3 1.000 / MRR 0.977 / NDCG 0.979 | R@1 0.955 |
-| 检索管线对照（v2-hard 无品牌提示，54 例） | R@5 0.995 | **R@1 0.649 / R@3 0.906** |
+| 商品召回正式门禁（v1 release 225 例＝155 正例＋70 负例，K=3 业务口径） | **PASS**：Recall@3 0.991 / MRR 1.000 / NDCG@3 0.981 / 负例 70/70 / 零降级 / 同款重复 0；K=8 监控线 0.994 | 1.000（155/155，复算值） |
+| 品类知识召回门禁（22 例，库内 5 篇，诊断档口径） | **PASS**：Recall@3 1.000 / MRR 0.977 / NDCG 0.979 | 0.955（21/22，复算值） |
+| 检索管线对照（v2-hard 无品牌提示，54 例＝48 正例＋6 负例） | R@5 0.995 | **R@1 0.649 / R@3 0.906** |
 | Agent 正式门禁（30 例，程序断言 + LLM judge） | 27/30 PASS，均分 0.950 | — |
-| 记忆提取（12 例） | 12/12 PASS | — |
-| 上下文治理（6 场景×2 策略×3 次） | 36/36 通过；分层治理 input token 相对 legacy 降幅 **34.68%** | — |
-| 后端回归 | 1467 passed / 1 skipped | — |
+| 记忆提取（50 例＝原 12＋38 扩充） | **50/50 PASS** | — |
+| 上下文治理（6 场景×2 策略×3 次＝36 runs） | 36/36 通过；分层治理 input token 相对 legacy 降幅 **34.68%** | — |
+| 后端回归 | 1465 passed / 2 failed / 1 skipped（2026-10-01 冻结树复跑，1468 项收集）；另有 1 项队列租约测试为已知偶发（单独复跑 5 次 4 失败 1 通过），两次全量分别落在 3 项与 2 项失败。失败项均与检索链路无关 | — |
 
-读数说明：R@1/R@3 是贴近"每次推三张商品卡"的严口径；@5 以上是管线对照值。检索评测集为合成目录上的受控实验（多正例、模板对齐），数值适用边界详见证据目录 README；Agent 门禁的 LLM judge 与被测模型相同，P0 关键断言为程序判定不受影响。
+读数说明：
+
+- **R@1 只有 [retrieval_v2.py](scripts/eval/retrieval_v2.py) 会一次运行直接产出**；[run_product_recall.py](scripts/eval/run_product_recall.py) 与 `run_category_recall.py` 的报告只有 Recall/Precision/MRR/NDCG@K，**没有 @1 分档**——表中前两行的 R@1 是从逐题召回序离线复算的，复算脚本与输出见 [eval/verification/readme-metrics-20261001/](eval/verification/readme-metrics-20261001/)。R@3 是贴近"每次推三张商品卡"的业务口径，@5 及以上是管线对照值。
+- 商品召回门禁已于 2026-09-30 从 45 例（37 正例＋8 负例）扩到 **225 例**：扩充集把 R@3 压到 0.742 BLOCK、如实暴露"紧价格约束 × 语义召回"的结构性盲区，修复（主链路约束预过滤＋金标完备性回补）后回到 0.991 PASS。旧集的 Recall@3 0.946 / MRR 0.946 / NDCG@3 0.927 只作过程证据保留，**不再是门禁口径**；更接近真实难度的参照是同一批数据的 **Recall@8 0.973**（单正例、无品牌提示、含负例约束）。
+- 检索评测集是**合成目录上的受控实验**（多正例、查询与描述同源模板），v2 的 0.99+ 不代表真实用户查询召回率；各集规模、扣分构成与已知局限见证据目录 README 的"数值适用边界"节。Agent 门禁的 LLM judge 与被测模型同为 `deepseek-flash`（自评偏宽风险），P0 关键断言为程序判定不受影响。
 
 ## 技术栈
 
@@ -44,7 +48,7 @@ Agent 根据需求调用检索与业务工具，页面随运行过程展示回�
 | 前端应用 | React 18、TypeScript、Vite | 对话界面、商品卡、Skill 编辑、偏好管理与订单页面 |
 | 交互协议 | AG-UI、SSE、A2UI v0.9 | 文本、商品与运行状态；自定义 ShoppingForm 以 AG-UI 扩展事件传输 |
 | 模型接入 | OpenAI 兼容 API（示例 deepseek-flash） | 聊天模型、工具调用与流式生成；DeepSeek 思考模式协议适配 |
-| 商品检索 | Embedding、Qdrant 稠密向量、应用层 BM25、加权 RRF、HTTP reranker | 二阶段召回 + 精排；召回池按同款（canonical）限流保持款多样性，结果层同款去重 |
+| 商品检索 | Embedding、Qdrant 稠密向量、HTTP reranker；应用层 BM25 + 加权 RRF 为实验档 | 线上主链是稠密向量二阶段召回 + 精排（门禁读数即出自该链路）；召回池按同款（canonical）限流保持款多样性，结果层同款去重。混合召回由 `HYBRID_RECALL_ENABLED` 控制，默认关闭 |
 | 品类知识 | Markdown + AgentScope KnowledgeBase | 品类选购知识 RAG；评测快照与线上库分目录维护 |
 | 持久化 | SQLite、本地文件 | 会话、运行事件、偏好、Skill、确认单、订单与库存 |
 | 缓存与队列 | Redis、Redis Streams（可选） | 缓存、共享限流、异步任务消费；未配置时零外部依赖 |
