@@ -191,6 +191,35 @@ def check_filter(
     return (not problems), "；".join(problems)
 
 
+async def validate_empty_cases(cases: list[dict]) -> list[str]:
+    """负例可满足性校验：expected_empty 的约束组合在当前目录下必须真的不可满足。
+
+    负例靠"多硬约束组合 + 低于品类价格下限的预算"构造不可满足性；目录扩容
+    （如 catalog-v3 扩到 3700 件）可能撞出真实满足项，把负例静默变成
+    "永远漏一条"的门禁失败。这里显式报警，让标注漂移可见而不是当成检索缺陷。
+    """
+    repo = InMemoryProductRepository()
+    usecase = CatalogSearchUseCase(repo)
+    products = await repo.list_all()
+    problems = []
+    for case in cases:
+        if not case.get("expected_empty"):
+            continue
+        spec = ProductSearchSpec(
+            normalized_query=case["query"], top_k=1,
+            category=case.get("category"), price_max_major=case.get("price_max_major"),
+            ship_to=case.get("ship_to"), target_currency=case.get("target_currency", "CNY"),
+            excluded_material_tags=case.get("excluded_material_tags", []),
+            required_material_tags=case.get("required_material_tags", []),
+        )
+        satisfied = [p for p in products if usecase._reject_reason(p, spec) is None]
+        if satisfied:
+            problems.append(
+                f"负例已可满足：{case['query'][:36]!r} 在当前目录有 {len(satisfied)} 件全约束命中"
+                f"（如 {satisfied[0].product_id}），标注被目录演进击穿，需校准约束或预算")
+    return problems
+
+
 async def run_dataset(
     usecase: CatalogSearchUseCase, repo: InMemoryProductRepository, cases: list[dict], top_k: int,
     *, observations: list[dict] | None = None,
@@ -425,13 +454,15 @@ async def main(argv: list[str] | None = None) -> None:
         validate_baseline_selection(args.baseline_file, selection, Path(args.dataset))
     except (ValueError, OSError) as err:
         parser.error(str(err))
-    print(f"标注集 {args.dataset}：split={args.split}，{len(cases)} 条，K={args.top_k}")
 
     profile = args.profile
     if args.formal_gates:
         if profile and profile != "online-main":
             parser.error("--formal-gates 只能与 --profile online-main 一起使用")
         profile = "online-main"
+    # 正式门禁按业务展示口径 K=3（前端商品卡取前三）验收；诊断口径仍可自配 --top-k。
+    top_k = 3 if profile == "online-main" else args.top_k
+    print(f"标注集 {args.dataset}：split={args.split}，{len(cases)} 条，K={top_k}")
     if profile == "online-main":
         if args.compare_strategies or args.strategy != "embedding_rerank":
             parser.error("online-main 只评 embedding_rerank；关键词降级请使用 --profile offline-fallback")
@@ -458,7 +489,7 @@ async def main(argv: list[str] | None = None) -> None:
     report_path = report_dir / f"recall-{args.split}-report-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}.md"
     manifest = build_manifest(
         runner="product_recall", dataset=Path(args.dataset), selection=selection, baseline=args.baseline_file,
-        parameters={"profile": profile or "custom", "top_k": args.top_k, "requested_strategies": targets,
+        parameters={"profile": profile or "custom", "top_k": top_k, "requested_strategies": targets,
                     "thresholds": thresholds, "dry_run": args.dry_run,
                     "variant": "bm25_vector_rrf_v1" if args.strategy in {"bm25", "hybrid_rerank"} else "legacy_two_stage",
                     "gate_scope": "experiment" if args.strategy in {"bm25", "hybrid_rerank"} else "release" if args.split == "release" and profile == "online-main" else "diagnostic"},
@@ -468,6 +499,18 @@ async def main(argv: list[str] | None = None) -> None:
         print(f"仅校验选集：NOT_RUN；未计算指标、未判定通过。证据：{path}")
         return
 
+    empty_problems = await validate_empty_cases(cases)
+    for line in empty_problems:
+        print(f"  [data-error] {line}")
+    if empty_problems and profile == "online-main":
+        print("负例标注与当前目录不一致；先校准标注再判门禁，不能把数据漂移当成检索缺陷", file=sys.stderr)
+        raise SystemExit(1)
+    if profile == "online-main" and not any(case.get("expected_empty") for case in cases):
+        # 正式门禁含"无结果准确率 ≥1.0"；无负例的选集该桶永远 n/a，门禁必然 BLOCK。
+        # 保持评测照常执行（既有契约：选集过滤与降级记录仍要被验证），仅在报告前醒目提示。
+        print("  [warn] online-main 门禁要求负例桶；当前选集无 expected_empty 用例，"
+              "无结果准确率将记 n/a 并 BLOCK。正式口径请使用 eval/v1/product_retrieval.jsonl", file=sys.stderr)
+
     per_strategy: dict[str, Aggregate] = {}
     observations: dict[str, list[dict]] = {}
     errors: dict[str, str] = {}
@@ -476,7 +519,7 @@ async def main(argv: list[str] | None = None) -> None:
         observations[strategy] = []
         try:
             usecase, repo, _ = await build_usecase(strategy)
-            agg = await run_dataset(usecase, repo, cases, args.top_k, observations=observations[strategy])
+            agg = await run_dataset(usecase, repo, cases, top_k, observations=observations[strategy])
         except Exception as err:  # 保留失败证据，不把初始化异常或部分执行算作通过
             errors[strategy] = f"{type(err).__name__}: {err}"
             print(f"  [error] {errors[strategy]}")
@@ -497,7 +540,7 @@ async def main(argv: list[str] | None = None) -> None:
     )
     write_manifest(manifest, report_path)
     report_path.write_text(
-        render_report(per_strategy, thresholds, args.top_k, baselines, dataset=Path(args.dataset), profile=profile or "custom")
+        render_report(per_strategy, thresholds, top_k, baselines, dataset=Path(args.dataset), profile=profile or "custom")
         + manifest_report(manifest)
         + ("\n执行错误：\n" + "\n".join(f"- {name}: {message}" for name, message in errors.items()) if errors else ""),
         encoding="utf-8",

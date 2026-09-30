@@ -79,7 +79,7 @@ def aggregate(samples):
     return result
 
 
-async def evaluate(output, split, live=False):
+async def evaluate(output, split, live=False, dataset=None):
     output.mkdir(parents=True, exist_ok=False)
     settings = load_settings()
     # 历史 v2 评测显式绑定自己的底座；默认目录升级不能改变旧实验的语料。
@@ -87,7 +87,12 @@ async def evaluate(output, split, live=False):
     repo = InMemoryProductRepository([_product_from_record(json.loads(line)) for line in catalog.read_text().splitlines() if line.strip()])
     products = await repo.list_all()
     by_id = {p.product_id: p for p in products}
-    dataset = ROOT / "eval/v2/product_retrieval.jsonl"
+    if dataset is None:
+        dataset = ROOT / "eval/v2/product_retrieval.jsonl"
+    else:
+        dataset = Path(dataset)
+        if not dataset.is_absolute():
+            dataset = ROOT / dataset
     all_cases = [json.loads(l) for l in dataset.read_text().splitlines()]
     validate_cases(all_cases, products)
     cases = [c for c in all_cases if c["split"] == split]
@@ -178,7 +183,7 @@ async def evaluate(output, split, live=False):
             for name in keys:
                 spec = ProductSearchSpec(
                     normalized_query=c["query"],
-                    top_k=5,
+                    top_k=8,  # 取足 8 条供 @1/@3/@5 多口径评分；检索截断不改变各档排序
                     ship_to=c.get("ship_to"),
                     price_max_major=c.get("price_max_major"),
                     category=c.get("category"),
@@ -207,6 +212,7 @@ async def evaluate(output, split, live=False):
                     "kind": c["kind"],
                     "query": c["query"],
                     **score(hits, c["relevant_canonical_ids"], 5),
+                    "by_k": {str(k): score(hits, c["relevant_canonical_ids"], k) for k in (1, 3, 5)},
                     "elapsed_ms": (time.monotonic() - start) * 1000,
                     "ids": [h["product_id"] for h in hits],
                     "gold": c["relevant_canonical_ids"],
@@ -224,6 +230,20 @@ async def evaluate(output, split, live=False):
             await index.close()
     report["summary"] = {
         name: aggregate(rows) for name, rows in report["samples"].items()
+    }
+    report["summary_by_k"] = {
+        f"recall@{k}": {
+            name: aggregate([
+                {**{m: row["by_k"][str(k)][m] for m in ("recall", "mrr", "ndcg")},
+                 "elapsed_ms": row["elapsed_ms"], "violations": row["violations"],
+                 "empty_ok": row["by_k"][str(k)]["empty_ok"],
+                 "rerank_applied": row["rerank_applied"], "vector_available": row["vector_available"],
+                 "kind": row["kind"]}
+                for row in rows
+            ])
+            for name, rows in report["samples"].items()
+        }
+        for k in (1, 3, 5)
     }
     report["by_kind"] = {
         name: {
@@ -296,8 +316,10 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--split", choices=["dev", "holdout"], required=True)
     p.add_argument("--live", action="store_true")
+    p.add_argument("--dataset", type=Path, default=None,
+                   help="标注集路径；缺省 eval/v2（冻结集）。v2-hard 用 eval/v2-hard/product_retrieval.jsonl")
     args = p.parse_args()
-    r = asyncio.run(evaluate(args.output, args.split, args.live))
+    r = asyncio.run(evaluate(args.output, args.split, args.live, dataset=args.dataset))
     if args.live and not r["all_live_paths_executed"]:
         raise SystemExit(1)
 
