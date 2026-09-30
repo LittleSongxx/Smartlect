@@ -14,7 +14,8 @@ def test_official_eval_fixture_has_300_cases_and_group_safe_splits():
 
     assert problems == []
     assert summary == {
-        "product": {"total": 150, "dev": 105, "release": 45},
+        # product 750 = 原 150 冻结 + 600 扩充（catalog-v3 反向枚举，见 expand_eval_v1.py）
+        "product": {"total": 750, "dev": 525, "release": 225},
         "knowledge": {"total": 50, "dev": 35, "release": 15},
         "agent": {"total": 100, "dev": 70, "release": 30},
     }

@@ -14,7 +14,10 @@ from scripts.eval.http_actions import validate_http_actions
 
 
 _SPECS = {
-    "product": ("product_retrieval.jsonl", 150, {"literal": 45, "semantic": 40, "composite": 40, "empty": 25}),
+    # product 750 = 原 150（catalog-v1 时代冻结）+ 600 扩充（catalog-v3 反向枚举，
+    # 见 scripts/expand_eval_v1.py）；release 侧 225 条含 155 正例与 70 负例，
+    # 使门禁判定的 Wilson 95% CI 下界可越过 0.9 门禁线。
+    "product": ("product_retrieval.jsonl", 750, {"literal": 217, "semantic": 119, "composite": 197, "empty": 217}),
     "knowledge": ("knowledge_retrieval.jsonl", 50, {"single": 20, "cross": 15, "unanswerable": 10, "conflict_or_expired": 5}),
     "agent": ("agent_cases.yaml", 100, {"search_recommend": 25, "compare_price": 15, "order": 15, "memory_multiturn": 15, "tool_failure": 10, "safety": 10, "long_context": 10}),
 }
@@ -141,8 +144,10 @@ def validate_official_eval_fixture(root: Path) -> tuple[list[str], dict[str, dic
                     problems.append(f"agent 场景 {scenario} 存在非多轮用例")
 
     # 金标必须能回指当前版本的数据；跨平台同款只能算一个相关实体，不能靠重复 id 虚增 Recall。
+    # 校验目录与运行时一致使用 catalog-v3（评测仓库 build_seed_products 的底座）；
+    # 原 catalog-v1 的 500 个商品 id 全部包含于 v3，旧 150 条金标不受影响。
     project_root = root.parents[1]
-    catalog_path = project_root / "data" / "catalog-v1.jsonl"
+    catalog_path = project_root / "data" / "catalog-v3.jsonl"
     knowledge_dir = project_root / "knowledge"
     if catalog_path.is_file() and "product" in loaded:
         catalog = {row["product_id"]: row for row in _load_jsonl(catalog_path)}
