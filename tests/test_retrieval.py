@@ -224,7 +224,7 @@ class TestTwoStageRecall:
         usecase = CatalogSearchUseCase(repo, embedder=embedder, vector_index=index, recall_candidates=8)
         spec = ProductSearchSpec(normalized_query="露营灯 抗造", top_k=8)
 
-        pool = await usecase._vector_recall(spec, adaptive=True)
+        pool, _ = await usecase._vector_recall(spec, adaptive=True)
         pool_ids = [p.product_id for _, p in pool]
         products = {p.product_id: p for p in await repo.list_all()}
         per_canonical = Counter(
