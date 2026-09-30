@@ -71,7 +71,10 @@ def validate_knowledge_content(knowledge_dir: Path) -> list[str]:
         for sentence in re.split(r"(?<=[。！？])", raw):
             normalized = re.sub(r"\s+", "", sentence)
             # 标题、短提示语与公共免责声明不计入内容重复；实质事实才影响召回区分度。
-            if len(normalized) < 40 or "合成的演示快照" in normalized:
+            # "本文用于…"是同品类快照共享的适用范围声明（生成器模板结构），
+            # 同为非实质内容，不因其长度跨过阈值而计入重复。
+            if (len(normalized) < 40 or "合成的演示快照" in normalized
+                    or normalized.startswith("本文用于")):
                 continue
             owners[normalized].add(path.name)
     problems = []
