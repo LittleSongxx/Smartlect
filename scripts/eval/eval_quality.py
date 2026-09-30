@@ -179,7 +179,11 @@ def validate_official_eval_fixture(root: Path) -> tuple[list[str], dict[str, dic
         if split_leaked_products:
             problems.append(f"商品金标跨 split 泄漏：{split_leaked_products[:5]}")
     if knowledge_dir.is_dir() and "knowledge" in loaded:
+        # 评测金标可指向线上知识库或评测快照语料（eval-snapshots/，与线上目录分治维护）。
         documents = {path.name for path in knowledge_dir.glob("*.md")}
+        snapshots = knowledge_dir / "eval-snapshots"
+        if snapshots.is_dir():
+            documents.update(path.name for path in snapshots.glob("*.md"))
         document_splits: dict[str, set[str]] = defaultdict(set)
         for row in loaded["knowledge"]:
             relevant = row.get("relevant", [])

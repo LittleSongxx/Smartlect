@@ -206,11 +206,20 @@ async def main(argv: list[str] | None = None) -> None:
     if top_k <= 0:
         parser.error("--top-k 必须为正整数")
     print(f"标注集 {args.dataset}：split={args.split}，{len(cases)} 条，K={top_k}")
+    # 单正例标注集的 Precision@K 上限是 sum(min(正例数,K))/N*K：每题只有 1 个金标文档时
+    # @3 上限 0.333、@5 上限 0.2，绝对阈值 0.45 结构性不可达。与 formal 门禁
+    # （precision=None，只门禁可完整标注的召回/排序/拒答）同一判断：
+    # 阈值超过上限 90% 时按上限校准，完美检索（实测=上限）应判 PASS。
+    precision_threshold = args.min_precision
+    if precision_threshold is not None:
+        positives = [len(case.get("relevant") or []) for case in cases]
+        cap = sum(min(p, top_k) for p in positives) / (len(cases) * top_k)
+        precision_threshold = min(precision_threshold, round(cap * 0.9, 4))
     thresholds = (
         formal_thresholds()
         if args.formal_gates
         else Thresholds(
-            recall=args.min_recall, precision=args.min_precision, mrr=args.min_mrr,
+            recall=args.min_recall, precision=precision_threshold, mrr=args.min_mrr,
             ndcg=args.min_ndcg, empty_accuracy=args.min_unanswerable_accuracy,
         )
     )

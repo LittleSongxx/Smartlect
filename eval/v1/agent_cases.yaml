@@ -1953,6 +1953,7 @@ cases:
   group_id: agent-memory_multiturn-dev-0
   template_family: agent-memory_multiturn-dev-0
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #1'
   queries:
@@ -1988,6 +1989,7 @@ cases:
   group_id: agent-memory_multiturn-dev-1
   template_family: agent-memory_multiturn-dev-1
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #2'
   queries:
@@ -2023,6 +2025,7 @@ cases:
   group_id: agent-memory_multiturn-dev-2
   template_family: agent-memory_multiturn-dev-2
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #3'
   queries:
@@ -2058,6 +2061,7 @@ cases:
   group_id: agent-memory_multiturn-dev-0
   template_family: agent-memory_multiturn-dev-0
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #4'
   queries:
@@ -2093,6 +2097,7 @@ cases:
   group_id: agent-memory_multiturn-dev-1
   template_family: agent-memory_multiturn-dev-1
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #5'
   queries:
@@ -2128,6 +2133,7 @@ cases:
   group_id: agent-memory_multiturn-dev-2
   template_family: agent-memory_multiturn-dev-2
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #6'
   queries:
@@ -2163,6 +2169,7 @@ cases:
   group_id: agent-memory_multiturn-dev-0
   template_family: agent-memory_multiturn-dev-0
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #7'
   queries:
@@ -2198,6 +2205,7 @@ cases:
   group_id: agent-memory_multiturn-dev-1
   template_family: agent-memory_multiturn-dev-1
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #8'
   queries:
@@ -2233,6 +2241,7 @@ cases:
   group_id: agent-memory_multiturn-dev-2
   template_family: agent-memory_multiturn-dev-2
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #9'
   queries:
@@ -2268,6 +2277,7 @@ cases:
   group_id: agent-memory_multiturn-dev-0
   template_family: agent-memory_multiturn-dev-0
   split: dev
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #10'
   queries:
@@ -2303,6 +2313,7 @@ cases:
   group_id: agent-memory_multiturn-release-1
   template_family: agent-memory_multiturn-release-1
   split: release
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #11'
   queries:
@@ -2338,6 +2349,7 @@ cases:
   group_id: agent-memory_multiturn-release-2
   template_family: agent-memory_multiturn-release-2
   split: release
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #12'
   queries:
@@ -2373,6 +2385,7 @@ cases:
   group_id: agent-memory_multiturn-release-0
   template_family: agent-memory_multiturn-release-0
   split: release
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #13'
   queries:
@@ -2408,6 +2421,7 @@ cases:
   group_id: agent-memory_multiturn-release-1
   template_family: agent-memory_multiturn-release-1
   split: release
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #14'
   queries:
@@ -2443,6 +2457,7 @@ cases:
   group_id: agent-memory_multiturn-release-2
   template_family: agent-memory_multiturn-release-2
   split: release
+  confirm_memory: true
   scenario: memory_multiturn
   description: '正式 Agent 评测：memory_multiturn #15'
   queries:

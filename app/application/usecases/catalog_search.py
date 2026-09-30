@@ -43,6 +43,11 @@ logger = logging.getLogger(__name__)
 # 一阶段召回候选数（> top_k，给精排留空间）
 _RECALL_TOP_N = 8
 
+# 召回池内同款（canonical）限流：允许同款变体竞争精排名额，但不多到霸占池。
+# 与结果层 canonical 去重同口径——同款是目录结构（多平台变体）造成的冗余，
+# 不是查询相关性信号。
+_PER_CANONICAL_RECALL_CAP = 2
+
 # 被硬约束挡掉的候选回传条数上限（只回摘要，避免上下文膨胀）
 _FILTERED_OUT_LIMIT = 3
 
@@ -143,6 +148,7 @@ class CatalogSearchUseCase:
         hybrid_vector_weight: float = 1.0,
         recall_candidates: int = 32,
         capture_retrieval_stages: bool = False,
+        lexical_index=None,
     ) -> None:
         # 仅评测主动开启；记录混合检索的实际阶段，不改变排序或向模型增加字段。
         self._capture_retrieval_stages = capture_retrieval_stages
@@ -156,6 +162,7 @@ class CatalogSearchUseCase:
         self._embedder = embedder
         self._vector_index = vector_index
         self._reranker = reranker
+        self._lexical_index = lexical_index
         self._tariff = tariff_schedule or TariffSchedule(rates=ExchangeRateTable())
 
     async def execute(self, spec: ProductSearchSpec) -> dict:
@@ -201,10 +208,19 @@ class CatalogSearchUseCase:
             elif len(filtered_out) < _FILTERED_OUT_LIMIT:
                 filtered_out.append(self._to_rejected(product, spec, reason))
 
-        hits = [self._to_card(score, product, spec) for score, product in filtered[: spec.top_k]]
+        # 同款（canonical）去重后再截断，与 hybrid 路径同口径：
+        # 语义强的 embedding 会把同款多货源推满 Top-K，挤占可比较的候选名额。
+        deduped, seen = [], set()
+        for score, product in filtered:
+            key = product.canonical_product_id or product.product_id
+            if key not in seen:
+                seen.add(key)
+                deduped.append((score, product))
+
+        hits = [self._to_card(score, product, spec) for score, product in deduped[: spec.top_k]]
         result = {
             "hits": [card.to_dict() for card in hits],
-            "total_candidates": len(filtered),
+            "total_candidates": len(deduped),
             "recall_strategy": recall_strategy,
             "rerank_applied": rerank_applied,
         }
@@ -257,6 +273,9 @@ class CatalogSearchUseCase:
                        "lexical_weight": self._fusion_weights[0], "vector_weight": self._fusion_weights[1],
                        "candidate_limit": max(self._recall_candidates, spec.top_k * 4)}
         async def lexical():
+            # 优先走目录指纹缓存的预计算索引；无索引时回退逐查询实现。
+            if self._lexical_index is not None:
+                return await self._lexical_index.rank(spec.normalized_query, products)
             return bm25_rank(spec.normalized_query, products)
         async def vector():
             if self._embedder is None or self._vector_index is None:
@@ -372,8 +391,32 @@ class CatalogSearchUseCase:
             products = await self._product_repo.find_by_ids([hit.product_id for hit in vector_hits])
             by_id = {product.product_id: product for product in products}
             scored = [(hit.score, by_id[hit.product_id]) for hit in vector_hits if hit.product_id in by_id]
-            if not adaptive or len(vector_hits) < top_n or top_n >= 256 or sum(self._reject_reason(p, spec) is None for _, p in scored) >= spec.top_k:
-                return scored
+            # 同款多平台变体会在向量空间聚簇，不限制时 top_n 名额可能只覆盖少数款，
+            # 深位的相关款永远进不了精排池。按 canonical 限流保持池的款多样性：
+            # 合格变体每款至多 cap 条参与精排竞争；被拒变体每款留 1 条代表，
+            # 既不让被拒变体挤占款名额（否则同款的合格变体会被裁掉），
+            # 又保住 filtered_out 对"召回到但被硬约束挡掉"的如实报告来源。
+            # 名额被同款占满时加深检索（翻倍至 256 上限），返回名额恒为 top_n，
+            # 精排成本不随检索深度增长。
+            diversified, eligible_per, rejected_per = [], {}, {}
+            for score, product in scored:
+                key = product.canonical_product_id or product.product_id
+                if self._reject_reason(product, spec) is None:
+                    if eligible_per.get(key, 0) >= _PER_CANONICAL_RECALL_CAP:
+                        continue
+                    eligible_per[key] = eligible_per.get(key, 0) + 1
+                else:
+                    if rejected_per.get(key, 0) >= 1:
+                        continue
+                    rejected_per[key] = 1
+                diversified.append((score, product))
+            eligible = sum(eligible_per.values())
+            if (not adaptive or len(vector_hits) < top_n or top_n >= 256
+                    or (len(diversified) >= min(top_n, self._recall_candidates) and eligible >= spec.top_k)):
+                # 名额条件只在"还有更深款可挖"时约束池大小；目录尽头/深度上限时
+                # 返回多样化全量——截断会把窗口外的硬约束合格品永久丢掉
+                # （adaptive 窗口测试守护的正是这一点）。
+                return diversified
             top_n = min(256, top_n*2)
 
     # ---- 二阶段：精排 ----

@@ -20,8 +20,10 @@ from app.infrastructure.settings import Settings
 from app.infrastructure.vector.index_bootstrap import bootstrap_product_index
 from app.infrastructure.vector.qdrant_product_index import QdrantProductIndex
 
-# 特征轴词表：文本命中即该维置 1，余弦相似度即可反映关键词重合度
-_FEATURE_TERMS = ("露营灯", "登山杖", "毛巾", "睡袋", "行李箱", "耳机", "充电器", "三件套", "背包", "茶具")
+# 特征轴词表：文本命中即该维置 1，余弦相似度即可反映关键词重合度。
+# "抗造"与"露营灯"联合只在 P1008 命中，保证并列分之外仍有唯一区分，
+# 避免 searchable_text 扩充（09-18 加入亮点/材质）后排序退化为 tie-break。
+_FEATURE_TERMS = ("露营灯", "登山杖", "毛巾", "睡袋", "行李箱", "耳机", "充电器", "三件套", "背包", "茶具", "抗造")
 
 
 class AxisEmbeddingClient(EmbeddingClient):
@@ -209,6 +211,31 @@ class TestTwoStageRecall:
         assert result["hits"], "关键词降级仍应有召回"
         assert result["hits"][0]["product_id"] == "P1008"
 
+    async def test_recall_pool_diversifies_canonical_duplicates(self, indexed):
+        """同款多平台变体聚簇时，召回池按 canonical 限流，深位的相关款能进精排池。
+
+        构造：同一款的多条变体在向量空间紧邻查询，原始 top 命中被同款霸占；
+        限流后池内款覆盖扩大，其它款（排名深但相关）获得精排名额。
+        这是目录结构适配，不依赖具体查询或商品。
+        """
+        from collections import Counter
+
+        repo, embedder, index = indexed
+        usecase = CatalogSearchUseCase(repo, embedder=embedder, vector_index=index, recall_candidates=8)
+        spec = ProductSearchSpec(normalized_query="露营灯 抗造", top_k=8)
+
+        pool = await usecase._vector_recall(spec, adaptive=True)
+        pool_ids = [p.product_id for _, p in pool]
+        products = {p.product_id: p for p in await repo.list_all()}
+        per_canonical = Counter(
+            (products[pid].canonical_product_id or pid) for pid in pool_ids
+        )
+        # 每款至多占限流上限个名额，池不会退化为少数款的变体列表
+        cap = max(per_canonical.values())
+        assert cap <= 2, f"召回池存在同款霸占：{per_canonical}"
+        # P1008（唯一同时含两特征词的款）必须留在池内——限流不牺牲最相关款
+        assert "P1008" in pool_ids
+
     async def test_price_cap_hard_filter(self, indexed):
         repo, embedder, index = indexed
         usecase = CatalogSearchUseCase(repo, embedder=embedder, vector_index=index)
@@ -288,7 +315,7 @@ class TestTwoStageRecall:
             ),
         )
         try:
-            response = await tool(normalized_query="露营灯", ship_to="US", target_currency="USD")
+            response = await tool(normalized_query="露营灯 抗造", ship_to="US", target_currency="USD")
         finally:
             ShoppingContext.reset(token)
 
