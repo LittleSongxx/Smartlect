@@ -14,6 +14,10 @@
     "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
   --radius: 16px;
   --radius-sm: 10px;
+  /* 浮动侧边栏几何：内容区与输入框停靠都以此为唯一定义 */
+  --sidebar-gap: 16px;
+  --sidebar-w: 272px;
+  --sidebar-edge: calc(var(--sidebar-gap) * 2 + var(--sidebar-w));
   --brand-soft: #edf3ff;
   --brand-line: #c8d9ff;
   --shadow: 0 8px 32px rgba(26, 43, 72, 0.065);
@@ -97,8 +101,8 @@ button {
 .sidebar {
   position: fixed;
   /* PeerGrab 式浮动面板：四周留白、白底、圆角、柔和冷影 */
-  inset: 16px auto 16px 16px;
-  width: 272px;
+  inset: var(--sidebar-gap) auto var(--sidebar-gap) var(--sidebar-gap);
+  width: var(--sidebar-w);
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -259,7 +263,7 @@ button {
   color: #868c97;
 }
 main {
-  margin-left: 304px;
+  margin-left: var(--sidebar-edge);
   padding: 29px 54px 190px;
 }
 .content {
@@ -745,7 +749,7 @@ main {
 .composer-dock {
   position: fixed;
   bottom: 0;
-  left: 272px;
+  left: var(--sidebar-edge);
   right: 0;
   z-index: 25;
   padding: 25px 54px 17px;
@@ -1249,16 +1253,17 @@ main {
   }
 }
 @media (max-width: 1170px) {
+  :root {
+    --sidebar-w: 210px;
+  }
   .sidebar {
-    width: 210px;
     padding: 28px 19px;
   }
   main {
-    margin-left: 210px;
+    margin-left: var(--sidebar-edge);
     padding: 28px 32px 185px;
   }
   .composer-dock {
-    left: 210px;
     padding-left: 32px;
     padding-right: 32px;
   }
@@ -1292,8 +1297,10 @@ main {
   }
 }
 @media (max-width: 900px) {
+  :root {
+    --sidebar-w: 178px;
+  }
   .sidebar {
-    width: 178px;
     padding: 26px 13px;
   }
   .brand {
@@ -1325,11 +1332,10 @@ main {
     font-size: 12px;
   }
   main {
-    margin-left: 178px;
+    margin-left: var(--sidebar-edge);
     padding: 25px 25px 185px;
   }
   .composer-dock {
-    left: 178px;
     padding-left: 25px;
     padding-right: 25px;
   }
