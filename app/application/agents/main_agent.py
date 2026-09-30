@@ -14,6 +14,8 @@ AgentState 每轮落盘 DATA_DIR/sessions/，服务重启后恢复多轮对话�
 子 Agent 则每次调度新建（上下文隔离）。
 """
 from __future__ import annotations
+from collections import OrderedDict
+
 from app.infrastructure.context_governance import ContextAwareAgent
 
 import logging
@@ -212,15 +214,29 @@ class MainAgentFactory:
 
 class SessionRegistry:
     """按 shopping_session_id 缓存 MainAgent 实例，支撑多轮对话；
-    AgentState 经 SessionStore 端口落盘（SQLite 或文件），服务重启后恢复。"""
+    AgentState 经 SessionStore 端口落盘（SQLite 或文件），服务重启后恢复。
 
-    def __init__(self, main_factory: MainAgentFactory, session_store: SessionStore, *, enforce_owner: bool = True, prompt_registry=None) -> None:
+    内存缓存有 LRU 上限（agent_cache_limit，应大于预期并发会话数）：
+    超限逐出最久未用会话的实例，其状态已在此前轮末持久化；被逐出会话的
+    persist() 将返回 False（调用方跳过本轮对话记录），这是显式记录的边界。
+    """
+
+    def __init__(
+        self,
+        main_factory: MainAgentFactory,
+        session_store: SessionStore,
+        *,
+        enforce_owner: bool = True,
+        prompt_registry=None,
+        agent_cache_limit: int = 128,
+    ) -> None:
         self._main_factory = main_factory
         self._session_store = session_store
-        self._agents: dict[str, Agent] = {}
+        self._agents: "OrderedDict[str, Agent]" = OrderedDict()
         self._claims = {}
         self._enforce_owner = enforce_owner
         self._prompt_registry = prompt_registry
+        self._agent_cache_limit = max(1, agent_cache_limit)
 
     async def get_or_create(self, shopping_session_id: str) -> Agent:
         from app.infrastructure.context import ShoppingContext
@@ -252,6 +268,11 @@ class SessionRegistry:
                 except Exception as error:
                     raise SessionStateCorrupt("持久会话快照损坏，未按空会话覆盖历史") from error
                 self._agents[shopping_session_id] = self._main_factory.build(restored)
+            else:
+                self._agents.move_to_end(shopping_session_id)
+            while len(self._agents) > self._agent_cache_limit:
+                evicted, _ = self._agents.popitem(last=False)
+                self._claims.pop(evicted, None)
             self._claims[shopping_session_id] = claim
             return self._agents[shopping_session_id]
         except BaseException:

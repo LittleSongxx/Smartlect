@@ -84,9 +84,11 @@ async def stream_run(
                 adapter.state["confirmations"] = saved["confirmations"]
                 adapter.snapshot()
             with observe_run_events(adapter.on_trade_event):
-                # 现有语义缓存只存最终文本，无法恢复商品事实；AG-UI 首版不读写此缓存。
+                # 命中语义缓存时走 adapter.finish() 合成的最小事件流收口
+                # （RUN_STARTED→cache.hit→MessagesSnapshot 全文→RUN_FINISHED），
+                # 沿用现有门禁：首轮/无交易态/无 Skill/写意图过滤/偏好指纹 scope。
                 result = await orchestrator.handle_intent(
-                    intent, event_observer=adapter.on_agent_event, use_semantic_cache=False,
+                    intent, event_observer=adapter.on_agent_event, use_semantic_cache=True,
                 )
             error = result.error or adapter.error
             if error:

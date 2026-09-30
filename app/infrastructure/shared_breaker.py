@@ -40,8 +40,13 @@ class SharedCircuitBreakerRegistry(CircuitBreakerRegistry):
         cache: RedisCache,
         failure_threshold: int = 3,
         reset_seconds: float = 60.0,
+        probe_timeout_seconds: float = 300.0,
     ) -> None:
-        super().__init__(failure_threshold=failure_threshold, reset_seconds=reset_seconds)
+        super().__init__(
+            failure_threshold=failure_threshold,
+            reset_seconds=reset_seconds,
+            probe_timeout_seconds=probe_timeout_seconds,
+        )
         self._cache = cache
 
     @property
@@ -50,6 +55,9 @@ class SharedCircuitBreakerRegistry(CircuitBreakerRegistry):
 
     def _key(self, tool_name: str) -> str:
         return f"{_KEY_PREFIX}{tool_name}"
+
+    def _probe_key(self, tool_name: str) -> str:
+        return f"{_KEY_PREFIX}{tool_name}:probe"
 
     @property
     def _ttl(self) -> int:
@@ -66,18 +74,26 @@ class SharedCircuitBreakerRegistry(CircuitBreakerRegistry):
         opened_at = state.get("opened_at")
         if not opened_at:
             return True
-        elapsed = (now or time.time()) - float(opened_at)
+        stamp = now or time.time()
+        elapsed = stamp - float(opened_at)
         if elapsed < self.reset_seconds:
             return False
-        # 冷却期满：标记半开，放一次探测
-        state["half_open"] = 1
-        await self._save(tool_name, state)
-        return True
+        # 冷却期满：半开单探测——跨副本用 SET NX 探测锁裁决，抢到锁的副本放行一次。
+        # 旧实现是无锁的读改写，N 个副本会同时放行 N 个探测，下游仍宕机时一起等满超时。
+        # set_if_absent 在 Redis 故障时返回 True（放行），与模块降级原则一致。
+        acquired = await self._cache.set_if_absent(
+            self._probe_key(tool_name), f"{stamp:.3f}", int(self.probe_timeout_seconds),
+        )
+        if acquired:
+            state["half_open"] = 1
+            await self._save(tool_name, state)
+        return acquired
 
     async def record_success_async(self, tool_name: str) -> None:
         if not self.shared:
             self.record_success(tool_name)
             return
+        await self._cache.delete(self._probe_key(tool_name))
         await self._cache.delete(self._key(tool_name))
 
     async def record_failure_async(self, tool_name: str, now: Optional[float] = None) -> None:
@@ -94,6 +110,18 @@ class SharedCircuitBreakerRegistry(CircuitBreakerRegistry):
             if state["failures"] >= self.failure_threshold:
                 state["opened_at"] = stamp
         await self._save(tool_name, state)
+        await self._cache.delete(self._probe_key(tool_name))
+
+    async def record_abandoned_async(self, tool_name: str) -> None:
+        """探测调用被取消：只释放探测锁并清除半开标记，不改变熔断开合。"""
+        if not self.shared:
+            self.record_abandoned(tool_name)
+            return
+        await self._cache.delete(self._probe_key(tool_name))
+        state = await self._load(tool_name)
+        if state is not None and state.get("half_open"):
+            state["half_open"] = 0
+            await self._save(tool_name, state)
 
     async def status_async(self, tool_name: str) -> str:
         if not self.shared:

@@ -21,6 +21,7 @@ Presentation 层按 shopping_session_id 订阅后推送给前端 WebSocket。
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -29,6 +30,8 @@ from typing import Any, Callable
 
 from app.infrastructure.tracing import current_correlation
 from app.infrastructure.operational_metrics import observe_event
+
+logger = logging.getLogger(__name__)
 
 TradeEventType = str
 
@@ -102,7 +105,7 @@ class TradeEvent:
 
 @dataclass
 class TradeEventBus:
-    """asyncio 版发布订阅：每个订阅者一个独立 Queue，互不阻塞。
+    """asyncio 版发布订阅：每个订阅者一个 Queue，互不阻塞。
 
     四期加了跨进程背板（backplane）：worker 拆成独立进程后，它产生的
     token.delta / tool.* 事件本来推不到 API 进程的 WS 连接（前端会一片空白）。
@@ -110,17 +113,24 @@ class TradeEventBus:
     API 进程订阅后转发给本地 WS。
 
     publish 保持同步签名（十几处调用方不必改），广播用 fire-and-forget 任务发出。
+
+    订阅队列有界（queue_maxsize）：慢消费者被 TCP 背压卡住时，无界队列会让
+    高频 token.delta 在内存里无限堆积。溢出策略：按序丢弃最旧的 token.delta
+    （前端展示由 final.result 覆盖恢复，journal 才是回放权威）；队列里没有
+    可丢的增量时丢弃新事件并告警。
     """
 
     _subscribers: dict[str, list[asyncio.Queue]] = field(default_factory=dict)
     _backplane: Any = None  # EventBackplane | None，避免 infrastructure 内循环导入
     _pending: set = field(default_factory=set)
+    queue_maxsize: int = 4096
 
     def attach_backplane(self, backplane: Any) -> None:
         self._backplane = backplane
 
     def subscribe(self, shopping_session_id: str) -> asyncio.Queue:
-        queue: asyncio.Queue = asyncio.Queue()
+        maxsize = self.queue_maxsize if self.queue_maxsize > 0 else 0
+        queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
         self._subscribers.setdefault(shopping_session_id, []).append(queue)
         return queue
 
@@ -134,7 +144,41 @@ class TradeEventBus:
     def deliver_local(self, event: TradeEvent) -> None:
         """只投递给本进程订阅者（背板收到远端事件后走这里，避免回环广播）。"""
         for queue in self._subscribers.get(event.shopping_session_id, []):
+            self._offer(queue, event)
+
+    def _offer(self, queue: asyncio.Queue, event: TradeEvent) -> None:
+        try:
             queue.put_nowait(event)
+            return
+        except asyncio.QueueFull:
+            pass
+        if self._drop_oldest_delta(queue):
+            try:
+                queue.put_nowait(event)
+                return
+            except asyncio.QueueFull:
+                pass
+        observe_event("error", {"message": "事件订阅队列溢出，丢弃新事件", "type": event.type})
+        logger.error(
+            "事件订阅队列溢出且无可丢弃增量，丢弃新事件：session=%s type=%s",
+            event.shopping_session_id, event.type,
+        )
+
+    def _drop_oldest_delta(self, queue: asyncio.Queue) -> bool:
+        """从队列头部按序移除一个 token.delta，其余事件保持原顺序。
+
+        通过 asyncio.Queue 的内部 deque 定点移除（不移除则只能整体倒出再回填，
+        会与未取出的尾部乱序）。unfinished_tasks 计数因此偏大，但本工程不使用
+        Queue.join()，无影响。私有字段访问带降级：不可用时视为无可丢增量。
+        """
+        internal = getattr(queue, "_queue", None)
+        if internal is None or not hasattr(internal, "remove"):
+            return False
+        for item in internal:
+            if getattr(item, "type", None) == "token.delta":
+                internal.remove(item)
+                return True
+        return False
 
     def publish(self, shopping_session_id: str, event_type: TradeEventType, payload: Any) -> None:
         if event_type not in EVENT_TYPES:

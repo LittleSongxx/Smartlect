@@ -47,6 +47,14 @@ SENSITIVE_PATTERNS: list[str] = [
 _compiled = [re.compile(pattern) for pattern in SENSITIVE_PATTERNS]
 
 
+def _mask_text(text: str) -> str:
+    """对全文执行全部敏感模式替换，返回脱敏后文本。"""
+    cleaned = text
+    for pattern in _compiled:
+        cleaned, _ = pattern.subn(REDACTED, cleaned)
+    return cleaned
+
+
 def audit_output(text: str) -> tuple[bool, str]:
     """审核最终输出。
 
@@ -64,3 +72,64 @@ def audit_output(text: str) -> tuple[bool, str]:
         if count:
             safe = False
     return safe, cleaned
+
+
+class StreamingMasker:
+    """流式增量脱敏：为 token.delta / TEXT_MESSAGE_CONTENT 这类增量流提供与
+    `audit_output` 同源的掩码保证——旧实现只守卫 final text，流式增量会先一步
+    把敏感内容实时推给买家。
+
+    算法：每次 push 对**全量缓冲**重跑掩码（完整匹配立即替换），再计算**动态
+    扣留长度**后放行。扣留依据是"敏感模式字面触发串"（每个敏感模式的匹配都
+    必然以这些字面量开头）：
+
+        1. 缓冲尾部是某触发串的真前缀 → 扣留该前缀长度（模式可能正在到达）；
+        2. 缓冲中存在完整触发串 → 从其起点扣留到末尾（匹配可能仍在延伸，
+           如 session_id 的值、URL 的路径还在陆续到达）。
+
+    已放行前缀因此永远不含"事后才补全"的匹配起点；掩码替换只发生在扣留区
+    之后，前缀稳定、按已放行长度差量输出。干净文本的扣留为 0（即时流式），
+    只有疑似敏感内容在途时才暂停放行，流结束 flush 释放余量。
+    """
+
+    # 每个敏感模式匹配的字面起始串：模式1/2/3 分别是 id 前缀、密钥前缀、
+    # URL 协议头；模式4（内部工具名）的每个分支都是完整字面量。
+    _TRIGGERS: tuple[str, ...] = ("shopping_session_id", "sk-", "http", *_INTERNAL_TOOLS)
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._emitted = 0
+
+    def _hold_length(self, masked: str) -> int:
+        hold = 0
+        for trigger in self._TRIGGERS:
+            # 尾部是触发串的真前缀：模式前缀正在到达
+            for length in range(min(len(masked), len(trigger) - 1), 0, -1):
+                if masked.endswith(trigger[:length]):
+                    hold = max(hold, length)
+                    break
+            # 完整触发串在场：匹配可能仍在延伸，从其起点扣留
+            position = masked.rfind(trigger)
+            if position != -1:
+                hold = max(hold, len(masked) - position)
+        return hold
+
+    def push(self, delta: str) -> str:
+        """追加一段增量，返回本次可安全放行的文本（可为空串）。"""
+        if not delta:
+            return ""
+        self._buffer += delta
+        masked = _mask_text(self._buffer)
+        safe_end = len(masked) - self._hold_length(masked)
+        if safe_end <= self._emitted:
+            return ""
+        output = masked[self._emitted:safe_end]
+        self._emitted = safe_end
+        return output
+
+    def flush(self) -> str:
+        """流结束时释放扣留的尾部（先掩码）。"""
+        masked = _mask_text(self._buffer)
+        output = masked[self._emitted:]
+        self._emitted = len(masked)
+        return output

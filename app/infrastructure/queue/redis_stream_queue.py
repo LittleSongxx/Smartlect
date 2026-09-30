@@ -270,13 +270,28 @@ class RedisStreamTaskQueue(TaskQueue):
                 if started >= lease.expires_at:
                     raise QueueLeaseLost("续租开始前租约已过期")
                 delivery = lease.delivery
-                renewed = await asyncio.wait_for(self._client.eval(
-                    _RENEW_SCRIPT, len(lease.keys), *lease.keys, lease.owner, lease.lease_ms,
-                    delivery.stream if delivery else "", _GROUP, lease.consumer_name,
-                    delivery.message_id if delivery else ""),
-                    timeout=max(0.001, lease.expires_at - started))
-                if not renewed:
-                    raise QueueLeaseLost("Redis 租约或 pending 所有权已丢失")
+                renewed = None
+                # 瞬时 Redis 抖动在租约剩余时间内有界重试；eval 返回 0 是
+                # 权威的易主判定（GET != owner / XCLAIM 为空），不重试。
+                for _attempt in range(3):
+                    try:
+                        renewed = await asyncio.wait_for(self._client.eval(
+                            _RENEW_SCRIPT, len(lease.keys), *lease.keys, lease.owner, lease.lease_ms,
+                            delivery.stream if delivery else "", _GROUP, lease.consumer_name,
+                            delivery.message_id if delivery else ""),
+                            timeout=max(0.001, lease.expires_at - time.monotonic()))
+                        break
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as renew_error:
+                        logger.warning("执行租约续期异常，将在租约期内重试：%s", renew_error)
+                        if lease.expires_at - time.monotonic() <= max(1.0, lease.lease_ms / 1000 / 10):
+                            break
+                        await asyncio.sleep(0.5)
+                if renewed is not True:
+                    raise QueueLeaseLost(
+                        "Redis 租约或 pending 所有权已丢失" if renewed is False
+                        else "Redis 租约未能在剩余时间内完成续期")
                 lease.expires_at = started + lease.lease_ms / 1000
         except asyncio.CancelledError:
             raise

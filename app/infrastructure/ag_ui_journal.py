@@ -67,6 +67,7 @@ class AGUIJournal:
                   fingerprint TEXT NOT NULL, input_json TEXT NOT NULL, projection_json TEXT NOT NULL,
                   status TEXT NOT NULL, owner TEXT NOT NULL, lease_until REAL NOT NULL,
                   last_seq INTEGER NOT NULL DEFAULT 0, stop_requested INTEGER NOT NULL DEFAULT 0,
+                  events_archived INTEGER NOT NULL DEFAULT 0,
                   created_at REAL NOT NULL, updated_at REAL NOT NULL);
                 CREATE INDEX IF NOT EXISTS agui_run_session ON agui_runs(session_id,status);
                 CREATE TABLE IF NOT EXISTS agui_events (
@@ -74,6 +75,13 @@ class AGUIJournal:
                   PRIMARY KEY(run_id,seq));
                 COMMIT;
                         """)
+                        # D3 迁移：旧库补 events_archived 列（新库已含）
+                        async with db.execute("PRAGMA table_info(agui_runs)") as cursor:
+                            columns = {row[1] for row in await cursor.fetchall()}
+                        if "events_archived" not in columns:
+                            await db.execute(
+                                "ALTER TABLE agui_runs ADD COLUMN events_archived INTEGER NOT NULL DEFAULT 0")
+                            await db.commit()
                     self._initialized = True
                     return
                 except aiosqlite.OperationalError as err:
@@ -248,18 +256,36 @@ class AGUIJournal:
                        {"type": "RUN_ERROR", "message": "本轮已明确停止" if stopped else "服务重启或执行租约失效，本轮未完成；已恢复保存的内容，可重新提交需求。", "code": "CANCELLED" if stopped else "SERVER_RESTART"}]
             await self._append(db, row, events)
 
+    async def _recover_if_needed(self) -> None:
+        """只读探测是否存在过期运行，命中才升级写事务执行恢复。
+
+        读路径（SSE 重连、事件轮询、会话列表）原先一律在 BEGIN IMMEDIATE 写
+        事务里跑恢复，热路径每次都抢 SQLite 写锁、与运行中的 append 争用。
+        探测与恢复之间若恰好出现新的过期行，由下一次读或 reserve 兜底，
+        不构成正确性问题（恢复只是把过期运行收敛为中断终态）。
+        """
+        async with self._db() as db:
+            row = await self._one(
+                db,
+                "SELECT 1 FROM agui_runs WHERE status='running' AND lease_until<=? LIMIT 1",
+                (time.time(),),
+            )
+        if row is not None:
+            async with self._db(True) as db:
+                await self._recover(db, time.time())
+
     async def recover_expired(self):
         async with self._db(True) as db:
             await self._recover(db, time.time())
 
     async def run(self, run_id, buyer_id, session_id=None):
-        async with self._db(True) as db:
-            await self._recover(db, time.time())
+        await self._recover_if_needed()
+        async with self._db() as db:
             return self._run(self._owned(await self._one(db, "SELECT * FROM agui_runs WHERE run_id=?", (run_id,)), buyer_id, session_id))
 
     async def events(self, run_id, buyer_id, after=0, limit=200):
-        async with self._db(True) as db:
-            await self._recover(db, time.time())
+        await self._recover_if_needed()
+        async with self._db() as db:
             row = self._owned(await self._one(db, "SELECT * FROM agui_runs WHERE run_id=?", (run_id,)), buyer_id)
             if after < 0 or after > row["last_seq"]:
                 raise JournalConflict("事件游标超出该运行范围")
@@ -290,33 +316,43 @@ class AGUIJournal:
             await self._append(db, row, events)
 
     async def sessions(self, buyer_id):
-        async with self._db(True) as db:
-            await self._recover(db, time.time())
+        await self._recover_if_needed()
+        async with self._db() as db:
             # 这里只返回轻量目录，不能静默隐藏第 101 个及更早的会话。
             async with db.execute("SELECT session_id,title,updated_at,last_run_id FROM agui_sessions WHERE buyer_id=? ORDER BY updated_at DESC", (buyer_id,)) as cursor:
                 return [{"id": row["session_id"], "title": row["title"], "updatedAt": int(row["updated_at"] * 1000), "runId": row["last_run_id"], "source": "server"} for row in await cursor.fetchall()]
 
+    @staticmethod
+    def _merge_session_history(rows, last_run_id):
+        """纯计算：按持久顺序合并各 run 投影的消息与商品历史（D5：可安全 offload）。"""
+        # sessions.messages_json 是下一轮使用的滑动窗口，不是页面完整历史。
+        # 旧版本已保留每轮最终投影；按持久顺序合并即可恢复，无需重写原始数据。
+        messages, product_history = {}, []
+        for saved in rows:
+            projection = json.loads(saved["projection_json"])
+            for message in projection["messages"]:
+                messages[message["id"]] = message
+            products = projection["state"].get("products", [])
+            if products and saved["run_id"] != last_run_id:
+                product_history.append({"runId": saved["run_id"], "products": products,
+                                        "updatedAt": int(saved["updated_at"] * 1000)})
+        return messages, product_history
+
     async def session(self, session_id, buyer_id):
-        async with self._db(True) as db:
-            await self._recover(db, time.time())
+        await self._recover_if_needed()
+        async with self._db() as db:
             row = self._owned(await self._one(db, "SELECT * FROM agui_sessions WHERE session_id=?", (session_id,)), buyer_id)
             run = self._run(await self._one(db, "SELECT * FROM agui_runs WHERE run_id=?", (row["last_run_id"],)))
-            # sessions.messages_json 是下一轮使用的滑动窗口，不是页面完整历史。
-            # 旧版本已保留每轮最终投影；按持久顺序合并即可恢复，无需重写原始数据。
-            messages, product_history = {}, []
             async with db.execute(
                 "SELECT run_id,projection_json,updated_at FROM agui_runs "
                 "WHERE session_id=? AND buyer_id=? ORDER BY created_at,rowid",
                 (session_id, buyer_id),
             ) as cursor:
-                async for saved in cursor:
-                    projection = json.loads(saved["projection_json"])
-                    for message in projection["messages"]:
-                        messages[message["id"]] = message
-                    products = projection["state"].get("products", [])
-                    if products and saved["run_id"] != row["last_run_id"]:
-                        product_history.append({"runId": saved["run_id"], "products": products,
-                                                "updatedAt": int(saved["updated_at"] * 1000)})
+                rows = await cursor.fetchall()
+            # 大会话的投影合并是纯 CPU 的 JSON 解析循环，离开事件循环执行（D5）。
+            messages, product_history = await asyncio.to_thread(
+                self._merge_session_history, rows, row["last_run_id"],
+            )
             # 只回传最近 80 条事件的安全元数据，不暴露工具参数、结果或推理原文。
             async with db.execute(
                 "SELECT r.run_id,e.seq,json_extract(e.event_json,'$.type') AS type,"
@@ -332,3 +368,55 @@ class AGUIJournal:
             return {"id": session_id, "title": row["title"], "messages": list(messages.values()),
                     "productHistory": product_history, "events": events[::-1],
                     "state": json.loads(row["state_json"]), "run": run, "updatedAt": int(row["updated_at"] * 1000)}
+
+    def _archive_path(self) -> Path:
+        return self.path.parent / (self.path.name + ".archive")
+
+    async def archive_stale_events(self, retention_days: int) -> dict:
+        """D3 事件保留策略：空闲超期会话的**非 last_run** 事件移入归档库后删除。
+
+        runs 投影与 session 行保留——历史恢复读投影不读事件，不受影响；
+        已归档 run 的 events() 回放返回空（游标与状态不变）。幂等可重跑。
+        retention_days <= 0 表示关闭（直接返回零报告）。
+        """
+        report = {"archived_runs": 0, "archived_events": 0}
+        if retention_days <= 0:
+            return report
+        cutoff = time.time() - retention_days * 86400
+        async with self._db() as db:
+            async with db.execute(
+                "SELECT r.run_id FROM agui_runs r JOIN agui_sessions s "
+                "ON s.session_id = r.session_id AND s.last_run_id != r.run_id "
+                "WHERE s.updated_at < ? AND r.events_archived = 0",
+                (cutoff,),
+            ) as cursor:
+                stale = [row["run_id"] for row in await cursor.fetchall()]
+        if not stale:
+            return report
+        self._archive_path().parent.mkdir(parents=True, exist_ok=True)
+        async with aiosqlite.connect(self._archive_path(), timeout=10) as archive:
+            await archive.execute(
+                "CREATE TABLE IF NOT EXISTS agui_events ("
+                "run_id TEXT NOT NULL, seq INTEGER NOT NULL, event_json TEXT NOT NULL, "
+                "PRIMARY KEY(run_id,seq))"
+            )
+            await archive.commit()
+            for run_id in stale:
+                async with self._db() as db:
+                    async with db.execute(
+                        "SELECT seq, event_json FROM agui_events WHERE run_id=? ORDER BY seq",
+                        (run_id,),
+                    ) as cursor:
+                        rows = await cursor.fetchall()
+                if rows:
+                    await archive.executemany(
+                        "INSERT OR REPLACE INTO agui_events VALUES(?,?,?)",
+                        [(run_id, row[0], row[1]) for row in rows],
+                    )
+                    await archive.commit()
+                async with self._db(True) as db:
+                    await db.execute("UPDATE agui_runs SET events_archived=1 WHERE run_id=?", (run_id,))
+                    await db.execute("DELETE FROM agui_events WHERE run_id=?", (run_id,))
+                report["archived_runs"] += 1
+                report["archived_events"] += len(rows)
+        return report

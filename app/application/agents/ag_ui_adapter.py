@@ -28,6 +28,7 @@ from ag_ui.core import (
 
 from app.infrastructure.eventbus import TradeEvent
 from app.application.agents.product_candidate_projection import ProductCandidateProjection
+from app.infrastructure.security.output_guard import StreamingMasker
 
 _TOOL_LABELS = {
     "product_search_tool": "检索商品",
@@ -66,6 +67,7 @@ class AGUIRunAdapter:
             self.state.update({k:copy.deepcopy(authoritative_state[k]) for k in ("products","searchCompleted","skillUsages","shoppingForm") if k in authoritative_state})
         self.error: str | None = None
         self._text_open: set[str] = set()
+        self._text_maskers: dict[str, StreamingMasker] = {}
         self._tool_open: set[str] = set()
         self._tool_names: dict[str, str] = {}
         self._tool_output: dict[str, list[str]] = {}
@@ -100,15 +102,26 @@ class AGUIRunAdapter:
         elif kind == "TEXT_BLOCK_START":
             message_id = self._id("text", event.block_id)
             self._text_open.add(message_id)
+            self._text_maskers[message_id] = StreamingMasker()
             self.emit(TextMessageStartEvent(message_id=message_id, role="assistant"))
         elif kind == "TEXT_BLOCK_DELTA":
             if event.delta:
-                self.emit(TextMessageContentEvent(
-                    message_id=self._id("text", event.block_id), delta=event.delta,
-                ))
+                # 增量与 final text 同源脱敏：TEXT_MESSAGE_CONTENT 直接进 journal 回放，
+                # 未经掩码的敏感内容会实时到达前端并在刷新后仍可回放。
+                masker = self._text_maskers.setdefault(self._id("text", event.block_id), StreamingMasker())
+                safe_delta = masker.push(event.delta)
+                if safe_delta:
+                    self.emit(TextMessageContentEvent(
+                        message_id=self._id("text", event.block_id), delta=safe_delta,
+                    ))
         elif kind == "TEXT_BLOCK_END":
             message_id = self._id("text", event.block_id)
             self._text_open.discard(message_id)
+            masker = self._text_maskers.pop(message_id, None)
+            if masker is not None:
+                tail = masker.flush()
+                if tail:
+                    self.emit(TextMessageContentEvent(message_id=message_id, delta=tail))
             self.emit(TextMessageEndEvent(message_id=message_id))
         elif kind == "TOOL_CALL_START":
             call_id = self._id("tool", event.tool_call_id)
@@ -276,6 +289,11 @@ class AGUIRunAdapter:
     def _close_streams(self) -> None:
         # 中断/错误时关闭已打开的消息和参数流，客户端不会残留永久 loading。
         for message_id in sorted(self._text_open):
+            masker = self._text_maskers.pop(message_id, None)
+            if masker is not None:
+                tail = masker.flush()
+                if tail:
+                    self.emit(TextMessageContentEvent(message_id=message_id, delta=tail))
             self.emit(TextMessageEndEvent(message_id=message_id))
         self._text_open.clear()
         for call_id in sorted(self._tool_open):

@@ -216,7 +216,11 @@ class ContextAwareAgent(Agent):
             return await super()._split_context_for_compression(to_reserved_tokens, tools)
         head, tail = compression_parts(self)
         # 摘要请求也采用同次输入内共享，避免业务计数已去重而摘要仍灌入原始重复正文。
-        return share_identical_products(head, compact_rules=getattr(self, '_smartlect_compact_rules', False)), copy.deepcopy(tail)
+        # 共享去重与 deepcopy 是纯 CPU 重活，离开事件循环执行（D5）。
+        rules = getattr(self, '_smartlect_compact_rules', False)
+        return await asyncio.to_thread(
+            lambda: (share_identical_products(head, compact_rules=rules), copy.deepcopy(tail)),
+        )
 
 
 def requirement_statements(source):
@@ -366,21 +370,29 @@ class LayeredContextMiddleware(MiddlewareBase):
         if available <= 0: raise ContextCapacityError('模型窗口不足以保留回复和安全空间')
         return min(self.target_tokens, available), available
 
-    async def count(self, agent, messages=None, tools=None):
-        if messages is None:
-            prepared = await agent._prepare_model_input()
-            messages, tools = prepared['messages'], prepared.get('tools')
-        raw = await agent.model.count_tokens(messages=share_identical_products(messages, compact_rules=self.compact_result_rules), tools=tools)
+    def _estimate(self, agent, raw: int) -> int:
+        """校准系数换算：raw 计数 → 安全上界估算（与旧 count() 数学一致）。"""
         calibration = governance(agent).get('calibration', {})
         identity = str(agent.model.model) + '|' + str(getattr(getattr(agent.model, 'client', None), 'base_url', ''))
         factor = calibration.get('factor', 1.5) if calibration.get('identity') == identity else 1.5
         return math.ceil(raw * max(1.5, factor))
 
+    async def count(self, agent, messages=None, tools=None):
+        if messages is None:
+            prepared = await agent._prepare_model_input()
+            messages, tools = prepared['messages'], prepared.get('tools')
+        deduped = await asyncio.to_thread(share_identical_products, messages, compact_rules=self.compact_result_rules)
+        raw = await agent.model.count_tokens(messages=deduped, tools=tools)
+        return self._estimate(agent, raw)
+
     async def on_model_call(self, agent, input_kwargs, next_handler):
         # 只记录本次实际送入模型的工具结果，成功响应结束后才标记已读取。
+        # 已标记过已读（consumed）的块跳过全文哈希：重复序列化大输出是热路径纯开销。
+        consumed_known = governance(agent).get('consumed', {})
         messages = input_kwargs.get('messages', [])
-        candidates = [(b.id, hashlib.sha256(str(b.output).encode()).hexdigest()) for _, b in blocks(messages)]
-        messages = share_identical_products(messages, compact_rules=self.compact_result_rules)
+        candidates = [(b.id, hashlib.sha256(str(b.output).encode()).hexdigest())
+                      for _, b in blocks(messages) if b.id not in consumed_known]
+        messages = await asyncio.to_thread(share_identical_products, messages, compact_rules=self.compact_result_rules)
         from app.infrastructure.visible_evidence import visible_answer_request, explicit_current_product_choice
         focused = await visible_answer_request(agent, messages, self.store)
         overrides = {}
@@ -396,10 +408,12 @@ class LayeredContextMiddleware(MiddlewareBase):
                 record_context_diagnostic({'type': 'fresh_product', 'reason': 'explicit_current_recheck'})
         actual_tools = overrides.get('tools', input_kwargs.get('tools'))
         target, available = self.limits(agent)
-        estimated = await self.count(agent, messages, actual_tools)
+        # 原实现这里会再走一次 count()：内部重复 deepcopy + 第二次 count_tokens。
+        # 现在共享上面那份去重结果，只做一次真实计数，估算用校准系数换算。
+        raw = await agent.model.count_tokens(messages=messages, tools=actual_tools)
+        estimated = self._estimate(agent, raw)
         if estimated > available:
             raise ContextCapacityError('当前请求与受保护信息超过安全窗口，请缩小本次比较范围；历史已保留')
-        raw = await agent.model.count_tokens(messages=messages, tools=actual_tools)
         model = input_kwargs.get('current_model', agent.model)
         identity = str(model.model) + '|' + str(getattr(getattr(model, 'client', None), 'base_url', ''))
         started = time.monotonic()
@@ -542,7 +556,7 @@ class LayeredContextMiddleware(MiddlewareBase):
             if should_summary and self.summary_enabled:
                 ctx = ShoppingContext.current()
                 if ctx is None: raise ValueError('压缩缺少买家上下文')
-                original = copy.deepcopy(head)
+                original = await asyncio.to_thread(copy.deepcopy, head)
                 raw = [m.model_dump(mode='json') for m in original]
                 source_ref = await self.store.save(ctx.buyer_id,ctx.shopping_session_id,'context_archive',{'messages':raw,'previous_summary':agent.state.summary})
                 source_text = json.dumps(raw, ensure_ascii=False) + (agent.state.summary or '')

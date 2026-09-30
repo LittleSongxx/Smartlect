@@ -108,6 +108,9 @@ class Settings:
     drift_detect_enabled: bool = False  # 需额外轻量 LLM 调用，默认关
     token_budget_total: int = 0  # 0 = 不启用请求级 Token 预算与四档降级
     breaker_shared: bool = False  # 熔断状态跨实例共享（需 REDIS_URL）
+    tool_probe_timeout_seconds: float = 300.0  # 半开探测在飞上限，应大于最慢工具超时
+    session_agent_cache_limit: int = 128  # 内存中缓存的 Agent 实例上限（LRU），应大于并发会话数
+    event_queue_maxsize: int = 4096  # 事件总线单订阅者队列上限，溢出时丢弃最旧 token.delta
     # 长期记忆：偏好注入策略
     preference_relevance_enabled: bool = False  # 向量相关性筛选，每轮多一次 embedding，默认关
     preference_top_k: int = 5  # like 注入上限；dislike（黑名单）不受此限
@@ -132,6 +135,9 @@ class Settings:
     reranker_api_key: str = field(default="", repr=False)
     reranker_protocol: str = "flat"  # flat / dashscope
     reranker_timeout_seconds: float = 15.0
+    # ---- 运行时治理（2026-09-30 可靠性批次）----
+    journal_retention_days: int = 0  # AG-UI 事件日志保留天数；0 = 不归档
+    run_max_seconds: int = 0  # 单次运行端到端时长上限（秒）；0 = 不启用
     hybrid_recall_enabled: bool = False  # 冻结评测证明收益后再启用实验召回
     hybrid_lexical_weight: float = 1.0
     hybrid_vector_weight: float = 1.0
@@ -168,6 +174,8 @@ def load_settings() -> Settings:
         reranker_api_key=os.getenv("RERANKER_API_KEY") or llm_api_key,
         reranker_protocol=os.getenv("RERANKER_PROTOCOL", "flat"),
         reranker_timeout_seconds=float(os.getenv("RERANKER_TIMEOUT_SECONDS", "15")),
+        journal_retention_days=int(os.getenv("JOURNAL_RETENTION_DAYS", "0")),
+        run_max_seconds=int(os.getenv("RUN_MAX_SECONDS", "0")),
         hybrid_recall_enabled=os.getenv("HYBRID_RECALL_ENABLED", "0") in ("1", "true", "True"),
         hybrid_lexical_weight=float(os.getenv("HYBRID_LEXICAL_WEIGHT", "1")),
         hybrid_vector_weight=float(os.getenv("HYBRID_VECTOR_WEIGHT", "1")),
@@ -225,6 +233,9 @@ def load_settings() -> Settings:
         drift_detect_enabled=os.getenv("DRIFT_DETECT_ENABLED", "0") not in ("0", "false", "False"),
         token_budget_total=int(os.getenv("TOKEN_BUDGET_TOTAL", "0")),
         breaker_shared=os.getenv("BREAKER_SHARED", "0") not in ("0", "false", "False"),
+        tool_probe_timeout_seconds=float(os.getenv("TOOL_PROBE_TIMEOUT_SECONDS", "300")),
+        session_agent_cache_limit=int(os.getenv("SESSION_AGENT_CACHE_LIMIT", "128")),
+        event_queue_maxsize=int(os.getenv("EVENT_QUEUE_MAXSIZE", "4096")),
         preference_relevance_enabled=os.getenv("PREFERENCE_RELEVANCE_ENABLED", "0")
         not in ("0", "false", "False"),
         preference_top_k=int(os.getenv("PREFERENCE_TOP_K", "5")),

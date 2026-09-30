@@ -175,7 +175,7 @@ async def build_container() -> Container:
 
     # ---- Infrastructure ----
     product_repo = InMemoryProductRepository()
-    bus = TradeEventBus()
+    bus = TradeEventBus(queue_maxsize=settings.event_queue_maxsize)
     vector_index = QdrantProductIndex(settings)
 
     cache = RedisCache(settings.redis_url)
@@ -237,12 +237,14 @@ async def build_container() -> Container:
             cache,
             failure_threshold=settings.tool_failure_threshold,
             reset_seconds=settings.tool_circuit_reset_seconds,
+            probe_timeout_seconds=settings.tool_probe_timeout_seconds,
         )
         logger.info("熔断状态：Redis 跨实例共享")
     else:
         circuit_registry = CircuitBreakerRegistry(
             failure_threshold=settings.tool_failure_threshold,
             reset_seconds=settings.tool_circuit_reset_seconds,
+            probe_timeout_seconds=settings.tool_probe_timeout_seconds,
         )
     # 全进程唯一的网关配额闸门：三个 Agent 工厂共用，否则各限一份等于没限
     throttle = (
@@ -267,12 +269,14 @@ async def build_container() -> Container:
     reranker = create_reranker(settings, throttle=throttle, bus=bus)
 
     # ---- Application ----
+    from app.infrastructure.retrieval.bm25 import BM25IndexCache
     catalog_search = CatalogSearchUseCase(
         product_repo, embedder=embedder, vector_index=vector_index, reranker=reranker,
         hybrid_enabled=settings.hybrid_recall_enabled,
         hybrid_lexical_weight=settings.hybrid_lexical_weight,
         hybrid_vector_weight=settings.hybrid_vector_weight,
         recall_candidates=settings.recall_candidates,
+        lexical_index=BM25IndexCache(),
     )
     place_order = PlaceOrderUseCase(confirmations)
     query_order = QueryOrderUseCase(trade_store)
@@ -303,7 +307,7 @@ async def build_container() -> Container:
         buyer_skill_store=BuyerSkillStore(settings.data_dir / "buyer_skills.db"),
         shopping_form_store=ShoppingFormStore(settings.data_dir / "shopping_forms.db"),
     )
-    sessions = SessionRegistry(main_factory, session_store, enforce_owner=settings.session_owner_binding, prompt_registry=prompt_registry)
+    sessions = SessionRegistry(main_factory, session_store, enforce_owner=settings.session_owner_binding, prompt_registry=prompt_registry, agent_cache_limit=settings.session_agent_cache_limit)
     orchestrator = MainAgentOrchestrator(
         sessions, bus, preference_store, conversation_store, semantic_cache,
         output_guard_enabled=settings.output_guard_enabled,
@@ -338,7 +342,11 @@ async def build_container() -> Container:
         trade_store=trade_store,
         trade_db_engine=trade_db_engine,
         runtime={"app_source_sha256": source_fingerprint},
-        ag_ui_runtime=AGUIRuntime(AGUIJournal(settings.data_dir / "ag_ui_runs.db"), orchestrator, confirmations),
+        ag_ui_runtime=AGUIRuntime(
+            AGUIJournal(settings.data_dir / "ag_ui_runs.db"), orchestrator, confirmations,
+            retention_days=settings.journal_retention_days,
+            run_max_seconds=settings.run_max_seconds,
+        ),
         session_store=session_store,
         identity_policy=identity_policy,
         prompt_registry=prompt_registry,

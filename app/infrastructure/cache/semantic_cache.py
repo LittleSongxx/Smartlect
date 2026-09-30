@@ -38,14 +38,30 @@ _TTL_SECONDS = 24 * 3600
 # 单个 buyer 桶内保留的最近条数，避免键无限膨胀
 _BUCKET_LIMIT = 30
 
-# 写操作/上下文依赖意图，命中任一则整条不进缓存也不查缓存
+# 写操作/上下文依赖意图，命中任一则整条不进缓存也不查缓存。
+# 目录已多语言化（27 个平台×语种组合），中文之外补英文/日文常用模式：
+# 过滤口径不对称——误拦只损失命中率（安全方向），漏拦会复用过期确认卡/订单答复。
+# 其余语种暂未覆盖（与理解层中文优先的现状一致），随多语言缺口登记。
 _UNSAFE_PATTERNS = (
+    # 中文：写操作
     r"下单", r"买了", r"购买", r"付款", r"支付",
     r"取消", r"退单", r"退款", r"改地址",
+    # 中文：上下文依赖指代
     r"刚才", r"刚刚", r"上面", r"前面", r"那个", r"这个", r"它",
-    r"我的订单", r"订单号", r"GBX-",
+    r"我的订单", r"订单号",
+    # 英文：写操作（order 兼作名词，误拦可接受）
+    r"\b(?:buy|buys|buying|bought|purchase|purchases|purchased|checkout|pay|pays|paying|paid|"
+    r"cancel|cancels|canceled|cancelled|refund|refunds|return|returns|exchange|order)\b",
+    # 英文：上下文依赖指代
+    r"\b(?:just now|that\s+(?:one|item|product)|this\s+(?:one|item|product)|"
+    r"the\s+(?:one|item|product)\s+(?:above|before|earlier)|above|earlier)\b",
+    r"\bmy\s+order\b", r"\border\s+(?:number|no\.?|#)",
+    # 日文：写操作与指代
+    r"注文", r"購入", r"キャンセル", r"返金", r"払[いー]?戻し", r"さっき", r"それ", r"あれ", r"これ",
+    # 语言无关：订单号形态
+    r"GBX-",
 )
-_UNSAFE_RE = re.compile("|".join(_UNSAFE_PATTERNS))
+_UNSAFE_RE = re.compile("|".join(_UNSAFE_PATTERNS), re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -67,8 +83,12 @@ def _cosine(left: list[float], right: list[float]) -> float:
 
 
 def _normalize(query: str) -> str:
-    """归一化问句：压空白 + 去尾部标点，让"多少钱?"与"多少钱"共享缓存。"""
-    collapsed = re.sub(r"\s+", "", query.strip())
+    """归一化问句：空白压成单个空格 + 去尾部标点，让"多少钱?"与"多少钱"共享缓存。
+
+    保留词间空格：英文在无空格文本上做 embedding 会明显掉语义匹配质量；
+    中文本身不含空格，归一化结果与旧实现一致（旧英文缓存条目 24h TTL 内自然失效）。
+    """
+    collapsed = re.sub(r"\s+", " ", query.strip())
     return collapsed.rstrip("？?。.!！~")
 
 
