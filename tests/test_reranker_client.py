@@ -40,6 +40,10 @@ async def test_full_reranker_endpoint_is_used_with_gateway_authorization(
             return FakeResponse()
 
     monkeypatch.setenv("LLM_API_KEY", "test-gateway-key")
+    # 隔离本机 .env 的独立重排凭据与协议：本测试固定验证 LLM key 回退与 flat 请求体，
+    # 失败时的断言差异也不应把真实密钥打印进 pytest 输出。
+    monkeypatch.delenv("RERANKER_API_KEY", raising=False)
+    monkeypatch.delenv("RERANKER_PROTOCOL", raising=False)
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv(
         "RERANKER_BASE_URL",
@@ -195,6 +199,8 @@ async def test_identical_documents_are_scored_once_but_all_positions_restored(
                 request=httpx.Request("POST", url),
             )
 
+    monkeypatch.delenv("RERANKER_API_KEY", raising=False)
+    monkeypatch.delenv("RERANKER_PROTOCOL", raising=False)
     monkeypatch.setattr(http_reranker.httpx, "AsyncClient", lambda **_: Client())
     scores = await HttpReranker(load_settings()).rerank(
         "背包", ["黑色背包", "水杯", "黑色背包"]

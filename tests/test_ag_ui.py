@@ -169,7 +169,8 @@ async def test_empty_search_clears_client_products():
     assert snapshots[-1]["products"] == [] and snapshots[-1]["searchCompleted"] is True
 
 
-async def test_ag_ui_bypasses_text_only_semantic_cache_but_legacy_keeps_it():
+async def test_ag_ui_cache_hit_produces_complete_minimal_event_run():
+    """D2：AG-UI 主路径启用语义缓存；命中时零模型调用且产生完整可回放事件流。"""
     orchestrator, agent, _ = make_orchestrator()
     cache = SimpleNamespace(
         lookup=AsyncMock(return_value=SimpleNamespace(reply="缓存推荐文本", similarity=1.0, matched_query="旅行三件套")),
@@ -177,14 +178,21 @@ async def test_ag_ui_bypasses_text_only_semantic_cache_but_legacy_keeps_it():
     )
     orchestrator._semantic_cache = cache
     events = await collect(orchestrator)
+    types = [event["type"] for event in events]
+    assert agent.calls == 0, "缓存命中不应触发模型"
+    assert types[0] == "RUN_STARTED"
+    assert types[-1] == "RUN_FINISHED"
+    assert any(event["type"] == "CUSTOM" and event.get("name") == "cache.hit" for event in events), \
+        "命中过程必须对前端可见（cache.hit 事件），不能静默复用"
+    final_messages = next(event["messages"] for event in events if event["type"] == "MESSAGES_SNAPSHOT")
+    assert final_messages[-1]["content"] == "缓存推荐文本"
+    cache.lookup.assert_awaited_once()
+    cache.remember.assert_not_awaited()
+    # 未命中回退：缓存不可用时主链路照常
+    cache.lookup = AsyncMock(return_value=None)
+    events = await collect(orchestrator)
     assert agent.calls == 1
     assert any(event["type"] == "TOOL_CALL_RESULT" for event in events)
-    cache.lookup.assert_not_awaited()
-    cache.remember.assert_not_awaited()
-    body = RunAgentInput.model_validate(request_data())
-    result = await orchestrator.handle_intent(parse_intent(body))
-    assert result.final_text == "缓存推荐文本" and agent.calls == 1
-    cache.lookup.assert_awaited_once()
 
 
 @pytest.mark.parametrize("reason", list(ReplyFinishedReason))
@@ -311,7 +319,7 @@ async def test_http_disconnect_cancels_agent_and_persists_interruption(swallow_c
     assert agent.in_flight == 0 and sessions.persisted == 1
     saved_turns = [call.args[0] for call in conversations.append_turn.await_args_list]
     assert any(turn.role == "agent" and turn.content == "[cancelled] 本轮执行已中断" for turn in saved_turns)
-    assert not orchestrator._session_locks["session-test"].locked()
+    assert "session-test" not in orchestrator._session_locks, "turn 结束后锁表项应被回收"
     assert not any(b"RUN_FINISHED" in message.get("body", b"") for message in responses)
 
 @pytest.mark.parametrize('kind',['capability','contract'])

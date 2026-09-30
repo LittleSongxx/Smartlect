@@ -86,12 +86,18 @@ async def eventually(predicate, timeout=5):
             return value
         if time.monotonic() >= deadline:
             raise AssertionError("等待真实 Redis 状态变化超时")
-        await asyncio.sleep(0.01)
+        # 50ms 轮询已足够灵敏；10ms 高频轮询会在慢环境挤占事件循环，
+        # 挤掉并发 consumer 的心跳续期窗口，制造与本断言无关的租约取消。
+        await asyncio.sleep(0.05)
 
 
 def consume(queue, handler, stopping, *, consumer="test-worker", concurrency=1, **kwargs):
+    # 时序参数为语义测试服务（幂等/串行/并发上限），不是亚秒级租约竞争压力测试：
+    # 慢环境（WSL2 的 Unix socket 往返 + 满载事件循环）下 30ms 心跳赶不上 600ms 租约，
+    # 会让任务在完成前被反复取消重投直至死信，与本组断言的目标无关。
+    # 保持关系不变：心跳间隔 < reclaim_idle < lease（心跳先续上，租约兜底）。
     return asyncio.create_task(queue.consume(consumer, handler, stopping.is_set, block_ms=10,
-        concurrency=concurrency, reclaim_idle_ms=120, lease_ms=600, heartbeat_interval_ms=30, **kwargs),
+        concurrency=concurrency, reclaim_idle_ms=800, lease_ms=4000, heartbeat_interval_ms=200, **kwargs),
         context=Context())
 
 
@@ -294,7 +300,9 @@ async def test_api_session_lease_and_worker_share_exclusion(real_redis):
         entered.set()
         return "ok"
     stopping = asyncio.Event()
-    async with queue.session_lease("session-1", lease_ms=300) as lease:
+    # 300ms 租约在慢环境（WSL2 冷连接/满载循环）下心跳余量不足，会被自保护取消；
+    # 本测试验证的是"API 持租约期间 worker 不进入、释放后进入"，3s 租约不改变语义。
+    async with queue.session_lease("session-1", lease_ms=3000) as lease:
         assert lease.is_valid()
         async with queue.session_lease("session-1") as reused:
             assert reused is lease

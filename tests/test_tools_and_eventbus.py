@@ -240,3 +240,39 @@ class TestToolsDirectInvoke:
             assert bad.content[0].text.startswith("[error]")
         finally:
             ShoppingContext.reset(token)
+
+
+class TestBoundedSubscriberQueue:
+    async def test_overflow_drops_oldest_token_delta_and_keeps_order(self):
+        """慢消费者下溢出丢最旧 token.delta，其余事件保序，final.result 不丢。"""
+        from app.infrastructure.eventbus import TradeEventBus
+
+        bus = TradeEventBus(queue_maxsize=4)
+        queue = bus.subscribe("s-overflow")
+        for index in range(4):
+            bus.publish("s-overflow", "token.delta", {"token": f"d{index}"})
+        # 队列已满：再发一条增量应挤掉最旧的 d0，而不是阻塞或丢新事件
+        bus.publish("s-overflow", "token.delta", {"token": "d4"})
+        drained = [queue.get_nowait() for _ in range(4)]
+        assert [event.payload["token"] for event in drained] == ["d1", "d2", "d3", "d4"]
+
+        # 关键事件混在增量之间：溢出时优先丢增量，final.result 不丢
+        for index in range(5, 9):
+            bus.publish("s-overflow", "token.delta", {"token": f"d{index}"})
+        bus.publish("s-overflow", "final.result", {"text": "final"})
+        drained = [queue.get_nowait() for _ in range(4)]
+        types = [event.type for event in drained]
+        assert types[-1] == "final.result", "溢出必须丢增量而非关键事件"
+        assert types.count("token.delta") == 3
+
+    async def test_overflow_without_droppable_delta_drops_new_delta_first(self):
+        from app.infrastructure.eventbus import TradeEventBus
+
+        bus = TradeEventBus(queue_maxsize=2)
+        queue = bus.subscribe("s-critical")
+        bus.publish("s-critical", "tool.invoke", {"tool": "a"})
+        bus.publish("s-critical", "tool.result", {"tool": "a"})
+        # 队列满且无可丢增量：优先丢新来的 token.delta，保住已在场的工具事件
+        bus.publish("s-critical", "token.delta", {"token": "x"})
+        drained = [queue.get_nowait() for _ in range(2)]
+        assert [event.type for event in drained] == ["tool.invoke", "tool.result"]

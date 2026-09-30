@@ -251,6 +251,46 @@ class TestToolResilience:
         assert (await _call(healthy)).state == ToolResultState.SUCCESS
         assert registry.status("recover_tool") == "closed"
 
+    async def test_half_open_admits_single_probe(self):
+        """半开期间同一时刻只放一个探测：其余调用拒绝，防止下游仍宕机时一起等满超时。"""
+        registry = CircuitBreakerRegistry(failure_threshold=1, reset_seconds=10, probe_timeout_seconds=300)
+        registry.record_failure("probe_once", now=100.0)
+        assert registry.allow("probe_once", now=100.5) is False, "冷却期内不放行"
+        assert registry.allow("probe_once", now=111.0) is True, "第一个探测放行"
+        assert registry.allow("probe_once", now=112.0) is False, "探测在飞期间其余调用拒绝"
+        # 探测失败 → 重新打开且冷却计时重置
+        registry.record_failure("probe_once", now=113.0)
+        assert registry.allow("probe_once", now=113.5) is False
+
+    async def test_probe_deadline_re_arms_after_stuck_probe(self):
+        """探测调用结果未知且未回报时，超过 probe 超时后允许新探测，避免标志卡死熔断。"""
+        registry = CircuitBreakerRegistry(failure_threshold=1, reset_seconds=10, probe_timeout_seconds=100)
+        registry.record_failure("stuck", now=100.0)
+        assert registry.allow("stuck", now=111.0) is True
+        assert registry.allow("stuck", now=150.0) is False, "探测超时窗口内仍拒绝"
+        assert registry.allow("stuck", now=211.0) is True, "超过 probe 超时后重新放探测"
+
+    async def test_abandoned_probe_releases_slot_without_reopening(self):
+        """取消的探测只释放名额：不闭合熔断，也不把冷却期重新计时。"""
+        registry = CircuitBreakerRegistry(failure_threshold=1, reset_seconds=10, probe_timeout_seconds=300)
+        middleware = ToolResilienceMiddleware(registry, timeouts={"blocking_tool": 30.0})
+        await _call(FunctionTool(_ok_tool_factory("blocking_tool", fail=True), middlewares=[middleware]))
+        assert registry.status("blocking_tool") == "open"
+
+        # 等效冷却期满：把打开时刻回拨，避免真实等待
+        state = registry._state("blocking_tool")
+        state.opened_at -= 20.0
+
+        tool = FunctionTool(_ok_tool_factory("blocking_tool", delay=5.0), middlewares=[middleware])
+        task = asyncio.create_task(_call(tool))
+        await asyncio.sleep(0.05)  # 让探测真正进入工具执行
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert registry.status("blocking_tool") == "open", "取消不应闭合熔断"
+        assert registry.allow("blocking_tool") is True, "探测名额已释放，可立即再探测"
+
     async def test_success_resets_failure_counter(self):
         registry = CircuitBreakerRegistry(failure_threshold=2, reset_seconds=60)
         middleware = ToolResilienceMiddleware(registry)

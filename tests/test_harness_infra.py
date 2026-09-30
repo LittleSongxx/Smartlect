@@ -19,7 +19,7 @@ from tests.test_phase4_queue import FakeStreamClient
 
 
 class FakeCache:
-    """最小 RedisCache 替身：只实现共享熔断用到的三个方法。"""
+    """最小 RedisCache 替身：只实现共享熔断用到的四个方法。"""
 
     def __init__(self, enabled: bool = True) -> None:
         self._enabled = enabled
@@ -34,6 +34,12 @@ class FakeCache:
 
     async def set_json(self, key: str, value, ttl_seconds: int) -> None:
         self.store[key] = value
+
+    async def set_if_absent(self, key: str, value: str, ttl_seconds: int) -> bool:
+        if key in self.store:
+            return False
+        self.store[key] = value
+        return True
 
     async def delete(self, key: str) -> None:
         self.store.pop(key, None)
@@ -85,6 +91,32 @@ class TestSharedCircuitBreaker:
         await reg.record_failure_async("web_search_tool", now=1012.0)
         assert await reg.status_async("web_search_tool") == "open"
         assert await reg.allow_async("web_search_tool", now=1015.0) is False
+
+    async def test_half_open_probe_is_single_across_replicas(self):
+        """冷却期满后，跨副本同一时刻只有一个探测被放行（SET NX 探测锁裁决）。"""
+        cache = FakeCache()
+        a = SharedCircuitBreakerRegistry(cache, failure_threshold=1, reset_seconds=10)
+        b = SharedCircuitBreakerRegistry(cache, failure_threshold=1, reset_seconds=10)
+        await a.record_failure_async("shared_tool", now=1000.0)
+
+        assert await a.allow_async("shared_tool", now=1011.0) is True, "抢到探测锁的副本放行"
+        assert await b.allow_async("shared_tool", now=1012.0) is False, "其余副本在探测在飞期间拒绝"
+
+        # 探测副本回报成功后，探测锁与状态一起释放
+        await a.record_success_async("shared_tool")
+        assert await b.allow_async("shared_tool", now=1013.0) is True
+
+    async def test_abandoned_probe_releases_shared_probe_lock(self):
+        """探测调用被取消：释放跨副本探测锁，且不改变熔断开合。"""
+        cache = FakeCache()
+        a = SharedCircuitBreakerRegistry(cache, failure_threshold=1, reset_seconds=10)
+        b = SharedCircuitBreakerRegistry(cache, failure_threshold=1, reset_seconds=10)
+        await a.record_failure_async("cancelled_probe", now=1000.0)
+        assert await a.allow_async("cancelled_probe", now=1011.0) is True
+
+        await a.record_abandoned_async("cancelled_probe")
+        assert await a.status_async("cancelled_probe") == "open", "取消不应闭合熔断"
+        assert await b.allow_async("cancelled_probe", now=1011.5) is True, "探测锁已释放，其它副本可探测"
 
     async def test_falls_back_to_local_when_cache_disabled(self):
         reg = SharedCircuitBreakerRegistry(FakeCache(enabled=False), failure_threshold=1)

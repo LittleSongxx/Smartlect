@@ -219,3 +219,40 @@ async def test_parallel_exact_candidate_order_survives_persistence_and_restart(t
         assert 'P1003-S1' in json.dumps(payload)
     finally:
         ShoppingContext.reset(token)
+
+
+class TestSingleCountHotPath:
+    async def test_on_model_call_counts_tokens_exactly_once(self):
+        """B8：热路径原先两次 deepcopy + 两次 count_tokens，现各一次且估算等价。"""
+        from app.infrastructure.context_governance import LayeredContextMiddleware
+
+        class CountSpyModel:
+            model = "count-spy"
+            context_size = 128000
+            parameters = SimpleNamespace(max_tokens=None)
+
+            def __init__(self):
+                self.count_calls = 0
+
+            async def count_tokens(self, messages, tools=None):
+                self.count_calls += 1
+                return 10
+
+        spy = CountSpyModel()
+        agent = SimpleNamespace(
+            state=SimpleNamespace(middle_context={}, summary=None), model=spy,
+        )
+        middleware = LayeredContextMiddleware(store=None)
+        captured = {}
+
+        async def next_handler(messages, **overrides):
+            captured["estimated"] = middleware._estimate(agent, 10)
+            return SimpleNamespace(finished_reason="stop", usage=None)
+
+        messages = [UserMsg("buyer", "比较两个背包")]
+        response = await middleware.on_model_call(
+            agent, {"messages": messages, "tools": None}, next_handler,
+        )
+        assert spy.count_calls == 1, "单次模型调用只允许一次 count_tokens"
+        assert response.finished_reason == "stop"
+        assert captured["estimated"] == 15, "无校准记录时估算 = ceil(raw * 1.5)"

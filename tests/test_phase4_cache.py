@@ -130,6 +130,14 @@ class TestSemanticCacheSafety:
             "刚才那款多少钱",
             "订单号 GBX-000001 查一下",
             "这个能寄美国吗",
+            # 英文写意图（目录已多语言化，非中文写意图同样不能进缓存）
+            "Please place an order for the red backpack",
+            "I want to buy P1003",
+            "cancel my order",
+            "checkout with the blue one",
+            # 日文写意图
+            "このイヤホンを注文して",
+            "注文をキャンセルして",
         ],
     )
     async def test_write_and_context_dependent_queries_not_cacheable(self, query):
@@ -137,7 +145,14 @@ class TestSemanticCacheSafety:
 
     @pytest.mark.parametrize(
         "query",
-        ["300 元以内的露营灯推荐", "降噪耳机怎么挑", "美国免税额度是多少"],
+        [
+            "300 元以内的露营灯推荐",
+            "降噪耳机怎么挑",
+            "美国免税额度是多少",
+            # 英文只读问句仍可缓存
+            "lightweight backpack under 50 dollars",
+            "how to choose noise cancelling earbuds",
+        ],
     )
     async def test_read_only_queries_are_cacheable(self, query):
         assert is_cacheable_query(query) is True
@@ -147,6 +162,21 @@ class TestSemanticCacheSafety:
         sem = SemanticCache(cache, CountingEmbedder(), threshold=0.9)
         await sem.remember("b1", "帮我下单这款露营灯", "已为你创建订单 GBX-000001", has_history=False)
         assert await sem.lookup("b1", "帮我下单这款露营灯", has_history=False) is None
+
+    async def test_english_order_intent_never_written_to_cache(self):
+        cache = InMemoryCache()
+        sem = SemanticCache(cache, CountingEmbedder(), threshold=0.9)
+        await sem.remember("b1", "place an order for the red backpack", "Confirmation prepared", has_history=False)
+        assert await sem.lookup("b1", "place an order for the red backpack", has_history=False) is None
+
+    async def test_normalize_preserves_word_boundaries(self):
+        """英文归一化保留词间空格：embedding 输入不能是无空格粘连文本。"""
+        from app.infrastructure.cache.semantic_cache import _normalize
+
+        assert _normalize("lightweight  backpack") == "lightweight backpack"
+        assert _normalize("  多少钱？\t\n ") == "多少钱"
+        # 中文无空格：与旧实现结果一致
+        assert _normalize("三百元以内的露营灯推荐") == "三百元以内的露营灯推荐"
 
 
 class TestSemanticCacheHit:

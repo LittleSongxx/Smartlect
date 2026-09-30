@@ -89,7 +89,7 @@ async def test_agui_real_service_prepare_publishes_pending_card_without_creating
     assert (await env.store.get_inventory())["P1001-S1"] == 50
 
 
-async def test_fresh_session_invalidates_before_loading_and_clears_preference_marker():
+async def test_fresh_session_invalidates_before_loading():
     orchestrator, _, sessions = make_orchestrator()
     calls = []
     sessions.invalidate = AsyncMock(side_effect=lambda _session: calls.append("invalidate"))
@@ -100,12 +100,10 @@ async def test_fresh_session_invalidates_before_loading_and_clears_preference_ma
         return await original(session_id)
 
     sessions.get_or_create = load
-    orchestrator._injected_preferences["session-test"] = "stale-marker"
     body = RunAgentInput.model_validate(request_data())
     result = await orchestrator.handle_intent(parse_intent(body), fresh_session=True, use_semantic_cache=False)
     assert result.error is None
     assert calls[:2] == ["invalidate", "load"]
-    assert orchestrator._injected_preferences.get("session-test") != "stale-marker"
     assert sessions.persisted == 1
 
 

@@ -128,13 +128,15 @@ async def test_restart_preserves_finished_run_without_reexecuting_model(tmp_path
 async def test_abandoned_run_becomes_durable_interrupted_terminal(tmp_path):
     path = tmp_path / "runs.db"
     journal = AGUIJournal(path)
-    await journal.reserve(body(), "b1", "dead-process", lease_seconds=0.04)
+    # 0.5s 租约：首次 append 必须在租约内完成；0.04s 在磁盘延迟高的环境
+    # （如 WSL2 跨文件系统）会被偶发超时误判为租约失效。过期仍早于重开读取。
+    await journal.reserve(body(), "b1", "dead-process", lease_seconds=0.5)
     await journal.append("r1", "dead-process", [
         {"type": "RUN_STARTED", "threadId": "s1", "runId": "r1"},
         {"type": "TEXT_MESSAGE_START", "messageId": "a1", "role": "assistant"},
         {"type": "TEXT_MESSAGE_CONTENT", "messageId": "a1", "delta": "已保存部分内容"},
     ])
-    await asyncio.sleep(0.06)
+    await asyncio.sleep(0.7)
     reopened = AGUIJournal(path)
     run = await reopened.run("r1", "b1")
     assert run["status"] == "interrupted"
