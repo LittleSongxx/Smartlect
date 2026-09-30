@@ -209,7 +209,9 @@ def load_settings() -> Settings:
         # 实测 qwen3.7-plus 配额池极紧（单发一条也可能 429），默认配上备用模型保底，
         # 重试用尽后自动回退并发 model.fallback 事件，不静默降级
         llm_fallback_model=os.getenv("LLM_FALLBACK_MODEL", "qwen-plus"),
-        # 默认 2 而不是 1：三期真并行 fork 实测 1.84x 加速，设 1 会把并行收益完全抹掉
+        # 默认 2 而不是 1：同一轮的并行 fork 需要至少 2 个名额，设 1 会把并行收益完全抹掉。
+        # （早期注释写过"实测 1.84x"，仓库里没有留下对应基准产物，已删掉该数字；
+        #  要引用具体倍数请先补一次可复跑的基准。）
         llm_max_concurrency=int(os.getenv("LLM_MAX_CONCURRENCY", "2")),
         llm_min_interval_seconds=float(os.getenv("LLM_MIN_INTERVAL_SECONDS", "1.0")),
         llm_max_retries=int(os.getenv("LLM_MAX_RETRIES", "2")),
