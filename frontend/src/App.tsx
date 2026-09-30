@@ -362,7 +362,7 @@ export default function App() {
           <div className="profile">
             <span className="avatar">旅</span>
             <span>
-              <span className="profile-name">{import.meta.env.VITE_BUYER_ID || "song"}</span>
+              <span className="profile-name">{import.meta.env.VITE_BUYER_ID || "smartlect"}</span>
               <span className="profile-caption">每一次选择，都有新发现</span>
             </span>
             <Icon name="leaf" />

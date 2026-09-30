@@ -300,7 +300,7 @@ export class CommerceClient {
   private sessions: SavedSession[] = [];
   private listeners = new Set<() => void>();
   private active?: { agent: HttpAgent; runId: string };
-  private buyerId = "song";
+  private buyerId = "smartlect";
   private mutationId: string | undefined;
   private confirmationRevision = 0;
   private serverHistory: SessionSummary[] = [];
@@ -312,7 +312,7 @@ export class CommerceClient {
     // 身份、当前会话和正文缓存分别读取，坏缓存不能阻断服务端恢复。
     let storedBuyer: string | null = null;
     try { storedBuyer = options.storage?.getItem(BUYER_KEY) ?? null; } catch {}
-    this.buyerId = options.buyerId || "song";
+    this.buyerId = options.buyerId || "smartlect";
     const cacheBelongsToBuyer = storedBuyer === this.buyerId;
     try {
       if (!cacheBelongsToBuyer) {

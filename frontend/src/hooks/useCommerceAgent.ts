@@ -13,7 +13,7 @@ export function useCommerceAgent() {
     let accessToken = import.meta.env.VITE_API_TOKEN;
     try { accessToken ||= storage?.getItem("smartlect.access-token"); } catch { /* 可使用构建配置。 */ }
     return new CommerceClient({ url: `${base}/commerce/ag-ui/run`, storage,
-      buyerId: import.meta.env.VITE_BUYER_ID || "song", accessToken });
+      buyerId: import.meta.env.VITE_BUYER_ID || "smartlect", accessToken });
   });
   const snapshot = useSyncExternalStore(client.subscribe, client.getSnapshot);
   useEffect(() => { void client.initialize(); return () => client.detach(); }, [client]);
