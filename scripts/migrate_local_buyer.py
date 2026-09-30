@@ -1,4 +1,4 @@
-"""本机停服后迁移一个明确的旧买家到固定 ID；先备份，遇到目标已有数据拒绝混合。"""
+"""本机停服后迁移一个明确的旧买家到固定 ID（默认目标 smartlect）；先备份，遇到目标已有数据拒绝混合。"""
 import argparse,sqlite3,json,hashlib
 from pathlib import Path
 from datetime import datetime,timezone
@@ -61,4 +61,4 @@ def migrate(data,source,target):
     return report
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--data-dir',type=Path,default=Path('data'));p.add_argument('--source',required=True);p.add_argument('--target',default='song');args=p.parse_args();print(json.dumps(migrate(args.data_dir,args.source,args.target),ensure_ascii=False,indent=2))
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--data-dir',type=Path,default=Path('data'));p.add_argument('--source',required=True);p.add_argument('--target',default='smartlect');args=p.parse_args();print(json.dumps(migrate(args.data_dir,args.source,args.target),ensure_ascii=False,indent=2))

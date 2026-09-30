@@ -47,7 +47,7 @@ async def test_full_reranker_endpoint_is_used_with_gateway_authorization(
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv(
         "RERANKER_BASE_URL",
-        "https://1688openai.alibaba-inc.com/v1/services/reranker",
+        "https://rerank.example.com/v1/services/reranker",
     )
     monkeypatch.setenv("RERANKER_MODEL", "qwen-text-rerank")
     monkeypatch.setattr(http_reranker.httpx, "AsyncClient", lambda **_: FakeClient())
@@ -58,7 +58,7 @@ async def test_full_reranker_endpoint_is_used_with_gateway_authorization(
     )
 
     assert scores == [0.9, 0.1]
-    assert captured["url"] == "https://1688openai.alibaba-inc.com/v1/services/reranker"
+    assert captured["url"] == "https://rerank.example.com/v1/services/reranker"
     assert captured["headers"] == {"Authorization": "Bearer test-gateway-key"}
     assert captured["json"] == {
         "model": "qwen-text-rerank",
