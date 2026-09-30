@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import type { ProductCard } from "../types";
 import Icon from "./Icon";
+import { CategoryIllustration } from "./CategoryIllustration";
 export function money(value: number, currency: string) {
   if (!Number.isFinite(value)) return "待确认";
   try {
@@ -25,7 +26,7 @@ export function ProductImage({
   if (!product.image_url || failed)
     return (
       <div className={`image-placeholder ${className}`}>
-        <Icon name="bag" />
+        <CategoryIllustration category={product.category} />
         <span>{product.category || "好物详情"}</span>
         <small>暂未提供商品图片</small>
       </div>
