@@ -98,7 +98,7 @@ button {
   position: fixed;
   /* PeerGrab 式浮动面板：四周留白、白底、圆角、柔和冷影 */
   inset: 16px auto 16px 16px;
-  width: 232px;
+  width: 272px;
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -203,7 +203,7 @@ button {
   margin-top: auto;
 }
 .sidebar-note {
-  padding: 0 13px 25px;
+  padding: 0 13px 20px;
   border-bottom: 1px solid #dbdee5;
 }
 .little-orbit {
@@ -221,7 +221,14 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 22px 8px 0;
+  padding: 18px 4px 2px;
+  min-width: 0;
+}
+.profile > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
 }
 .avatar {
   width: 32px;
@@ -235,9 +242,15 @@ button {
 }
 .profile-name {
   font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .profile-caption {
   font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: #90939a;
 }
 .profile svg {
@@ -246,7 +259,7 @@ button {
   color: #868c97;
 }
 main {
-  margin-left: 264px;
+  margin-left: 304px;
   padding: 29px 54px 190px;
 }
 .content {
@@ -732,7 +745,7 @@ main {
 .composer-dock {
   position: fixed;
   bottom: 0;
-  left: 232px;
+  left: 272px;
   right: 0;
   z-index: 25;
   padding: 25px 54px 17px;
@@ -740,7 +753,7 @@ main {
   pointer-events: none;
 }
 .composer-wrap {
-  max-width: 830px;
+  max-width: 1000px;
   margin: auto;
   pointer-events: auto;
 }
@@ -748,7 +761,7 @@ main {
   border: 1px solid #d3d9e4;
   background: #ffffff;
   border-radius: 16px;
-  padding: 13px 13px 11px 19px;
+  padding: 10px 12px 8px 18px;
   box-shadow: 0 4px 30px #1f273807;
 }
 .composer:focus-within {
@@ -762,10 +775,10 @@ main {
   box-shadow: none;
   width: 100%;
   background: transparent;
-  min-height: 25px;
+  min-height: 22px;
   max-height: 72px;
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.6;
   color: #424958;
   padding: 0 2px;
 }
