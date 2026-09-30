@@ -376,6 +376,34 @@ async def _run_case_with_events(client, judge_client, case, ground_truth, sessio
     case_started = perf_counter()
     async with collector:
         for turn_index, query in enumerate(case["queries"], start=1):
+            if case.get("confirm_memory"):
+                # 记忆写路径会在 ASK 处挂起；不先决议，下一轮会被服务端固定拦截。
+                # 只有显式声明 confirm_memory 的用例才模拟用户批准，其他用例保持原语义。
+                pending_response = await client.get(
+                    f"{BASE_URL}/commerce/sessions/{session_id}/pending-confirmations",
+                    params={"buyer_id": buyer_id}, timeout=30,
+                )
+                pending_response.raise_for_status()
+                pending = pending_response.json().get("pending") or []
+                if pending:
+                    approve = await client.post(
+                        f"{BASE_URL}/commerce/intents",
+                        json={
+                            "shopping_session_id": session_id,
+                            "buyer_id": buyer_id,
+                            "locale": "zh-CN",
+                            "currency": "CNY",
+                            "raw_query": "批准刚才的长期记忆变更。",
+                            "confirmations": [
+                                {"interrupt_id": item["interrupt_id"], "approved": True}
+                                for item in pending
+                            ],
+                        },
+                        timeout=600,
+                    )
+                    approve.raise_for_status()
+                    transcript_lines.append(
+                        f"[买家] 批准刚才的长期记忆变更。\n[Agent] {approve.json()['final_text']}")
             if "{{confirmed_order_id}}" in query:
                 if last_order_id is None:
                     raise ValueError("后续查询需要已真实确认的订单号，不能由模型猜测")

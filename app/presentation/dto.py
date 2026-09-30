@@ -17,6 +17,10 @@ class SubmitIntentRequest(BaseModel):
     locale: str = Field(default="zh-CN")
     currency: str = Field(default="CNY")
     raw_query: str = Field(min_length=1, description="买家自然语言购物意图")
+    confirmations: list[dict] = Field(
+        default_factory=list,
+        description="决议待审批操作，元素形如 {interrupt_id, approved}；interrupt_id 来自 pending-confirmations 端点",
+    )
 
 
 class SubmitIntentResponse(BaseModel):

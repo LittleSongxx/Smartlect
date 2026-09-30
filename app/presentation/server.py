@@ -197,6 +197,7 @@ def build_app() -> FastAPI:
             locale=body.locale,
             currency=body.currency,
             raw_query=body.raw_query,
+            confirmations=tuple(body.confirmations),
         )
         if c.task_queue is None:
             result = await c.orchestrator.handle_intent(intent)
@@ -211,6 +212,27 @@ def build_app() -> FastAPI:
         final_text = await _await_result(c, task_id, session_id)
         return SubmitIntentResponse(shopping_session_id=session_id, final_text=final_text)
 
+    @api.get("/commerce/sessions/{session_id}/pending-confirmations")
+    async def get_pending_confirmations(request: Request, session_id: str, buyer_id: str) -> dict:
+        """只读列出会话内待审批的原生工具调用（记忆写路径 ASK）。
+
+        调用方用返回的 interrupt_id 经 /commerce/intents 的 confirmations 决议；
+        AG-UI 前端不依赖本端点（事件流自带确认）。
+        """
+        c = container()
+        buyer_id = await require_buyer(request, buyer_id)
+        await require_session(request, buyer_id, session_id, create=False)
+        from app.infrastructure.context import ShoppingContext, ShoppingContextSnapshot
+        token = ShoppingContext.set(ShoppingContextSnapshot(
+            shopping_session_id=session_id, buyer_id=buyer_id,
+            locale="zh-CN", currency="CNY",
+        ))
+        try:
+            pending = await c.orchestrator.pending_confirmations(session_id, buyer_id)
+        finally:
+            ShoppingContext.reset(token)
+        return {"shopping_session_id": session_id, "pending": pending}
+
     @api.post("/commerce/intents/async")
     async def submit_intent_async(request: Request, body: SubmitIntentRequest) -> dict:
         c = container()
@@ -223,6 +245,7 @@ def build_app() -> FastAPI:
             locale=body.locale,
             currency=body.currency,
             raw_query=body.raw_query,
+            confirmations=tuple(body.confirmations),
         )
         if c.task_queue is None:
             raise HTTPException(status_code=503, detail="队列未启用，请使用 /commerce/intents")

@@ -25,7 +25,7 @@ import json
 import logging
 import time
 import uuid
-from contextlib import AsyncExitStack, aclosing
+from contextlib import AsyncExitStack, aclosing, asynccontextmanager
 from dataclasses import dataclass
 from contextvars import ContextVar
 from typing import Any, Awaitable, Callable, Optional
@@ -63,7 +63,7 @@ from app.infrastructure.cache.semantic_cache import SemanticCache
 from app.infrastructure.context import ShoppingContext, ShoppingContextSnapshot
 from app.infrastructure.eventbus import TradeEventBus, observe_run_events
 from app.infrastructure.budget import init_budget, remember_verified_result, get_budget, rule_fallback_text
-from app.infrastructure.security.output_guard import audit_output
+from app.infrastructure.security.output_guard import audit_output, StreamingMasker
 from app.infrastructure.transient import is_transient_error
 from app.infrastructure.capability_registry import CapabilityVersionChanged
 from app.infrastructure.prompt_registry import PromptContractChanged
@@ -144,13 +144,52 @@ class MainAgentOrchestrator:
         # 默认 selector 不带 embedder，退化为“按时间倒序取 top_k”，单测与无凭据环境可直接跑
         self._preference_selector = preference_selector or PreferenceSelector()
         self._preference_top_k = preference_top_k
-        # 会话内已注入的偏好快照，变化时才重新注入，避免每轮重复填充上下文
-        self._injected_preferences: dict[str, str] = {}
         # 两种 HTTP 入口共用锁，防止同进程并发修改同一个 AgentState。
         self._session_locks: dict[str, asyncio.Lock] = {}
         self._native_observer: ContextVar[Callable[[Any], None] | None] = ContextVar(
             "smartlect_native_event_observer", default=None,
         )
+
+    @asynccontextmanager
+    async def _locked_turn(self, session_id: str):
+        """串行化同会话轮次，并在结束后回收会话锁（防锁表随会话数无限增长）。"""
+        lock = self._session_locks.setdefault(session_id, asyncio.Lock())
+        try:
+            async with lock:
+                yield
+        finally:
+            self._prune_session_lock(session_id, lock)
+
+    def _prune_session_lock(self, session_id: str, lock: asyncio.Lock) -> None:
+        """turn 结束后回收会话锁表项。
+
+        仅当锁已释放且无等待者时删除：本方法内无 await，检查与删除之间不会被
+        其它协程插入；release() 唤醒等待者时会同步转交锁（locked() 仍为 True），
+        因此“未持锁且无等待者”的判定不会误删仍有排队者的锁。
+        """
+        if self._session_locks.get(session_id) is not lock:
+            return  # 已被后续轮次替换为新锁，不动新条目
+        if lock.locked() or getattr(lock, "_waiters", None):
+            return
+        self._session_locks.pop(session_id, None)
+
+    async def pending_confirmations(self, shopping_session_id: str, buyer_id: str) -> list[dict]:
+        """只读查询当前会话待审批的原生工具调用（记忆写路径的 ASK 挂起项）。
+
+        供旧 intents API 的调用方在下一轮前决议；AG-UI 前端走事件流，不依赖此方法。
+        buyer_id 由 HTTP 层校验后传入；get_or_create 内部仍会按会话 owner 复核。
+        """
+        from app.application.agents.tool_confirmation import awaiting_event
+        async with self._locked_turn(shopping_session_id):
+            agent = await self._sessions.get_or_create(shopping_session_id)
+            event = awaiting_event(agent)
+            if event is None:
+                return []
+            return [
+                {"interrupt_id": f"{event.reply_id}:{call.id}", "tool": call.name,
+                 "arguments": call.input}
+                for call in event.tool_calls
+            ]
 
     async def available_skills(self, buyer_id: str | None = None) -> dict:
         """买家只读目录：与主 Agent 的实际业务工具集合及资料版本保持一致。"""
@@ -196,8 +235,7 @@ class MainAgentOrchestrator:
         fresh_session: bool = False,
         persistence_guard: Callable[[], bool] | None = None,
     ) -> SubmitIntentOutput:
-        lock = self._session_locks.setdefault(intent.shopping_session_id, asyncio.Lock())
-        async with lock, AsyncExitStack() as stack:
+        async with self._locked_turn(intent.shopping_session_id), AsyncExitStack() as stack:
             if self._session_lease_factory is not None:
                 lease = await stack.enter_async_context(self._session_lease_factory(intent.shopping_session_id))
                 caller_guard = persistence_guard
@@ -205,7 +243,6 @@ class MainAgentOrchestrator:
                 fresh_session = True
             if fresh_session:
                 await self._sessions.invalidate(intent.shopping_session_id)
-                self._injected_preferences.pop(intent.shopping_session_id, None)
             observer_token = self._native_observer.set(event_observer)
             metrics = begin_request()
             metrics_status = "error"
@@ -387,7 +424,6 @@ class MainAgentOrchestrator:
                             await self._evidence_store.save(intent.buyer_id, session_id, "conversation", {"buyer": intent.raw_query, "agent": final_text})
                 else:
                     await self._sessions.invalidate(session_id)
-                    self._injected_preferences.pop(session_id, None)
             finally:
                 if trace is not None:
                     self._bus.unsubscribe(session_id, trace)
@@ -538,6 +574,8 @@ class MainAgentOrchestrator:
         final_text = ""
         interrupted = False
         reply_error: str | None = None
+        # 流式增量与 final text 同源脱敏：token.delta 实时推给前端，不能等 final 才审
+        stream_masker = StreamingMasker()
         # tool_call_id → 工具名，用于把 ToolResultEndEvent 关联回 Task 工具
         call_names: dict[str, str] = {}
         async with aclosing(agent.reply_stream(inputs or None, yield_final_msg=True)) as events:
@@ -555,11 +593,13 @@ class MainAgentOrchestrator:
                         reply_error = "Agent 本轮执行失败" if reason == "error" else "Agent 超出本轮执行步数上限"
                 elif isinstance(event, TextBlockDeltaEvent):
                     if event.delta:
-                        self._bus.publish(
-                            session_id,
-                            "token.delta",
-                            {"name": agent.name, "token": event.delta},
-                        )
+                        safe_delta = stream_masker.push(event.delta)
+                        if safe_delta:
+                            self._bus.publish(
+                                session_id,
+                                "token.delta",
+                                {"name": agent.name, "token": safe_delta},
+                            )
                 elif isinstance(event, ToolCallStartEvent):
                     call_names[event.tool_call_id] = event.tool_call_name
                 elif isinstance(event, ToolResultEndEvent):
@@ -567,6 +607,9 @@ class MainAgentOrchestrator:
                     if tool_name in _TASK_TOOL_NAMES:
                         self._bus.publish(session_id, "plan.update", _tasks_snapshot(agent))
                     self._observe_for_drift(session_id, tool_name, event)
+        stream_tail = stream_masker.flush()
+        if stream_tail:
+            self._bus.publish(session_id, "token.delta", {"name": agent.name, "token": stream_tail})
         if interrupted:
             raise asyncio.CancelledError()
         if reply_error:
@@ -644,7 +687,6 @@ class MainAgentOrchestrator:
                 await self._evidence_store.save(intent.buyer_id, session_id, "preferences", {"revision": revision,
                     "preferences": [{"kind": p.kind, "statement": p.statement} for p in preferences]})
         if not preferences:
-            self._injected_preferences[session_id] = revision
             return [UserMsg("memory_hint", f"当前持久偏好 revision={revision[:16]}：无。历史已撤回偏好不得恢复；本轮用户显式约束仍有效。"), user_msg]
 
         if getattr(self._preference_store, "semantic_memory", False):
@@ -661,7 +703,5 @@ class MainAgentOrchestrator:
             return [user_msg]
 
         ShoppingContext.set_excluded_material_tags(material_exclusion_tags(selected))
-        rendered = render_preference_lines(selected)
-        self._injected_preferences[session_id] = rendered
         hint_msg = UserMsg("memory_hint", f"当前持久偏好 revision={revision[:16]}，覆盖历史摘要中的旧偏好。\n" + render_preference_hint(selected))
         return [hint_msg, user_msg]
