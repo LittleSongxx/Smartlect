@@ -25,7 +25,7 @@
     <div class="table-panel">
       <Table ref="tableInfoRef" :columns="columns" :fetch="loadDataList" :dataSource="tableData">
         <template #slotOrder="{ row }">
-          <OrderItem :data="row" @delivery="deliveryHandler" @comment="commentHandler"></OrderItem>
+          <OrderItem :data="row" @delivery="deliveryHandler"></OrderItem>
         </template>
       </Table>
     </div>
@@ -33,11 +33,9 @@
 
   <Delivery ref="deliveryRef" @reload="loadDataList"></Delivery>
 
-  <CommentReply ref="commentRef" @reload="loadDataList"></CommentReply>
 </template>
 
 <script setup>
-import CommentReply from './CommentReply.vue'
 import Delivery from './Delivery.vue'
 import OrderItem from './OrderItem.vue'
 import {
@@ -95,10 +93,6 @@ const deliveryHandler = (data) => {
   deliveryRef.value.show(data.orderId)
 }
 
-const commentRef = ref()
-const commentHandler = (orderId) => {
-  commentRef.value.show(orderId)
-}
 </script>
 
 <style lang="scss" scoped>
