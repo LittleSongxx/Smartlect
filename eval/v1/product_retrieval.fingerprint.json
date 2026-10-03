@@ -1,0 +1,8 @@
+{
+  "catalog": "data/catalog-v3.jsonl",
+  "catalog_sha256": "1d192e624567af3a034512ae40b805ae5fc2909102c0e4abb7f94956a4b1dbeb",
+  "dataset": "eval/v1/product_retrieval.jsonl",
+  "dataset_sha256": "462d683c6a27c7fa3487085c424d0dc0e510401d8b9eb842a39f23c7041ae36a",
+  "generator": "scripts/build_eval_retrieval.py",
+  "schema_version": 1
+}

@@ -14,9 +14,9 @@ def test_official_eval_fixture_has_300_cases_and_group_safe_splits():
 
     assert problems == []
     assert summary == {
-        "product": {"total": 150, "dev": 105, "release": 45},
+        "product": {"total": 300, "dev": 210, "release": 90},
         "knowledge": {"total": 50, "dev": 35, "release": 15},
-        "agent": {"total": 100, "dev": 70, "release": 30},
+        "agent": {"total": 180, "dev": 126, "release": 54},
     }
 
 
@@ -73,7 +73,7 @@ def test_release_agent_cases_cover_every_required_capability():
         for capability in row.get("capabilities", [])
     }
 
-    assert {"retrieval", "knowledge", "order", "memory", "tool_failure", "safety", "long_context"} <= release_capabilities
+    assert {"retrieval", "knowledge", "order", "memory", "tool_failure", "safety", "long_context", "faithfulness"} <= release_capabilities
 
 
 def test_order_and_safety_cases_include_a_complete_shipping_address():
@@ -97,7 +97,7 @@ def test_order_and_safety_gold_products_are_orderable_to_cn():
         row["product_id"]: row
         for row in (
             json.loads(line)
-            for line in (root / "data" / "catalog-v1.jsonl").read_text().splitlines()
+            for line in (root / "data" / "catalog-v3.jsonl").read_text().splitlines()
             if line
         )
     }
@@ -120,7 +120,7 @@ def test_order_confirmation_names_an_in_stock_sku():
         row["product_id"]: row
         for row in (
             json.loads(line)
-            for line in (root / "data" / "catalog-v1.jsonl").read_text().splitlines()
+            for line in (root / "data" / "catalog-v3.jsonl").read_text().splitlines()
             if line
         )
     }

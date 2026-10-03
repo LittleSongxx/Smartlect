@@ -14,9 +14,9 @@ from scripts.eval.http_actions import validate_http_actions
 
 
 _SPECS = {
-    "product": ("product_retrieval.jsonl", 150, {"literal": 45, "semantic": 40, "composite": 40, "empty": 25}),
+    "product": ("product_retrieval.jsonl", 300, {"literal": 30, "semantic": 60, "composite": 80, "colloquial": 50, "empty": 80}),
     "knowledge": ("knowledge_retrieval.jsonl", 50, {"single": 20, "cross": 15, "unanswerable": 10, "conflict_or_expired": 5}),
-    "agent": ("agent_cases.yaml", 100, {"search_recommend": 25, "compare_price": 15, "order": 15, "memory_multiturn": 15, "tool_failure": 10, "safety": 10, "long_context": 10}),
+    "agent": ("agent_cases.yaml", 180, {"search_recommend": 38, "compare_price": 24, "order": 28, "memory_multiturn": 24, "tool_failure": 17, "safety": 17, "long_context": 14, "faithfulness": 18}),
 }
 
 _RATES_TO_CNY = ExchangeRateTable().rates_to_cny
@@ -142,7 +142,7 @@ def validate_official_eval_fixture(root: Path) -> tuple[list[str], dict[str, dic
 
     # 金标必须能回指当前版本的数据；跨平台同款只能算一个相关实体，不能靠重复 id 虚增 Recall。
     project_root = root.parents[1]
-    catalog_path = project_root / "data" / "catalog-v1.jsonl"
+    catalog_path = project_root / "data" / "catalog-v3.jsonl"
     knowledge_dir = project_root / "knowledge"
     if catalog_path.is_file() and "product" in loaded:
         catalog = {row["product_id"]: row for row in _load_jsonl(catalog_path)}
@@ -198,7 +198,7 @@ def validate_official_eval_fixture(root: Path) -> tuple[list[str], dict[str, dic
         if split_leaked_documents:
             problems.append(f"知识金标跨 split 泄漏：{split_leaked_documents[:5]}")
     if "agent" in loaded:
-        required_capabilities = {"retrieval", "knowledge", "order", "memory", "tool_failure", "safety", "long_context"}
+        required_capabilities = {"retrieval", "knowledge", "order", "memory", "tool_failure", "safety", "long_context", "faithfulness"}
         release_capabilities: set[str] = set()
         for row in loaded["agent"]:
             if not isinstance(row.get("queries"), list) or not row["queries"]:
