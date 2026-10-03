@@ -16,6 +16,8 @@ import OrderIntentForm from "./components/OrderIntentForm";
 import ProductComparison from "./components/ProductComparison";
 import ShoppingPlans, { SkillRunStatus } from "./components/ShoppingPlans";
 import SkillQueryInput from "./components/SkillQueryInput";
+import VoiceInputButton from "./components/VoiceInputButton";
+import { startVoiceInput, VoiceInputError, type VoiceInputSession } from "./lib/voiceInput";
 import MyOrders from "./components/MyOrders";
 import BuyerWorkspace from "./components/BuyerWorkspace";
 import { skillQueryDraft, submitSkillQuery } from "./lib/skills";
@@ -52,6 +54,12 @@ export default function App() {
   const [selectedSkill, setSelectedSkill] = useState<PublishedSkill | null>(null);
   const [planPickerOpen, setPlanPickerOpen] = useState(false);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [voiceReady, setVoiceReady] = useState(false);
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const voiceSession = useRef<VoiceInputSession | null>(null);
+  // 录音开始时的输入框基线与已定稿文本：partial 显示"基线+已定稿+当前句"
+  const voiceBase = useRef("");
+  const voiceFinal = useRef("");
   const [view, setView] = useState<View>(readView),
     [input, setInput] = useState("");
   const [favorites, setFavorites] = useState<ProductCard[]>([]),
@@ -106,6 +114,51 @@ export default function App() {
     const timer = window.setTimeout(() => setToast(""), 2600);
     return () => window.clearTimeout(timer);
   }, [toast]);
+  // 语音输入能力探测：后端启用且浏览器支持麦克风才显示入口；失败静默隐藏不影响主链路
+  useEffect(() => {
+    let disposed = false;
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    void agent.workspaceRequest("/voice/capabilities")
+      .then((data) => { if (!disposed && data.enabled === true) setVoiceReady(true); })
+      .catch(() => {});
+    return () => { disposed = true; };
+  }, [agent.workspaceRequest]);
+  useEffect(() => () => { voiceSession.current?.abort(); }, []);
+  const stopVoiceSession = (abort: boolean) => {
+    const session = voiceSession.current;
+    voiceSession.current = null;
+    setVoiceRecording(false);
+    if (!session) return;
+    if (abort) session.abort();
+    else void session.stop().catch(() => {});
+  };
+  const startVoice = async () => {
+    if (voiceSession.current || busy) return;
+    voiceBase.current = input;
+    voiceFinal.current = "";
+    setVoiceRecording(true);
+    try {
+      voiceSession.current = await startVoiceInput({
+        ...agent.voiceEndpoint(),
+        onEvent: (event) => {
+          if (event.type === "partial") {
+            setInput(`${voiceBase.current}${voiceFinal.current}${event.text}`.slice(0, 4000));
+          } else if (event.type === "final") {
+            voiceFinal.current += event.text;
+            setInput(`${voiceBase.current}${voiceFinal.current}`.slice(0, 4000));
+          } else if (event.type === "stopped") {
+            stopVoiceSession(false);
+          } else if (event.type === "error") {
+            stopVoiceSession(true);
+            setToast(`语音识别失败：${event.message}`);
+          }
+        },
+      });
+    } catch (error) {
+      stopVoiceSession(true);
+      setToast(error instanceof VoiceInputError ? error.message : "语音输入启动失败");
+    }
+  };
   useEffect(() => {
     setCompared([]);
     setSelectedSkill(null);
@@ -727,7 +780,10 @@ export default function App() {
             onSubmit={(event) => {
               event.preventDefault();
               if (busy) agent.stop();
-              else if (!slashMenuOpen) submit(input, selectedSkill);
+              else if (!slashMenuOpen) {
+                if (voiceSession.current) stopVoiceSession(true);
+                submit(input, selectedSkill);
+              }
             }}
           >
             <div className="composer-plan-controls">
@@ -758,6 +814,7 @@ export default function App() {
               status={agent.skillsStatus}
               error={agent.skillsError}
               busy={busy}
+              readOnly={voiceRecording}
               onChange={setInput}
               onSelect={chooseSkill}
               onSubmit={() => submit(input, selectedSkill)}
@@ -767,8 +824,13 @@ export default function App() {
             <div className="composer-bottom">
               <span className="composer-hint">
                 <Icon name="spark" />
-                告诉我用途、预算，或你在意的小细节
+                {voiceRecording ? "正在听你说，点右侧麦克风结束" : "告诉我用途、预算，或你在意的小细节"}
               </span>
+              {voiceReady && <VoiceInputButton
+                recording={voiceRecording}
+                disabled={busy}
+                onToggle={() => (voiceRecording ? stopVoiceSession(false) : void startVoice())}
+              />}
               <button
                 type="submit"
                 className={`send-button ${busy ? "stop" : ""}`}

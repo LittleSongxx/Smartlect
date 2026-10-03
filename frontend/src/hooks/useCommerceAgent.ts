@@ -36,5 +36,6 @@ export function useCommerceAgent() {
     refreshSkills: client.refreshSkills,
     workspaceRequest: client.workspaceRequest,
     resume: client.resume,
+    voiceEndpoint: client.voiceEndpoint,
   };
 }

@@ -121,10 +121,14 @@ class Container:
     ag_ui_runtime: Any = None
     session_store: Any = None
     identity_policy: Any = None
+    voice_asr: Any = None
     prompt_registry: Any = None
     context_service: Any = None
 
     async def startup(self) -> None:
+        from app.infrastructure.voice.dashscope_asr import DashScopeVoiceAsr
+        if self.settings and getattr(self.settings, 'dashscope_api_key', ''):
+            self.voice_asr = DashScopeVoiceAsr(self.settings)
         """建表 / 建向量库 / 建知识库。任一失败只告警，对应能力降级但服务可用。"""
         if self.context_service is not None:
             await self.context_service.startup()

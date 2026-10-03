@@ -143,6 +143,13 @@ class Settings:
     hybrid_vector_weight: float = 1.0
     recall_candidates: int = 32
     embedding_version: str = ""  # 同名模型更新权重或编码方式时，用版本区分已存向量
+    # ---- 语音输入（DashScope 流式 ASR）----
+    dashscope_api_key: str = field(default="", repr=False)
+    voice_asr_model: str = "qwen-audio-3.1-asr-flash-message"
+    voice_asr_sample_rate: int = 16000
+    voice_asr_language_hint: str = "zh-CN"
+    voice_asr_timeout_seconds: float = 30.0
+    voice_asr_max_chunk_ms: int = 600_000
 
 
 def load_settings() -> Settings:

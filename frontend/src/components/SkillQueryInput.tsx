@@ -17,6 +17,7 @@ interface Props {
   status: "loading" | "ready" | "error";
   error: string | null;
   busy: boolean;
+  readOnly?: boolean;
   onChange: (value: string) => void;
   onSelect: (skill: PublishedSkill, draft: string) => void;
   onSubmit: () => void;
@@ -26,7 +27,7 @@ interface Props {
 
 /** 菜单只完成选择；实际读取由提交后的服务端状态确认。 */
 export default forwardRef<HTMLTextAreaElement, Props>(function SkillQueryInput({
-  value, skills, status, error, busy, onChange, onSelect, onSubmit, onRefresh, onMenuOpenChange,
+  value, skills, status, error, busy, readOnly, onChange, onSelect, onSubmit, onRefresh, onMenuOpenChange,
 }, ref) {
   const [command, setCommand] = useState<SlashCommand | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -88,7 +89,7 @@ export default forwardRef<HTMLTextAreaElement, Props>(function SkillQueryInput({
       </div>
       <p className="slash-skill-help"><span>↑ ↓ 选择 · Enter 确定</span><span>Esc 关闭</span></p>
     </div>}
-    <textarea ref={ref} id="query" value={value} rows={value.includes("\n") ? 3 : 1} maxLength={4000}
+    <textarea ref={ref} id="query" value={value} rows={value.includes("\n") ? 3 : 1} maxLength={4000} readOnly={readOnly}
       role="combobox" aria-autocomplete="list" aria-expanded={open}
       aria-controls={open ? "slash-skill-options" : undefined}
       aria-activedescendant={open && status === "ready" && matches.length ? `slash-skill-option-${index}` : undefined}

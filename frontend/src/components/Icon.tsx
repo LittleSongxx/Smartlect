@@ -53,6 +53,13 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
+  mic: (
+    <>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v3M8 21h8" />
+    </>
+  ),
   compare: <path d="M5 4v16m14-16v16M8 8h8m-3-3 3 3-3 3M16 16H8m3-3-3 3 3 3" />,
 };
 export default function Icon({

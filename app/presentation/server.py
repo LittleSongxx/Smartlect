@@ -125,6 +125,8 @@ def build_app() -> FastAPI:
     from app.presentation.favorites import register_favorite_routes
     from app.infrastructure.buyer_favorites import BuyerFavoriteStore
     register_favorite_routes(api, lambda: BuyerFavoriteStore(container().settings.data_dir / "buyer_favorites.db"))
+    from app.presentation.voice import register_voice_routes
+    register_voice_routes(api, lambda: container().voice_asr, lambda: container().settings)
 
     @api.get("/health")
     async def health() -> dict:

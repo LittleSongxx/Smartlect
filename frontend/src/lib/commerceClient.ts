@@ -626,6 +626,17 @@ export class CommerceClient {
     return this.options.accessToken ? { Authorization: `Bearer ${this.options.accessToken}` } : {};
   }
 
+  /** 语音输入会话连接参数：与主链路同源同身份（run URL 推导 WS 端点）。 */
+  voiceEndpoint = (): { wsUrl: string; token?: string; buyerId: string } => {
+    const runUrl = new URL(this.options.url, window.location.origin);
+    const scheme = runUrl.protocol === "https:" ? "wss" : "ws";
+    return {
+      wsUrl: `${scheme}://${runUrl.host}/commerce/voice/asr`,
+      token: this.options.accessToken,
+      buyerId: this.buyerId,
+    };
+  }
+
   private async journalRequest(path: string, method = "GET"): Promise<Record<string, unknown>> {
     const base = this.options.url.replace(/\/run\/?$/, "");
     const separator = path.includes("?") ? "&" : "?";

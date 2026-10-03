@@ -110,7 +110,7 @@ uv run python scripts/eval_regression.py --cases eval/v1/agent_cases.yaml \
 app/            后端（DDD 洋葱架构：agents/tools/prompts/usecases + infrastructure + presentation）
 frontend/       React 对话与商品卡界面
 eval/           评测数据集与验证证据（verification/ 下按日期归档，含指纹清单）
-knowledge/      品类知识库（线上 5 篇 + eval-snapshots/ 评测语料，独立 manifest）
+knowledge/      品类知识库（Markdown + AgentScope KnowledgeBase）
 scripts/        评测与工具脚本（eval/ 子目录为各评测入口）
 tests/          后端测试与第三方协议契约
 docker/         Compose 部署
