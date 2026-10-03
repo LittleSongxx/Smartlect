@@ -19,25 +19,26 @@ Agent 根据需求调用检索与业务工具，页面随运行过程展示回�
 
 常用的选购方法也可以写成个人 Skill（Markdown 步骤，对话中输入 `/` 选择）；长期偏好支持增删与版本化，负向约束自动落到业务过滤。
 
-## 质量指标（2026-09-30 当前配置基线）
+## 质量指标（2026-10-04 评测体系重建基线）
 
-评测口径：聊天模型 `deepseek-flash` + 百炼 `qwen3.7` 系 embedding/reranker，全 live 路径真实运行。完整证据、失败样本与数值适用边界见 [eval/verification/rerun-20260930/](eval/verification/rerun-20260930/)（含 SHA256 指纹清单）。
+评测口径：主模型 `deepseek-flash`，embedding/reranker 百炼 `qwen3.7` 系，Agent 门禁 judge＝glm-5.3 中转（与被测不同家族），全 live 路径真实运行。评测集为本日重建版本（见 [docs/改动记录/2026-10-04/](docs/改动记录/2026-10-04/)），与旧集读数不可比。完整证据、失败样本与 badcase 见各证据目录（含 SHA256 指纹清单）。
 
-| 指标 | 结果 | 严读数（R@1＝首位命中任一金标） |
+| 指标 | 结果（新集首次读数） | 严读数 R@1 |
 | --- | --- | --- |
-| 商品召回正式门禁（v1 release 225 例＝155 正例＋70 负例，K=3 业务口径） | **PASS**：Recall@3 0.991 / MRR 1.000 / NDCG@3 0.981 / 负例 70/70 / 零降级 / 同款重复 0；K=8 监控线 0.994 | 1.000（155/155，复算值） |
-| 品类知识召回门禁（22 例，库内 5 篇，诊断档口径） | **PASS**：Recall@3 1.000 / MRR 0.977 / NDCG 0.979 | 0.955（21/22，复算值） |
-| 检索管线对照（v2-hard 无品牌提示，54 例＝48 正例＋6 负例） | R@5 0.995 | **R@1 0.649 / R@3 0.906** |
-| Agent 正式门禁（30 例，程序断言 + LLM judge） | 27/30 PASS，均分 0.950 | — |
-| 记忆提取（50 例＝原 12＋38 扩充） | **50/50 PASS** | — |
-| 上下文治理（6 场景×2 策略×3 次＝36 runs） | 36/36 通过；分层治理 input token 相对 legacy 降幅 **34.68%** | — |
-| 后端回归 | 1465 passed / 2 failed / 1 skipped（2026-10-01 冻结树复跑，1468 项收集）；另有 1 项队列租约测试为已知偶发（单独复跑 5 次 4 失败 1 通过），两次全量分别落在 3 项与 2 项失败。失败项均与检索链路无关 | — |
+| 商品召回正式门禁（release 90 例＝66 正＋24 负，K=3 业务口径） | **BLOCK**：Recall@3 0.499 / MRR 0.624 / NDCG@3 0.496 / 负例 24/24 / 过滤准确率 1.000；主口径（去 literal 冒烟桶）R@3 0.420；K=8 监控线 R@8 0.580 | 0.304（主口径 0.194） |
+| 检索分桶（release） | literal R@1 1.000（词面回声，仅冒烟）/ colloquial 0.369 / semantic 0.136 / composite 0.129——紧约束与价格区间是结构性短板 | — |
+| keyword_2gram 离线基线（同集重批） | recall 0.635 / MRR 0.740 / NDCG 0.688，offline-fallback 门禁 PASS（基线绑定选集指纹） | — |
+| 品类知识门禁（50 例，K=3） | **BLOCK**：Recall@3 0.927 ✓ / MRR 0.772 ✗ / NDCG 0.794 ✗ / 不可回答准确率 0.000 ✗（9 例域外题全部被当作可答）/ 政策拒答 1.000 ✓ | — |
+| Agent 正式门禁（release 54 例，程序断言＋独立 judge） | **BLOCK**：合并 40 PASS / 11 FAIL / 4 ERROR（judge 网关超时）；首轮均分 0.668；失败构成＝偏好写入未调用工具 5＋口语排除未过滤 3＋金额不可溯源 3（faithfulness 程序断言首跑即抓到真实编造） | — |
+| 记忆提取（30 例） | 29/30（两次运行；唯一失败为 negative_scope 模型非确定性漂移，如实记录） | — |
+| 后端回归 | 1478 passed / 2 failed（嵌入排序敏感，回退提交已注明的已知项）；队列测试用 redis7 二进制两次运行 16/16 与 15/16（1 项租约测试已知偶发；系统 redis 6 下另有 12 项已知环境失败）。证据 `eval/verification/full-tests-20261004.log`、`full-tests-redis7-queue-20261004.log` | — |
 
 读数说明：
 
-- **R@1 只有 [retrieval_v2.py](scripts/eval/retrieval_v2.py) 会一次运行直接产出**；[run_product_recall.py](scripts/eval/run_product_recall.py) 与 `run_category_recall.py` 的报告只有 Recall/Precision/MRR/NDCG@K，**没有 @1 分档**——表中前两行的 R@1 是从逐题召回序离线复算的，复算脚本与输出见 [eval/verification/readme-metrics-20261001/](eval/verification/readme-metrics-20261001/)。R@3 是贴近"每次推三张商品卡"的业务口径，@5 及以上是管线对照值。
-- 商品召回门禁已于 2026-09-30 从 45 例（37 正例＋8 负例）扩到 **225 例**：扩充集把 R@3 压到 0.742 BLOCK、如实暴露"紧价格约束 × 语义召回"的结构性盲区，修复（主链路约束预过滤＋金标完备性回补）后回到 0.991 PASS。旧集的 Recall@3 0.946 / MRR 0.946 / NDCG@3 0.927 只作过程证据保留，**不再是门禁口径**；更接近真实难度的参照是同一批数据的 **Recall@8 0.973**（单正例、无品牌提示、含负例约束）。
-- 检索评测集是**合成目录上的受控实验**（多正例、查询与描述同源模板），v2 的 0.99+ 不代表真实用户查询召回率；各集规模、扣分构成与已知局限见证据目录 README 的"数值适用边界"节。Agent 门禁的 LLM judge 与被测模型同为 `deepseek-flash`（自评偏宽风险），P0 关键断言为程序判定不受影响。
+- **本表读数显著低于历史版本（旧集 R@3 0.99+）**：旧评测集查询与目录同源模板、金标由生成规则逆推，读数系统性虚高；新集（300 例五桶、独立谓词金标、口语桶、价格区间/排除材质约束）挤出的是真实水平。门禁阈值未随新集调整——检索与品类门禁如实 BLOCK，扣分构成与 badcase 清单见 [质量指标复跑与badcase](docs/改动记录/2026-10-04/质量指标复跑与badcase.md)，系统修复属于后续独立决策。
+- 商品检索正式集与运行时目录以 SHA256 指纹绑定（`eval/v1/product_retrieval.fingerprint.json`），目录演进击穿金标会被 runner 预检直接拒绝。
+- literal 桶（标题原文查询）R@1 恒为 1.000 属词面回声，仅作回归冒烟，正式读数用"主口径（去 literal）"。
+- Agent 门禁 judge 与被测模型不同家族（glm-5.3 vs deepseek-flash），manifest 记录同源警示开关；金额与政策结论由程序化断言对账（`scripts/eval/faithfulness.py`），不依赖 judge。
 
 ## 技术栈
 
@@ -80,23 +81,29 @@ embedding/reranker 未配置时检索自动降级关键词召回；Redis/Langfus
 
 ## 评测复跑
 
+评测集由确定性生成器产出（改目录/改配比后重新生成并过 `validate_datasets`）：
+
 ```bash
-# 商品召回正式门禁（K=3 业务口径，需 embedding+reranker）
+# 生成器（改动后按当前目录重算金标并写指纹 sidecar）
+uv run python scripts/build_eval_retrieval.py    # 商品检索 300 例
+uv run python scripts/build_eval_agent.py        # Agent 180 例（冻结原 100 + 追加）
+uv run python scripts/build_eval_category.py     # 品类知识 50 例
+uv run python scripts/build_eval_memory.py       # 记忆 30 例
+uv run python -m scripts.eval.validate_datasets  # 数据集契约自检（必绿前置）
+
+# 商品召回正式门禁（K=3 业务口径，需 embedding+reranker；目录指纹不一致会拒绝开跑）
 uv run python -m scripts.eval.run_product_recall --dataset eval/v1/product_retrieval.jsonl \
     --split release --formal-gates --report-dir <新目录>
+# 关键词降级档（离线，基线已绑定选集指纹）
+uv run python -m scripts.eval.run_product_recall --dataset eval/v1/product_retrieval.jsonl \
+    --split release --strategy keyword_2gram --profile offline-fallback \
+    --baseline-file eval/v1/baselines/keyword_2gram.json --report-dir <新目录>
 
-# 检索管线对照（@1/@3/@5 阶梯；v2-hard 为去品牌提示视角）
-uv run python -m scripts.eval.retrieval_v2 --split holdout --live --output <新目录>
-uv run python -m scripts.eval.retrieval_v2 --split holdout --live \
-    --dataset eval/v2-hard/product_retrieval.jsonl --output <新目录>
-
-# 品类知识 / 记忆 / 上下文治理
+# 品类知识 / 记忆
 uv run python -m scripts.eval.run_category_recall --formal-gates --report-dir <新目录>
 uv run python -m scripts.evaluate_memory --output <新文件>
-uv run python -m scripts.eval.run_context --cases-file eval/context/cases-v3.jsonl \
-    --split holdout --case <场景> --strategies legacy,layered --repetitions 3 --output <新目录>
 
-# Agent 门禁需先起服务；judge 直连环境变量，先 source .env 再运行
+# Agent 门禁需先起服务（SEMANTIC_CACHE_ENABLED=0）；judge 走独立网关，先 source .env 再运行
 set -a; source .env; set +a
 uv run python scripts/eval_regression.py --cases eval/v1/agent_cases.yaml \
     --split release --base-url http://127.0.0.1:8000 --report-dir <新目录>
