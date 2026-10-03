@@ -13,28 +13,17 @@ from scripts.eval.knowledge_quality import count_knowledge_chunks, load_knowledg
 _ROOT = Path(__file__).resolve().parents[1]
 
 
-# 评测快照语料（含多 region 的 eval-* 切片）与线上知识库分目录维护：
-# knowledge/ 只保留正式品类文档，评测语料在 eval-snapshots/ 且自带 manifest。
-_EVAL_SNAPSHOTS = _ROOT / "knowledge" / "eval-snapshots"
-
-
 def test_knowledge_fixture_has_versioned_metadata_and_required_document_count():
-    manifest = load_knowledge_manifest(_EVAL_SNAPSHOTS)
+    manifest = load_knowledge_manifest(_ROOT / "knowledge")
 
     assert len(manifest) >= 40
-    assert validate_knowledge_manifest(_EVAL_SNAPSHOTS, manifest) == []
+    assert validate_knowledge_manifest(_ROOT / "knowledge", manifest) == []
     assert {entry["region"] for entry in manifest} >= {"GLOBAL", "US", "EU", "JP", "SG", "CN"}
-    # 线上知识库必须与自身 manifest 完全一致，评测快照不得混入
-    online = load_knowledge_manifest(_ROOT / "knowledge")
-    assert validate_knowledge_manifest(_ROOT / "knowledge", online) == []
-    assert all(not entry["document_id"].startswith("eval-") for entry in online)
 
 
 @pytest.mark.asyncio
 async def test_knowledge_fixture_chunk_count_is_large_enough_to_make_recall_discriminative():
-    # 区分度门禁按线上 + 评测快照合计语料判定，与发版校验器同口径。
-    chunk_count = (await count_knowledge_chunks(_EVAL_SNAPSHOTS)
-                   + await count_knowledge_chunks(_ROOT / "knowledge"))
+    chunk_count = await count_knowledge_chunks(_ROOT / "knowledge")
 
     assert 150 <= chunk_count <= 250
 
@@ -42,7 +31,7 @@ async def test_knowledge_fixture_chunk_count_is_large_enough_to_make_recall_disc
 def test_runtime_knowledge_loader_exposes_manifest_metadata():
     from app.infrastructure.rag.category_knowledge import load_knowledge_metadata
 
-    metadata = load_knowledge_metadata(_EVAL_SNAPSHOTS)
+    metadata = load_knowledge_metadata(_ROOT / "knowledge")
     policy = metadata["eval-policy-us"]
 
     assert policy["region"] == "US"

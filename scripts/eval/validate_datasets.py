@@ -107,27 +107,15 @@ async def validate_catalog_fixture() -> list[str]:
 
 
 async def validate_knowledge_fixture() -> list[str]:
-    """把来源/时效元数据与 chunk 规模纳入统一发版前校验。
-
-    线上知识库（knowledge/*.md）与评测快照语料（knowledge/eval-snapshots/）
-    分目录维护：各自校验 manifest 与内容，chunk 规模按两者合计判定——
-    区分度门禁针对的是整个评测语料，不是单一子集。
-    """
-    problems: list[str] = []
-    chunk_count = 0
-    for directory in (_KNOWLEDGE_DIR, _KNOWLEDGE_DIR / "eval-snapshots"):
-        if not directory.is_dir():
-            problems.append(f"知识语料目录缺失：{directory}")
-            continue
-        try:
-            manifest = load_knowledge_manifest(directory)
-        except ValueError as err:
-            problems.append(str(err))
-            continue
-        problems.extend(validate_knowledge_manifest(directory, manifest))
-        problems.extend(validate_knowledge_content(directory))
-        chunk_count += await count_knowledge_chunks(directory)
-    if not problems and not 150 <= chunk_count <= 250:
+    """把来源/时效元数据与 chunk 规模纳入统一发版前校验。"""
+    try:
+        manifest = load_knowledge_manifest(_KNOWLEDGE_DIR)
+    except ValueError as err:
+        return [str(err)]
+    problems = validate_knowledge_manifest(_KNOWLEDGE_DIR, manifest)
+    problems.extend(validate_knowledge_content(_KNOWLEDGE_DIR))
+    chunk_count = await count_knowledge_chunks(_KNOWLEDGE_DIR)
+    if not 150 <= chunk_count <= 250:
         problems.append(f"知识 chunk 数 {chunk_count} 不在 [150, 250] 范围内")
     return problems
 

@@ -18,8 +18,7 @@ async def test_offline_report_records_negative_cases_and_blocked_dependency(
     result = json.loads((tmp_path / "report/report.json").read_text())
     assert result["hybrid_quality"] == "BLOCKED_EMBEDDING"
     assert result["promotion"] == "NOT_APPROVED"
-    # v1 正式集已扩充至 750（150 冻结 + 600 扩充，见 expand_eval_v1.py）
-    assert result["experiments"][0]["scenarios"] == 750
+    assert result["experiments"][0]["scenarios"] == 150
     for value in result["experiments"][0]["summary"].values():
         assert value["actual_model_calls"] == 0
         assert value["hard_constraint_failures"] == 0

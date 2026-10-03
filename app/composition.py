@@ -269,14 +269,12 @@ async def build_container() -> Container:
     reranker = create_reranker(settings, throttle=throttle, bus=bus)
 
     # ---- Application ----
-    from app.infrastructure.retrieval.bm25 import BM25IndexCache
     catalog_search = CatalogSearchUseCase(
         product_repo, embedder=embedder, vector_index=vector_index, reranker=reranker,
         hybrid_enabled=settings.hybrid_recall_enabled,
         hybrid_lexical_weight=settings.hybrid_lexical_weight,
         hybrid_vector_weight=settings.hybrid_vector_weight,
         recall_candidates=settings.recall_candidates,
-        lexical_index=BM25IndexCache(),
     )
     place_order = PlaceOrderUseCase(confirmations)
     query_order = QueryOrderUseCase(trade_store)

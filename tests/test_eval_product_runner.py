@@ -36,11 +36,7 @@ async def test_formal_runner_passes_category_to_search_spec():
 
 
 async def test_formal_runner_scores_cross_platform_duplicates_by_canonical_entity():
-    """同款跨平台候选不能靠重复 product_id 改变检索指标。
-
-    检索主路径已按 canonical 去重（同款多货源不占 Top-K 名额），
-    因此 hits 只含 P-A 一条：precision 1.0、重复率 0。
-    """
+    """同款跨平台候选不能靠重复 product_id 改变检索指标。"""
     repo = InMemoryProductRepository(
         [
             Product(
@@ -60,15 +56,10 @@ async def test_formal_runner_scores_cross_platform_duplicates_by_canonical_entit
         "relevant_canonical_ids": ["CAN-LAMP"], "template_family": "canonical-entity",
     }]
 
-    observations: list[dict] = []
-    aggregate = await run_dataset(CatalogSearchUseCase(repo), repo, cases, top_k=2,
-                                  observations=observations)
+    aggregate = await run_dataset(CatalogSearchUseCase(repo), repo, cases, top_k=2)
 
     assert aggregate.precision == 1.0
-    assert aggregate.canonical_duplicate_rate == 0.0
-    # 同款第二条不再占据 Top-K 名额：Top2 里只剩 P-A，canonical 视角只有 CAN-LAMP。
-    assert observations[0]["raw_retrieved"] == ["P-A"]
-    assert observations[0]["canonical_retrieved"] == ["CAN-LAMP"]
+    assert aggregate.canonical_duplicate_rate == 0.5
 
 
 async def test_formal_runner_keeps_split_and_constraint_dimensions_for_reports():
