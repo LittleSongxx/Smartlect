@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""标注集自检 —— 见教程 13-2 §2.4。
+"""标注集自检。
 
 标注集是评测的基准。基准本身错了，后面所有指标都不可信，而且错法很隐蔽：
 把一个「会被硬约束挡掉」的商品标成 relevant，不会报错，只会让 Recall 上限
@@ -130,6 +130,8 @@ def validate_categories() -> list[str]:
     docs = {p.name for p in _KNOWLEDGE_DIR.glob("*.md")}
     problems: list[str] = []
     for lineno, case in _load(_CATEGORY_DATASET):
+        if case.get("expected_unanswerable"):
+            continue  # 不可回答题金标为空是设计使然
         problems.extend(_check_common(lineno, case))
         for name in case.get("relevant", []):
             if name not in docs:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""品类知识库（CategoryInsight）召回评测 —— 见教程 13-1 §5。
+"""品类知识库（CategoryInsight）召回评测。
 
 与商品检索评测共用 `scripts/eval/metrics.py` 的三个指标，区别只在**标注单位**：
 
@@ -137,6 +137,7 @@ async def run_dataset(knowledge_base, cases: list[dict], top_k: int, *, observat
                 mrr=mrr(retrieved, relevant),
                 ndcg=ndcg_at_k(retrieved, relevant, top_k),
                 precision=precision_at_k(retrieved, relevant, top_k),
+                recall_at_1=recall_at_k(retrieved, relevant, 1),
                 kind=case.get("kind", "knowledge"),
                 dimensions={"split": str(case.get("split") or "ALL")},
             ),
@@ -162,6 +163,7 @@ def render_report(
         f"| Precision@{agg.k} | {agg.precision:.3f} | "
         f"{('观察项（未穷举金标，不阻断）' if thresholds.precision is None else f'≥ {thresholds.precision}（阻断）')} |",
         f"| MRR | {agg.mrr:.3f} | ≥ {thresholds.mrr}（阻断） |",
+        f"| R@1（首位命中） | {'n/a' if agg.recall_at_1 is None else f'{agg.recall_at_1:.3f}'} | 观察项 |",
         f"| NDCG@{agg.k} | {agg.ndcg:.3f} | ≥ {thresholds.ndcg}（阻断） |",
         f"| 不可回答准确率 | {'n/a' if agg.empty_accuracy is None else f'{agg.empty_accuracy:.3f}'} | "
         f"{('未启用' if thresholds.empty_accuracy is None else f'≥ {thresholds.empty_accuracy}（阻断）') } |",
@@ -173,10 +175,12 @@ def render_report(
     ]
     if reasons:
         lines += ["未达标项：", *[f"- {r}" for r in reasons], ""]
-    lines += ["| query | Recall | Precision | MRR | NDCG | 召回文档 | 标注文档 |", "|---|---|---|---|---|---|---|"]
+    lines += ["| query | 类型 | Recall | R@1 | Precision | MRR | NDCG | 召回文档 | 标注文档 |",
+              "|---|---|---|---|---|---|---|---|---|"]
     for r in agg.per_query:
+        hit1 = "-" if r.recall_at_1 is None else f"{r.recall_at_1:.2f}"
         lines.append(
-            f"| {r.query} | {r.recall:.2f} | {r.precision:.2f} | {r.mrr:.2f} | {r.ndcg:.2f} | "
+            f"| {r.query} | {r.kind} | {r.recall:.2f} | {hit1} | {r.precision:.2f} | {r.mrr:.2f} | {r.ndcg:.2f} | "
             f"{','.join(r.retrieved) or '（空）'} | {','.join(r.relevant)} |",
         )
     return "\n".join(lines) + "\n"

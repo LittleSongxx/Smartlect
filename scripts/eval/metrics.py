@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """recall metrics —— 召回评测的三个核心指标 + 聚合 + 发版门禁
 
-指标口径与 13-1 章一致：
+指标口径：
 
     Recall@K   Top-K 覆盖了多少标注项      —— 任何召回环节的底线
     Precision@K Top-K 中有多少是真正相关项 —— 防止塞满无关候选
@@ -101,6 +101,8 @@ class QueryResult:
     mrr: float
     ndcg: float
     precision: float = 0.0
+    # 首位命中（hit@1）：严读数口径，独立于运行 K 计算；负例不参与。
+    recall_at_1: float | None = None
     # 硬约束过滤是否正确：None = 该 query 未声明约束，不参与统计
     filter_ok: bool | None = None
     note: str = ""
@@ -122,6 +124,8 @@ class Aggregate:
     mrr: float
     ndcg: float
     precision: float = 0.0
+    # 首位命中率（hit@1）均值；无可统计正例时为 None。
+    recall_at_1: float | None = None
     filter_accuracy: float | None = None
     # 无结果/不可回答类不应被当作“空 relevant 的正例”混进 Recall，单独统计。
     empty_count: int = 0
@@ -158,6 +162,7 @@ def evaluate(
     count = len(results)
     checked = [r for r in results if r.filter_ok is not None]
     duplicate_rates = [r.canonical_duplicate_rate for r in results if r.canonical_duplicate_rate is not None]
+    hit1_values = [r.recall_at_1 for r in results if r.recall_at_1 is not None]
     filter_accuracy = (
         sum(1 for r in checked if r.filter_ok) / len(checked) if checked else None
     )
@@ -168,6 +173,7 @@ def evaluate(
         mrr=round(sum(r.mrr for r in results) / count, 4),
         ndcg=round(sum(r.ndcg for r in results) / count, 4),
         precision=round(sum(r.precision for r in results) / count, 4),
+        recall_at_1=None if not hit1_values else round(sum(hit1_values) / len(hit1_values), 4),
         filter_accuracy=None if filter_accuracy is None else round(filter_accuracy, 4),
         empty_count=empty_count,
         empty_accuracy=empty_accuracy,

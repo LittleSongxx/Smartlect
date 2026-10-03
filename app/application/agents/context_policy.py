@@ -2,7 +2,7 @@
 """context_policy
 
 Context 工程策略：把 2.0 内置的上下文压缩配置成跨境购物场景的口径
-（即教程 Cache Breakpoint 章节要解决的问题——长对话不爆 token 且关键事实不丢）。
+（长对话不爆 token 且关键事实不丢）。
 
 压缩触发：上下文占用达 context_size * trigger_ratio 时，Agent 自动把早期消息
 压缩成摘要写入 AgentState.summary，保留末段 reserve_ratio 的原始消息。

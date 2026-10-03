@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""商品检索（product_search）召回评测 —— 见教程 13-2 章。
+"""商品检索（product_search）召回评测。
 
 直连 `CatalogSearchUseCase`，不过 HTTP、不过 Agent：召回评测的定位是模块级
 「日常体检」，改一行权重、换一版 reranker 都该能几秒钟跑一遍，才可能常驻 CI。
@@ -54,6 +54,7 @@ from scripts.eval.metrics import (  # noqa: E402
     recall_at_k,
 )
 from scripts.eval.hard_constraints import find_hit_constraint_violations  # noqa: E402
+from scripts.eval.dataset_fingerprint import check_dataset_fingerprint  # noqa: E402
 from scripts.eval.run_manifest import (  # noqa: E402
     SPLITS, build_manifest, finish_manifest, manifest_report, select_cases,
     validate_baseline_selection, write_manifest,
@@ -295,6 +296,7 @@ async def run_dataset(
                 mrr=mrr(retrieved, relevant),
                 ndcg=ndcg_at_k(retrieved, relevant, top_k),
                 precision=precision_at_k(retrieved, relevant, top_k),
+                recall_at_1=recall_at_k(retrieved, relevant, 1),
                 filter_ok=filter_ok,
                 note=filter_note,
                 kind=case.get("kind", "lexical"),
@@ -341,18 +343,32 @@ def by_dimension(agg: Aggregate, dimension: str) -> dict[str, Aggregate]:
     return {value: evaluate(results, k=agg.k) for value, results in sorted(groups.items())}
 
 
+def main_scope(agg: Aggregate) -> Aggregate:
+    """主口径：剔除 literal 冒烟桶（标题原文查询是词面回声，不代表语义召回水平）。"""
+    return evaluate([r for r in agg.per_query if r.kind != "literal"], k=agg.k)
+
+
 def print_summary(label: str, agg: Aggregate) -> None:
     filt = "n/a" if agg.filter_accuracy is None else f"{agg.filter_accuracy:.3f}"
     empty = "n/a" if agg.empty_accuracy is None else f"{agg.empty_accuracy:.3f} ({agg.empty_count} 条)"
     duplicate = "n/a" if agg.canonical_duplicate_rate is None else f"{agg.canonical_duplicate_rate:.3f}"
     actual_strategy = ",".join(sorted(agg.recall_strategies)) or "unknown"
+    hit1 = "n/a" if agg.recall_at_1 is None else f"{agg.recall_at_1:.3f}"
     print(
-        f"  {label:<18} Recall@{agg.k}={agg.recall:.3f}  Precision@{agg.k}={agg.precision:.3f}  MRR={agg.mrr:.3f}  "
+        f"  {label:<18} Recall@{agg.k}={agg.recall:.3f}  R@1={hit1}  Precision@{agg.k}={agg.precision:.3f}  MRR={agg.mrr:.3f}  "
         f"NDCG@{agg.k}={agg.ndcg:.3f}  过滤准确率={filt}  无结果准确率={empty}  同款重复率={duplicate}  实际链路={actual_strategy}",
     )
-    for kind, sub in by_kind(agg).items():
+    scope = main_scope(agg)
+    if scope.count != agg.count:
+        scope_hit1 = "n/a" if scope.recall_at_1 is None else f"{scope.recall_at_1:.3f}"
         print(
-            f"    └─ {kind:<10}({sub.count:>2} 条) Recall={sub.recall:.3f}  Precision={sub.precision:.3f}  "
+            f"    └─ 主口径(去literal)({scope.count} 条) Recall@{agg.k}={scope.recall:.3f}  R@1={scope_hit1}  "
+            f"MRR={scope.mrr:.3f}  NDCG@{agg.k}={scope.ndcg:.3f}",
+        )
+    for kind, sub in by_kind(agg).items():
+        sub_hit1 = "n/a" if sub.recall_at_1 is None else f"{sub.recall_at_1:.3f}"
+        print(
+            f"    └─ {kind:<10}({sub.count:>2} 条) Recall={sub.recall:.3f}  R@1={sub_hit1}  Precision={sub.precision:.3f}  "
             f"MRR={sub.mrr:.3f}  NDCG={sub.ndcg:.3f}",
         )
 
@@ -370,16 +386,30 @@ def render_report(
         "",
         "## 指标总览",
         "",
-        f"| 档位 | 实际召回链 | Recall@{top_k} | Precision@{top_k} | MRR | NDCG@{top_k} | 过滤准确率 | 无结果准确率 | 同款重复率 | 门禁 |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        f"| 档位 | 实际召回链 | Recall@{top_k} | R@1 | Precision@{top_k} | MRR | NDCG@{top_k} | 过滤准确率 | 无结果准确率 | 同款重复率 | 门禁 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for name, agg in per_strategy.items():
         verdict, _ = gate(agg, thresholds, (baselines or {}).get(name))
         filt = "n/a" if agg.filter_accuracy is None else f"{agg.filter_accuracy:.3f}"
         empty = "n/a" if agg.empty_accuracy is None else f"{agg.empty_accuracy:.3f}"
         duplicate = "n/a" if agg.canonical_duplicate_rate is None else f"{agg.canonical_duplicate_rate:.3f}"
+        hit1 = "n/a" if agg.recall_at_1 is None else f"{agg.recall_at_1:.3f}"
         lines.append(
-            f"| {name} | {','.join(sorted(agg.recall_strategies)) or 'unknown'} | {agg.recall:.3f} | {agg.precision:.3f} | {agg.mrr:.3f} | {agg.ndcg:.3f} | {filt} | {empty} | {duplicate} | {verdict} |",
+            f"| {name} | {','.join(sorted(agg.recall_strategies)) or 'unknown'} | {agg.recall:.3f} | {hit1} | {agg.precision:.3f} | {agg.mrr:.3f} | {agg.ndcg:.3f} | {filt} | {empty} | {duplicate} | {verdict} |",
+        )
+
+    lines += ["", "### 主口径（剔除 literal 冒烟桶）", "",
+              "literal 桶查询即标题原文，词面命中不代表语义召回水平，只作回归冒烟，不进主读数。", "",
+              "| 档位 | 条数 | Recall@{k} | R@1 | MRR | NDCG@{k} |".replace("{k}", str(top_k)),
+              "|---|---|---|---|---|---|"]
+    for name, agg in per_strategy.items():
+        scope = main_scope(agg)
+        if scope.count == agg.count:
+            continue
+        scope_hit1 = "n/a" if scope.recall_at_1 is None else f"{scope.recall_at_1:.3f}"
+        lines.append(
+            f"| {name} | {scope.count} | {scope.recall:.3f} | {scope_hit1} | {scope.mrr:.3f} | {scope.ndcg:.3f} |",
         )
 
     precision_gate = "观察项（未穷举金标，不阻断）" if thresholds.precision is None else f"≥ {thresholds.precision}"
@@ -389,12 +419,13 @@ def render_report(
     lines += ["## 按 query 类型拆分", "",
               "字面类（lexical）query 与语料共享词汇，关键词召回天然占优；"
               "语义类（semantic）query 刻意不含商品字面，是向量召回真正创造价值的地方。", "",
-              f"| 档位 | 类型 | 条数 | Recall@{top_k} | Precision@{top_k} | MRR | NDCG@{top_k} |",
-              "|---|---|---|---|---|---|---|"]
+              f"| 档位 | 类型 | 条数 | Recall@{top_k} | R@1 | Precision@{top_k} | MRR | NDCG@{top_k} |",
+              "|---|---|---|---|---|---|---|---|"]
     for name, agg in per_strategy.items():
         for kind, sub in by_kind(agg).items():
+            sub_hit1 = "n/a" if sub.recall_at_1 is None else f"{sub.recall_at_1:.3f}"
             lines.append(
-                f"| {name} | {kind} | {sub.count} | {sub.recall:.3f} | {sub.precision:.3f} | "
+                f"| {name} | {kind} | {sub.count} | {sub.recall:.3f} | {sub_hit1} | {sub.precision:.3f} | "
                 f"{sub.mrr:.3f} | {sub.ndcg:.3f} |",
             )
     lines.append("")
@@ -417,12 +448,13 @@ def render_report(
         lines += [f"## {name}（{verdict}，{agg.count} 条）", ""]
         if reasons:
             lines += ["未达标项：", *[f"- {r}" for r in reasons], ""]
-        lines += ["| query | 类型 | Recall | Precision | MRR | NDCG | 召回序 | 标注 | 过滤 |",
-                  "|---|---|---|---|---|---|---|---|---|"]
+        lines += ["| query | 类型 | Recall | R@1 | Precision | MRR | NDCG | 召回序 | 标注 | 过滤 |",
+                  "|---|---|---|---|---|---|---|---|---|---|"]
         for r in agg.per_query:
             filt = "-" if r.filter_ok is None else ("OK" if r.filter_ok else f"FAIL {r.note}")
+            hit1 = "-" if r.recall_at_1 is None else f"{r.recall_at_1:.2f}"
             lines.append(
-                f"| {r.query} | {r.kind} | {r.recall:.2f} | {r.precision:.2f} | {r.mrr:.2f} | {r.ndcg:.2f} | "
+                f"| {r.query} | {r.kind} | {r.recall:.2f} | {hit1} | {r.precision:.2f} | {r.mrr:.2f} | {r.ndcg:.2f} | "
                 f"{','.join(r.retrieved) or '（空）'} | {','.join(r.relevant)} | {filt} |",
             )
         lines.append("")
@@ -454,6 +486,14 @@ async def main(argv: list[str] | None = None) -> None:
         validate_baseline_selection(args.baseline_file, selection, Path(args.dataset))
     except (ValueError, OSError) as err:
         parser.error(str(err))
+
+    # 数据集与运行时目录必须同版本：金标对着旧目录标注出的读数没有意义
+    fingerprint_problems = check_dataset_fingerprint(Path(args.dataset))
+    if fingerprint_problems:
+        for problem in fingerprint_problems:
+            print(f"  [fingerprint] {problem}", file=sys.stderr)
+        if args.formal_gates or args.profile in ("online-main", "offline-fallback"):
+            parser.error("正式门禁要求评测集与运行时目录指纹一致；请用生成器对当前目录重标")
 
     profile = args.profile
     if args.formal_gates:

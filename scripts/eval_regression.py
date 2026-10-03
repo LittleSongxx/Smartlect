@@ -154,9 +154,11 @@ async def call_judge(
     last_error: Exception | None = None
     for attempt in range(_JUDGE_MAX_RETRIES):
         try:
+            judge_base = (os.environ.get("EVAL_JUDGE_BASE_URL") or os.environ["LLM_BASE_URL"]).rstrip("/")
+            judge_key = os.environ.get("EVAL_JUDGE_API_KEY") or os.environ["LLM_API_KEY"]
             response = await client.post(
-                f"{os.environ['LLM_BASE_URL'].rstrip('/')}/chat/completions",
-                headers={"Authorization": f"Bearer {os.environ['LLM_API_KEY']}"},
+                f"{judge_base}/chat/completions",
+                headers={"Authorization": f"Bearer {judge_key}"},
                 json=payload,
                 timeout=120,
             )
@@ -394,9 +396,13 @@ async def _run_case_with_events(client, judge_client, case, ground_truth, sessio
             response.raise_for_status()
             final_text = response.json()["final_text"]
             transcript_lines.append(f"[买家] {query}\n[Agent] {final_text}")
-            # 将真实事件按对话轮次切开，才能程序证明“确认前”没有调用下单工具。
+            # 将真实事件按对话轮次切开，才能程序证明“确认前”没有调用下单工具；
+            # final_text 随事件入列，供金额/政策忠实度断言对账（纯评测侧，不改服务端）。
             await asyncio.sleep(0.05)
-            collector.events.append({"type": "eval.turn.complete", "payload": {"turn_index": turn_index}})
+            collector.events.append({
+                "type": "eval.turn.complete",
+                "payload": {"turn_index": turn_index, "final_text": final_text},
+            })
             if inspect_confirmations:
                 confirmations = await capture_confirmations(client, BASE_URL, buyer_id, session_id, collector.events, turn_index)
                 for action in actions:
@@ -574,6 +580,10 @@ async def main(argv: list[str] | None = None) -> None:
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"agent-{args.split}-report-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}.md"
+    judge_model = os.environ.get("EVAL_JUDGE_MODEL") or os.environ.get("LLM_MODEL", "qwen-plus")
+    judge_base = os.environ.get("EVAL_JUDGE_BASE_URL") or os.environ.get("LLM_BASE_URL", "")
+    from urllib.parse import urlsplit
+    judge_family = urlsplit(judge_base).netloc.rsplit("@", 1)[-1]
     manifest = build_manifest(
         runner="agent_regression", dataset=Path(args.cases), selection=selection, judge_prompt=JUDGE_SYSTEM_PROMPT,
         parameters={"base_url": public_endpoint(BASE_URL), "allow_semantic_cache": args.allow_semantic_cache,
@@ -581,7 +591,9 @@ async def main(argv: list[str] | None = None) -> None:
                     "buyer_namespace": _RUN_NAMESPACE,
                     "identity_mode": os.getenv("IDENTITY_MODE", "demo"),
                     "gate_scope": "release" if args.split == "release" and selection["complete_split"] and not args.only else "diagnostic",
-                    "server_code_identity": "见 service_runtime；本地工作区 hash 不自动代表被测服务版本"},
+                    "server_code_identity": "见 service_runtime；本地工作区 hash 不自动代表被测服务版本",
+                    "judge_gateway": {"model": judge_model, "endpoint_family": judge_family,
+                                      "same_family_as_main": judge_model == os.environ.get("LLM_MODEL")}},
     )
     local_app_hash = app_source_fingerprint()
     manifest["service_runtime"] = compare_runtime_identity(local_app_hash, {})

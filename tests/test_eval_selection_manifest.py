@@ -150,6 +150,9 @@ async def test_product_release_runs_only_selected_queries_and_records_real_degra
         {"id": "dev", "split": "dev", "query": "不应执行的 dev 查询", "relevant": ["P1001"]},
         {"id": "release", "split": "release", "query": "旅行三件套", "relevant": ["P1001"]},
     ])
+    from scripts.eval.dataset_fingerprint import write_fingerprint
+    from scripts.eval.run_manifest import PROJECT_ROOT as EVAL_ROOT
+    write_fingerprint(path, EVAL_ROOT / "data" / "catalog-v3.jsonl", generator="test-fixture")
     with pytest.raises(SystemExit) as error:
         await product.main(["--dataset", str(path), "--split", "release", "--profile", "online-main", "--report-dir", str(tmp_path / "reports")])
     assert error.value.code == 1

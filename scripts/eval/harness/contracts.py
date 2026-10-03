@@ -99,7 +99,7 @@ def load_suite(path=SUITE):
 
 
 def affected_paths(paths):
-    # 同时支持独立工程仓库和课程父仓库的输出，不把教程路径判为工程修改。
+    # 同时支持独立工程仓库与父目录其他项目的输出，不把工程外路径判为工程修改。
     result = []
     for raw in paths:
         path = raw.strip().replace('\\', '/')
