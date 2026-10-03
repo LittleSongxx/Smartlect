@@ -1,5 +1,6 @@
 """真实提炼模型小样本回归，不写买家记忆；输出可审阅事实及规则检查。"""
 import argparse, asyncio, json
+from datetime import datetime
 from pathlib import Path
 from app.infrastructure.settings import load_settings
 from app.infrastructure.llm import create_chat_model
@@ -30,4 +31,4 @@ async def run(args):
     finally:await model.client.close()
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--cases',type=Path,default=Path('eval/memory/cases.json'));parser.add_argument('--output',type=Path,default=Path('eval/verification/memory-upgrade-20260909/extraction.json'));asyncio.run(run(parser.parse_args()))
+    parser=argparse.ArgumentParser();parser.add_argument('--cases',type=Path,default=Path('eval/memory/cases.json'));parser.add_argument('--output',type=Path,default=None);args=parser.parse_args();args.output=args.output or Path(f"eval/verification/memory-{datetime.now().strftime('%Y%m%d-%H%M%S')}/extraction.json");asyncio.run(run(args))
