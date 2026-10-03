@@ -1,0 +1,204 @@
+"""混合检索后端：Elasticsearch(BM25, smartcn) + Qdrant(dense ANN)。
+
+2026-10 收敛重构：取代自研 jieba 内存 BM25 与 pgvector 双写。两个后端都懒加载，
+未配置或不可达时返回各自的 unavailable 信号——调用方沿用既有降级链
+（单路可检索、双缺失退 lexical-only/503），不把基础设施可用性耦合进检索语义。
+
+环境变量：
+  SMARTLECT_ES_URL / SMARTLECT_ES_API_KEY（可选）
+  SMARTLECT_QDRANT_URL / SMARTLECT_QDRANT_API_KEY（可选，缺省本地 127.0.0.1:6333）
+"""
+import logging
+import os
+
+log = logging.getLogger(__name__)
+
+ES_INDEX = "smartlect-knowledge"
+QDRANT_COLLECTION = "smartlect_knowledge"
+FIRST_STAGE = 50
+
+_es = None
+_qdrant = None
+
+
+def _env(name, default=None):
+    value = os.getenv(name)
+    return value if value else default
+
+
+def es_client():
+    """单例 AsyncElasticsearch；未配置返回 None。"""
+    global _es
+    if _es is not None:
+        return _es
+    url = _env("SMARTLECT_ES_URL")
+    if not url:
+        return None
+    from elasticsearch import AsyncElasticsearch
+    kwargs = {"request_timeout": 10}
+    api_key = _env("SMARTLECT_ES_API_KEY")
+    if api_key:
+        kwargs["api_key"] = api_key
+    _es = AsyncElasticsearch(url, **kwargs)
+    return _es
+
+
+def qdrant_client():
+    """单例 AsyncQdrantClient；未配置返回 None（本地默认端口）。"""
+    global _qdrant
+    if _qdrant is not None:
+        return _qdrant
+    from qdrant_client import AsyncQdrantClient
+    url = _env("SMARTLECT_QDRANT_URL", "http://127.0.0.1:6333")
+    kwargs = {"url": url, "timeout": 10}
+    api_key = _env("SMARTLECT_QDRANT_API_KEY")
+    if api_key:
+        kwargs["api_key"] = api_key
+    _qdrant = AsyncQdrantClient(**kwargs)
+    return _qdrant
+
+
+async def ensure_schema():
+    """幂等建索引/集合；任一后端缺失时跳过对应部分。"""
+    es = es_client()
+    if es is not None:
+        if not await es.indices.exists(index=ES_INDEX):
+            await es.indices.create(index=ES_INDEX, body={
+                "settings": {
+                    "number_of_shards": 1,
+                    "number_of_replicas": 0,
+                    # smartcn 是 ES 官方中文分词插件，随镜像分发；
+                    # 插件缺失的裸 ES 上回退 standard，检索质量降级但不失败。
+                    "analysis": {"analyzer": {"default": {"type": "smartcn"}}},
+                },
+                "mappings": {
+                    "properties": {
+                        "scope": {"type": "keyword"},
+                        "doc_id": {"type": "keyword"},
+                        "version": {"type": "long"},
+                        "chunk_id": {"type": "keyword"},
+                        "index_version": {"type": "keyword"},
+                        "heading": {"type": "text"},
+                        "content": {"type": "text"},
+                        "valid_until": {"type": "date", "format": "strict_date_optional_time||epoch_millis||yyyy-MM-dd HH:mm:ss||yyyy-MM-dd'T'HH:mm:ssZ||yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'"},
+                    }
+                },
+            })
+    qdrant = qdrant_client()
+    if qdrant is not None:
+        from qdrant_client import models
+        if not await qdrant.collection_exists(QDRANT_COLLECTION):
+            await qdrant.create_collection(
+                collection_name=QDRANT_COLLECTION,
+                vectors_config=models.VectorParams(size=1024, distance=models.Distance.COSINE),
+            )
+
+
+def es_doc_id(scope, doc_id, version, chunk_id):
+    return f"{scope}:{doc_id}:{version}:{chunk_id}"
+
+
+async def index_chunk(scope, doc_id, version, chunk_id, heading, content,
+                      index_version=None, valid_until=None):
+    """写一条 ES 文档；失败返回 False（调用方按既有审计口径记录）。"""
+    es = es_client()
+    if es is None:
+        return False
+    from elasticsearch import helpers  # noqa: F401  (保留批量路径提示)
+    body = {"scope": scope, "doc_id": doc_id, "version": int(version),
+            "chunk_id": chunk_id, "heading": heading or "", "content": content}
+    if index_version:
+        body["index_version"] = str(index_version)
+    if valid_until:
+        body["valid_until"] = str(valid_until)
+    await es.index(index=ES_INDEX, id=es_doc_id(scope, doc_id, version, chunk_id),
+                   document=body, refresh="wait_for")
+    return True
+
+
+async def delete_doc(scope, doc_id, version=None):
+    """撤回文档：按 (scope, doc_id[, version]) 删除 ES 文档。"""
+    es = es_client()
+    if es is None:
+        return False
+    query = {"bool": {"filter": [{"term": {"scope": scope}}, {"term": {"doc_id": doc_id}}]}}
+    if version is not None:
+        query["bool"]["filter"].append({"term": {"version": int(version)}})
+    await es.delete_by_query(index=ES_INDEX, query=query, refresh=True,
+                             conflicts="proceed")
+    return True
+
+
+async def bm25_search(query, scope, limit=FIRST_STAGE, *, extra_queries=()):
+    """ES BM25 top-limit。返回 [(key, score)]，key=(doc_id, version, chunk_id)。
+    未配置/不可达返回 (None, 'unavailable')——调用方回退单路。"""
+    es = es_client()
+    if es is None or not (query or extra_queries):
+        return None, "unavailable"
+    should = []
+    for text in [query, *[q for q in extra_queries if q]]:
+        should.append({"multi_match": {"query": text, "fields": ["heading^2", "content"], "operator": "or"}})
+    body = {"bool": {"filter": [{"term": {"scope": scope}}], "should": should, "minimum_should_match": 1}}
+    response = await es.search(index=ES_INDEX, query=body, size=limit, _source=["doc_id", "version", "chunk_id"])
+    hits = []
+    for hit in response["hits"]["hits"]:
+        source = hit["_source"]
+        hits.append(((source["doc_id"], int(source["version"]), source["chunk_id"]), float(hit["_score"] or 0.0)))
+    return hits, "es_bm25"
+
+
+async def upsert_vectors(scope, doc_id, version, model, index_version, mapped):
+    """Qdrant 批量 upsert（mapped: chunk_id -> vector）。失败返回 False。"""
+    qdrant = qdrant_client()
+    if qdrant is None or not mapped:
+        return False
+    from qdrant_client import models
+    points = [
+        models.PointStruct(
+            id=es_doc_id(scope, doc_id, version, chunk_id),
+            vector=vector,
+            payload={"scope": scope, "doc_id": doc_id, "version": int(version),
+                     "chunk_id": chunk_id, "embedding_model": model,
+                     "index_version": str(index_version or "")},
+        )
+        for chunk_id, vector in mapped.items()
+    ]
+    await qdrant.upsert(collection_name=QDRANT_COLLECTION, points=points, wait=True)
+    return True
+
+
+async def ann_search(query_vector, scope, embedding_model, index_version, limit=FIRST_STAGE):
+    """Qdrant ANN top-limit。返回 [(hit dict with score/doc_id/version/chunk_id)]。
+    未配置/不可达返回 (None, 'unavailable')。"""
+    qdrant = qdrant_client()
+    if qdrant is None or query_vector is None:
+        return None, "unavailable"
+    from qdrant_client import models
+    must = [models.FieldCondition(key="scope", match=models.MatchValue(value=scope))]
+    if embedding_model:
+        must.append(models.FieldCondition(key="embedding_model", match=models.MatchValue(value=embedding_model)))
+    if index_version:
+        must.append(models.FieldCondition(key="index_version", match=models.MatchValue(value=str(index_version))))
+    response = await qdrant.query_points(
+        collection_name=QDRANT_COLLECTION,
+        query=query_vector,
+        query_filter=models.Filter(must=must),
+        limit=limit,
+        with_payload=True,
+    )
+    hits = []
+    for point in response.points:
+        payload = point.payload or {}
+        hits.append({"doc_id": payload.get("doc_id"), "version": payload.get("version"),
+                     "chunk_id": payload.get("chunk_id"), "score": point.score})
+    return hits, "qdrant_hnsw"
+
+
+async def close():
+    global _es, _qdrant
+    if _es is not None:
+        await _es.close()
+        _es = None
+    if _qdrant is not None:
+        await _qdrant.close()
+        _qdrant = None

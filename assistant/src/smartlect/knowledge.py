@@ -331,9 +331,9 @@ def _bm25_rank(rows, query):
 
 
 def rank_chunks(rows, query, *, query_vector=None, embedding_model=None, index_version=None,
-                utterance=None, model_query=None, dense_hits=None, vendor_order=None,
+                utterance=None, model_query=None, dense_hits=None, vendor_order=None, es_hits=None,
                 vector_backend="unavailable", rerank_backend="rrf_only"):
-    """Lexical jieba BM25 + optional ANN hits + RRF. No in-process MySQL vector_json scan."""
+    """Lexical (ES BM25 preferred, in-memory jieba fallback) + ANN + RRF. No MySQL vector_json scan."""
     if len(rows) > MAX_CHUNKS:
         raise StateError("knowledge_capacity_exceeded", 503)
     lexical, by_key = _bm25_rank(rows, query)
@@ -343,6 +343,17 @@ def rank_chunks(rows, query, *, query_vector=None, embedding_model=None, index_v
         by_key.update(extra_map)
         lexical = extra_lex + [(key, score * 0.9) for key, score in lexical]
         lexical.sort(key=lambda item: (-item[1], item[0]))
+    if es_hits:
+        # ES 是服务端 BM25（smartcn 分词）；分数域与内存 BM25 不同，只取序参与 RRF。
+        seen = set()
+        ordered = []
+        for key, _score in es_hits:
+            if key in by_key and key not in seen:
+                seen.add(key)
+                ordered.append(key)
+        if ordered:
+            lexical = [(key, 1.0 / (index + 1)) for index, key in enumerate(ordered)] + [
+                (key, score) for key, score in lexical if key not in seen]
     dense = []
     if dense_hits:
         for hit in dense_hits:
@@ -375,21 +386,21 @@ def rank_chunks(rows, query, *, query_vector=None, embedding_model=None, index_v
     return [by_key[key] for key in keys], retrieval
 
 
-def _mirror_pgvector(scope, doc_id, version, model, index_version, mapped):
+def _mirror_vector(scope, doc_id, version, model, index_version, mapped, chunks_meta=None):
+    """索引双写：Qdrant 向量 + ES BM25 文档；任一失败不阻塞发布（审计已有 attempt 台账）。"""
     try:
-        from smartlect.vector_store import upsert_vectors
-        rows = [{
-            "chunk_pk": f"{scope}:{doc_id}:{version}:{chunk_id}",
-            "execution_scope_id": scope,
-            "doc_id": doc_id,
-            "version": version,
-            "chunk_id": chunk_id,
-            "embedding_model": model,
-            "index_version": index_version,
-            "acl": "PUBLIC",
-            "embedding": vector,
-        } for chunk_id, vector in mapped.items()]
-        upsert_vectors(rows)
+        import asyncio
+        from smartlect import hybrid_search
+        async def write_all():
+            results = []
+            results.append(await hybrid_search.upsert_vectors(scope, doc_id, version, model, index_version, mapped))
+            for chunk_id, vector in mapped.items():
+                meta = (chunks_meta or {}).get(chunk_id) or {}
+                results.append(await hybrid_search.index_chunk(
+                    scope, doc_id, version, chunk_id, meta.get("heading"), meta.get("content"),
+                    index_version=index_version))
+            return results
+        asyncio.run(write_all())
     except Exception:
         return
 
@@ -398,14 +409,28 @@ def _ann_hits(scope, query_vector, embedding_model, index_version):
     if query_vector is None or not embedding_model or not index_version:
         return [], "unused"
     try:
-        from smartlect.vector_store import ann_search
-        hits = ann_search(query_vector, scope=scope, embedding_model=embedding_model,
-                          index_version=index_version, limit=FIRST_STAGE_DEPTH)
+        import asyncio
+        from smartlect import hybrid_search
+        # _search_uncached 运行在 to_thread 工作线程（无事件循环），asyncio.run 安全。
+        hits, backend = asyncio.run(hybrid_search.ann_search(
+            query_vector, scope, embedding_model, index_version, limit=FIRST_STAGE_DEPTH))
         if hits is None:
             return [], "unavailable"
-        return hits, "pgvector_hnsw"
+        return hits, backend
     except Exception:
         return [], "unavailable"
+
+
+def _es_lexical(scope, query, utterance, model_query):
+    """ES BM25 召回；未配置返回 None（rank_chunks 回退内存 BM25——保持语义兼容）。"""
+    try:
+        import asyncio
+        from smartlect import hybrid_search
+        extras = [item for item in (utterance, model_query) if item and item != query]
+        hits, backend = asyncio.run(hybrid_search.bm25_search(query, scope, extra_queries=extras))
+        return (hits, backend) if hits is not None else (None, "unavailable")
+    except Exception:
+        return None, "unavailable"
 
 
 def _vendor_rerank_order(query, rows, dense_hits):
@@ -671,6 +696,10 @@ class KnowledgeStore(SessionStore):
             mapped[key], dimensions = vector, len(vector)
         scope = _actor(actor)[2]
         with self._transaction() as cursor:
+            cursor.execute("SELECT chunk_id,heading,content FROM knowledge_chunk WHERE execution_scope_id=%s AND doc_id=%s AND version=%s",
+                           (scope, doc_id, version))
+            chunks_meta = {row["chunk_id"]: {"heading": row["heading"], "content": row["content"]}
+                           for row in cursor.fetchall()}
             self._catalog(cursor, scope)
             row = self._document(cursor, scope, doc_id, version)
             if row["status"] != "DRAFT":
@@ -681,7 +710,7 @@ class KnowledgeStore(SessionStore):
             cursor.executemany("UPDATE knowledge_chunk SET embedding_model=%s,embedding_dimensions=%s,index_version=%s,vector_json=%s "
                 "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s AND chunk_id=%s",
                 [(model, dimensions, index_version, canonical(vector), scope, doc_id, version, key) for key, vector in mapped.items()])
-        _mirror_pgvector(scope, doc_id, version, model, index_version, mapped)
+        _mirror_vector(scope, doc_id, version, model, index_version, mapped, chunks_meta=chunks_meta)
         return {"model": model, "index_version": index_version, "dimensions": dimensions, "chunks": len(mapped)}
 
     def draft_chunks_with_status(self, actor, doc_id, version):
@@ -713,19 +742,22 @@ class KnowledgeStore(SessionStore):
             mapped[key], dimensions = vector, len(vector)
         scope = _actor(actor)[2]
         with self._transaction() as cursor:
+            cursor.execute("SELECT chunk_id,heading,content FROM knowledge_chunk WHERE execution_scope_id=%s AND doc_id=%s AND version=%s",
+                           (scope, doc_id, version))
+            _rows_meta = cursor.fetchall()
+            chunks_meta = {row["chunk_id"]: {"heading": row["heading"], "content": row["content"]}
+                           for row in _rows_meta}
             row = self._document(cursor, scope, doc_id, version)
             if row["status"] != "DRAFT":
                 raise StateError("document_not_draft")
-            cursor.execute("SELECT chunk_id FROM knowledge_chunk WHERE execution_scope_id=%s AND doc_id=%s AND version=%s",
-                           (scope, doc_id, version))
-            known = {item["chunk_id"] for item in cursor.fetchall()}
+            known = {item["chunk_id"] for item in _rows_meta}
             if not set(mapped) <= known:
                 raise StateError("unknown_embedding_chunk", 422)
             cursor.executemany("UPDATE knowledge_chunk SET embedding_model=%s,embedding_dimensions=%s,index_version=%s,vector_json=%s "
                 "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s AND chunk_id=%s",
                 [(model, dimensions, index_version, canonical(vector), scope, doc_id, version, key)
                  for key, vector in mapped.items()])
-        _mirror_pgvector(scope, doc_id, version, model, index_version, mapped)
+        _mirror_vector(scope, doc_id, version, model, index_version, mapped, chunks_meta=chunks_meta)
         return {"chunks": len(mapped), "model": model, "index_version": index_version}
 
     def embedding_counts(self, actor, doc_id, version):
@@ -798,12 +830,14 @@ class KnowledgeStore(SessionStore):
             cursor.execute("SELECT revision FROM knowledge_catalog WHERE execution_scope_id=%s", (scope,))
             catalog = cursor.fetchone()
         dense_hits, vector_backend = _ann_hits(scope, query_vector, embedding_model, index_version)
+        es_hits, es_backend = _es_lexical(scope, query, utterance, model_query)
         vendor_order, rerank_backend = _vendor_rerank_order(query, rows, dense_hits)
         ranked, metadata = rank_chunks(
             rows, query, query_vector=query_vector, embedding_model=embedding_model,
             index_version=index_version, utterance=utterance, model_query=model_query,
-            dense_hits=dense_hits, vendor_order=vendor_order,
+            dense_hits=dense_hits, vendor_order=vendor_order, es_hits=es_hits,
             vector_backend=vector_backend, rerank_backend=rerank_backend)
+        metadata["lexical_backend"] = es_backend
         metadata["catalog_revision"] = catalog["revision"] if catalog else 0
         metadata["parallel_queries"] = parallel_queries(utterance, model_query or raw_query)
         denied = acl_denied_documents(rows, hidden_rows, utterance, query)
