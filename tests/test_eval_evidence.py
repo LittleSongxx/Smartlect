@@ -186,3 +186,55 @@ def test_landed_price_consistency_is_checked_from_tool_facts():
 
     assert evaluate_trace_assertions(assertion, good)[0]["pass"] is True
     assert evaluate_trace_assertions(assertion, bad)[0]["pass"] is False
+
+
+def _turn_event(final_text: str) -> dict:
+    return {"type": "eval.turn.complete", "payload": {"turn_index": 1, "final_text": final_text}}
+
+
+def _landed_event(de_minimis: bool = True, ship_to: str = "CN") -> dict:
+    return {"type": "tool.result", "payload": {"tool": "product_search_tool", "hits": [{
+        "product_id": "P1", "price_major": 258.0, "currency": "CNY",
+        "skus": [{"spec": "标准", "price_major": 258.0, "currency": "CNY", "stock": 5}],
+        "landed_price": {"currency": "CNY", "ship_to": ship_to, "subtotal_major": 258.0,
+                         "freight_major": 20.0, "tariff_major": 0.0 if de_minimis else 39.0,
+                         "landed_total_major": 278.0 if de_minimis else 317.0,
+                         "de_minimis_applied": de_minimis},
+    }]}}
+
+
+class TestFaithfulnessAssertions:
+    def test_answer_numbers_grounded_passes_on_tool_price(self):
+        results = evaluate_trace_assertions(
+            [{"criterion": "金额可溯源", "kind": "answer_numbers_grounded"}],
+            [_landed_event(), _turn_event("到手价 278 元，含运费 20 元。")],
+        )
+        assert results[0]["pass"] is True
+
+    def test_answer_numbers_grounded_fails_on_fabricated_amount(self):
+        results = evaluate_trace_assertions(
+            [{"criterion": "金额可溯源", "kind": "answer_numbers_grounded"}],
+            [_landed_event(), _turn_event("这个品类一般 180-350 元。")],
+        )
+        assert results[0]["pass"] is False
+
+    def test_answer_numbers_grounded_fails_closed_without_turn_text(self):
+        results = evaluate_trace_assertions(
+            [{"criterion": "金额可溯源", "kind": "answer_numbers_grounded"}],
+            [_landed_event()],
+        )
+        assert results[0]["pass"] is False
+
+    def test_policy_fact_grounded_matches_flag(self):
+        results = evaluate_trace_assertions(
+            [{"criterion": "政策结论一致", "kind": "policy_fact_grounded"}],
+            [_landed_event(de_minimis=True), _turn_event("该订单免征关税。")],
+        )
+        assert results[0]["pass"] is True
+
+    def test_policy_fact_grounded_rejects_contradiction(self):
+        results = evaluate_trace_assertions(
+            [{"criterion": "政策结论一致", "kind": "policy_fact_grounded"}],
+            [_landed_event(de_minimis=False), _turn_event("放心，这个订单免征关税。")],
+        )
+        assert results[0]["pass"] is False

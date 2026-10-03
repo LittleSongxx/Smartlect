@@ -143,6 +143,8 @@ def build_manifest(*, runner: str, dataset: Path, selection: dict, parameters: d
             "embedding_dimension_configured": os.getenv("EMBEDDING_DIM", "1024"),
             "reranker_configured": os.getenv("RERANKER_MODEL", ""),
             "judge_requested": os.getenv("EVAL_JUDGE_MODEL") or os.getenv("LLM_MODEL", "qwen-plus"),
+            "judge_endpoint_family": public_endpoint(os.getenv("EVAL_JUDGE_BASE_URL") or "").split("//")[-1].split("/")[0],
+            "judge_same_family_as_main": (os.getenv("EVAL_JUDGE_MODEL") or os.getenv("LLM_MODEL", "qwen-plus")) == os.getenv("LLM_MODEL"),
         },
         "services_configured": {
             "llm_endpoint": public_endpoint(os.getenv("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")),

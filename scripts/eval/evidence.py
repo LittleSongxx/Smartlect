@@ -245,5 +245,40 @@ def evaluate_trace_assertions(assertions: list[dict[str, Any]], events: list[dic
             ))
             continue
 
+        if kind == "answer_numbers_grounded":
+            from scripts.eval.faithfulness import check_answer_numbers_grounded
+
+            answers = [
+                str((event.get("payload") or {}).get("final_text"))
+                for event in events
+                if event.get("type") == "eval.turn.complete"
+                and (event.get("payload") or {}).get("final_text")
+            ]
+            if not answers:
+                results.append(_passed(criterion, False, "缺少带 final_text 的轮次事件，无法对账回复金额"))
+                continue
+            passed, violations = check_answer_numbers_grounded(answers, events)
+            results.append(_passed(
+                criterion, passed,
+                f"核对 {len(answers)} 轮回复的带币种金额/百分比；" + ("全部可溯源" if passed else f"无法溯源的数字 {violations[:5]}"),
+            ))
+            continue
+
+        if kind == "policy_fact_grounded":
+            from scripts.eval.faithfulness import check_policy_statements
+
+            answers = [
+                str((event.get("payload") or {}).get("final_text"))
+                for event in events
+                if event.get("type") == "eval.turn.complete"
+                and (event.get("payload") or {}).get("final_text")
+            ]
+            if not answers:
+                results.append(_passed(criterion, False, "缺少带 final_text 的轮次事件，无法核对政策结论"))
+                continue
+            passed, detail = check_policy_statements(answers, events)
+            results.append(_passed(criterion, passed, detail))
+            continue
+
         raise AssertionDefinitionError(f"未知确定性断言类型：{kind}")
     return results
