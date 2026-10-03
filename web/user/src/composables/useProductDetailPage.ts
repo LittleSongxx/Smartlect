@@ -1,7 +1,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { commentApi, favoriteApi, productApi } from '@/api/modules';
+import { productApi } from '@/api/modules';
 import { usePageRefresh } from '@/composables/pullRefresh';
 import { openImagePreview } from '@/composables/imagePreview';
 import { useProductSkuSheet } from '@/composables/useProductSkuSheet';
@@ -15,10 +15,6 @@ import { saveCheckoutSession } from '@/utils/checkout';
 import { toast } from '@/utils/toast';
 import { TRIAL_USER_DENIED } from '@/constants/trial';
 import { MAX_CART_QTY } from '@/constants/validation';
-import {
-  loadRecommendationAttribution,
-  recommendationAttributionCommandFields
-} from '@/utils/recommendationAttribution';
 import { ownerKey, session } from '@/api/client';
 import { inProductScope, loadProductScope } from '@/utils/productScope';
 
@@ -34,16 +30,11 @@ export function useProductDetailPage() {
   const productPropertyList = ref<any[]>([]);
   const skuList = ref<any[]>([]);
   const comments = ref<any[]>([]);
-  const commentTotal = ref(0);
-  const commentGoodRate = ref(100);
-  const commentImageCount = ref(0);
   const quantity = ref(1);
   const selectedSku = ref<any>({});
   const selectedProperty = reactive<Record<string, string>>({});
   const activeImageIndex = ref(0);
-  const favorited = ref(false);
-  const favoriteLoading = ref(false);
-  const detailTab = ref<'comments' | 'desc'>('desc');
+  const detailTab = ref<'desc'>('desc');
   const scopeDenied = ref(false);
 
   const PREVIEW_COMMENT_COUNT = 2;
@@ -176,34 +167,6 @@ export function useProductDetailPage() {
     if (quantity.value > matched.stock) quantity.value = matched.stock;
   };
 
-  const loadFavoriteStatus = async () => {
-    if (!authStore.isLoggedIn || !productId.value) {
-      favorited.value = false;
-      return;
-    }
-    try {
-      favorited.value = Boolean(await favoriteApi.isFavorite(productId.value));
-    } catch {
-      favorited.value = false;
-    }
-  };
-
-  const toggleFavorite = async () => {
-    if (!productId.value) return;
-    if (!authStore.isLoggedIn) {
-      router.push({ path: '/login', query: { redirect: route.fullPath } });
-      return;
-    }
-    if (favoriteLoading.value) return;
-    favoriteLoading.value = true;
-    try {
-      favorited.value = Boolean(await favoriteApi.toggleFavorite(productId.value));
-      toast.success(favorited.value ? '已加入收藏' : '已取消收藏');
-    } finally {
-      favoriteLoading.value = false;
-    }
-  };
-
   const load = async () => {
     loading.value = true;
     loadError.value = false;
@@ -224,35 +187,12 @@ export function useProductDetailPage() {
       productPropertyList.value = data?.productPropertyList || [];
       skuList.value = data?.skuList || [];
       initDefaultSku();
-      const commentRes = await commentApi.loadComment({
-        pageNo: 1,
-        productId: productId.value
-      });
-      comments.value = commentRes?.list || [];
-      commentTotal.value = commentRes?.totalCount ?? comments.value.length;
-      try {
-        const stats = await commentApi.getProductCommentStats(productId.value);
-        if (stats) {
-          commentGoodRate.value = stats.goodRatePercent ?? 100;
-          commentImageCount.value = stats.imageCount ?? 0;
-          if (stats.totalCount != null) {
-            commentTotal.value = stats.totalCount;
-          }
-        }
-      } catch {
-
-      }
-      await loadFavoriteStatus();
     } catch {
       loadError.value = true;
       productInfo.value = null;
     } finally {
       loading.value = false;
     }
-  };
-
-  const goAllComments = () => {
-    router.push(`/product/${route.params.productId}/comments`);
   };
 
   const openAddCartSheet = () => {
@@ -293,10 +233,6 @@ export function useProductDetailPage() {
     }
     // 结算封面与订单快照同口径：已选颜色的属性封面优先，商品首图兜底
     const cover = pickSkuCover(productPropertyList.value, selectedProperty, productInfo.value?.cover);
-    const attribution = loadRecommendationAttribution(
-      authStore.userInfo?.userId as string | undefined,
-      String(productInfo.value.productId)
-    );
     const checkoutItems = [
       {
         productId: productInfo.value.productId,
@@ -306,10 +242,7 @@ export function useProductDetailPage() {
         propertyValueIdHash: selectedSku.value.propertyValueIdHash,
         propertyData: buildPropertyData(),
         price: Number(selectedSku.value.price ?? productInfo.value?.minPrice ?? 0),
-        buyCount: quantity.value,
-        unusedSource: attribution?.source,
-        unusedAttributedAt: attribution?.occurredAt,
-        ...recommendationAttributionCommandFields(attribution)
+        buyCount: quantity.value
       }
     ];
     saveCheckoutSession(checkoutItems, 0);
@@ -327,13 +260,6 @@ export function useProductDetailPage() {
     }
   );
 
-  watch(
-    () => authStore.isLoggedIn,
-    () => {
-      loadFavoriteStatus();
-    }
-  );
-
   onMounted(load);
   usePageRefresh(load);
 
@@ -345,21 +271,14 @@ export function useProductDetailPage() {
     productInfo,
     productContent,
     productPropertyList,
-    comments,
-    commentTotal,
-    commentGoodRate,
-    commentImageCount,
     quantity,
     selectedSku,
     selectedProperty,
     activeImageIndex,
-    favorited,
-    favoriteLoading,
     detailTab,
     galleryImages,
     displayPrice,
     agentConsultProduct,
-    previewComments,
     maxBuy,
     onTouchStart,
     onTouchMove,
@@ -370,8 +289,6 @@ export function useProductDetailPage() {
     openGalleryPreview,
     selectGalleryIndex,
     selectProperty,
-    toggleFavorite,
-    goAllComments,
     openAddCartSheet,
     buyNow
   };

@@ -100,7 +100,7 @@ import HomeFeatureCards from '@/components/business/HomeFeatureCards.vue';
 import { productApi } from '@/api/modules';
 import { usePageRefresh } from '@/composables/pullRefresh';
 import { useHomeRecommendations } from '@/composables/useHomeRecommendations';
-import { mixHomeRecommendations, recommendationProductPath } from '@/utils/homeRecommendations';
+import { mixHomeRecommendations } from '@/utils/homeRecommendations';
 import { isStandaloneDisplay } from '@/utils/standalone';
 import { filterStorefrontProducts, splitStorefrontPage } from '@/utils/product';
 import { isFeatureSupported } from '@/integrations/featureRegistry';
@@ -245,12 +245,7 @@ const goDetail = (p: any) => {
   if (p?.productId) router.push(`/product/${p.productId}`);
 };
 
-const goPick = async (p: any) => {
-  if (p?.kind === 'recommend') {
-    await rememberClick(p);
-    router.push(recommendationProductPath(p));
-    return;
-  }
+const goPick = (p: any) => {
   goDetail(p);
 };
 
@@ -284,7 +279,6 @@ onMounted(async () => {
     }
   } else {
     await Promise.all([
-      authStore.loadMemberLevel(),
       load({ prefetch: shouldPrefetch })
     ]);
   }

@@ -53,7 +53,6 @@
     </main>
     <AppFooter />
     <PcFloatToolbar />
-    <NotificationPopup @click="handleNotificationClick" />
   </div>
 </template>
 
@@ -61,9 +60,6 @@
 import { computed, onMounted } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import AppFooter from '@/components/layout/AppFooter.vue';
-import NotificationPopup from '@/components/business/NotificationPopup.vue';
-import { useUnreadCount } from '@/composables/useUnreadCount';
-import { navigateNotification, type NotificationData } from '@/utils/notification';
 import PcAuthShell from '@/components/layout/PcAuthShell.vue';
 import PcFloatToolbar from '@/components/layout/PcFloatToolbar.vue';
 import PcUserSidebar from '@/components/layout/PcUserSidebar.vue';
@@ -76,7 +72,6 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const cartStore = useCartStore();
-const { refreshUnreadCount } = useUnreadCount();
 
 const pcLayout = computed(() => resolvePcLayoutMode(route.path));
 const pageTitle = computed(() => String(route.meta.title || ''));
@@ -91,9 +86,6 @@ onMounted(() => {
   if (authStore.isLoggedIn) cartStore.fetchCartCount();
 });
 
-const handleNotificationClick = (notification: NotificationData) => {
-  void navigateNotification(router, notification, { refreshUnread: refreshUnreadCount });
-};
 </script>
 
 <style scoped lang="scss">

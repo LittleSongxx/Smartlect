@@ -289,22 +289,6 @@ public class RedisComponent {
         return seeded;
     }
 
-    public void saveSignRewardConfig(SignRewardConfigDTO config) {
-        redisUtils.set(Constants.REDIS_KEY_SIGN_REWARD_CONFIG, config);
-    }
-
-    public SignRewardConfigDTO getSignRewardConfig() {
-        return (SignRewardConfigDTO) redisUtils.get(Constants.REDIS_KEY_SIGN_REWARD_CONFIG);
-    }
-
-    public void saveMemberLevelRewardConfig(MemberLevelRewardConfigDTO config) {
-        redisUtils.set(Constants.REDIS_KEY_MEMBER_LEVEL_REWARD_CONFIG, config);
-    }
-
-    public MemberLevelRewardConfigDTO getMemberLevelRewardConfig() {
-        return (MemberLevelRewardConfigDTO) redisUtils.get(Constants.REDIS_KEY_MEMBER_LEVEL_REWARD_CONFIG);
-    }
-
     public void saveUserLocationCoords(String userId, UserLocationCoordsDTO coords) {
         if (StringTools.isEmpty(userId) || coords == null) {
             return;
@@ -335,22 +319,6 @@ public class RedisComponent {
         if (tokenUserInfoDTO != null) {
             cleanTokenUserInfo(tokenUserInfoDTO.getToken());
         }
-    }
-
-    // 签到读写整体搬到 SignRedisComponent：签到的 bitmap/hash/空值缓存三种键要一起改，放一起才不会只改一半。
-
-    public void recordBrowseRecent(String userId, String productId) {
-        if (StringTools.isEmpty(userId) || StringTools.isEmpty(productId)) {
-            return;
-        }
-        String key = Constants.REDIS_KEY_BROWSE_RECENT + userId;
-        double score = System.currentTimeMillis();
-        stringRedisTemplate.opsForZSet().add(key, productId, score);
-        Long size = stringRedisTemplate.opsForZSet().zCard(key);
-        if (size != null && size > Constants.BROWSE_REDIS_MAX_SIZE) {
-            stringRedisTemplate.opsForZSet().removeRange(key, 0, size - Constants.BROWSE_REDIS_MAX_SIZE - 1);
-        }
-        stringRedisTemplate.expire(key, Constants.REDIS_KEY_EXPIRES_DAY, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     // 支付单生命周期的锁与一次性标记搬到 PayOrderRedisComponent。

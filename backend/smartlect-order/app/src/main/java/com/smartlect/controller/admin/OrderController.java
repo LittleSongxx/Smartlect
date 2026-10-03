@@ -3,14 +3,11 @@ package com.smartlect.controller.admin;
 import com.smartlect.api.dto.OrderStatusDTO;
 import com.smartlect.api.enums.OrderStatusEnum;
 import com.smartlect.entity.enums.PageSize;
-import com.smartlect.entity.po.OrderComment;
 import com.smartlect.entity.po.OrderInfo;
 import com.smartlect.entity.po.OrderLogisticsInfo;
-import com.smartlect.entity.query.OrderCommentQuery;
 import com.smartlect.entity.query.OrderInfoQuery;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.entity.vo.ResponseVO;
-import com.smartlect.biz.OrderCommentService;
 import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderLogisticsInfoService;
 import com.smartlect.security.TrialOrderPrivacy;
@@ -33,8 +30,6 @@ public class OrderController extends com.smartlect.controller.admin.ABaseControl
 
     @Resource
     private OrderInfoService orderInfoService;
-    @Resource
-    private OrderCommentService orderCommentService;
     @Resource
     private OrderLogisticsInfoService orderLogisticsInfoService;
 
@@ -63,44 +58,6 @@ public class OrderController extends com.smartlect.controller.admin.ABaseControl
         return getSuccessResponseVO(Arrays.stream(OrderStatusEnum.values())
                 .map(OrderStatusDTO::getByStatus)
                 .collect(Collectors.toList()));
-    }
-
-    // 加载所有评论
-    @PostMapping("/loadComment")
-    public ResponseVO loadComment(Integer pageNo, Integer pageSize, String nickNameFuzzy, String productNameFuzzy){
-        OrderCommentQuery  query = new OrderCommentQuery();
-        query.setPageNo(pageNo);
-        query.setPageSize(pageSize);
-        query.setQueryProduct(true);
-        query.setQueryUserInfo(true);
-        query.setLatestActivityFirst(true);
-        PaginationResultVO<OrderComment> resultVO = orderCommentService.findListByPage(query);
-        if (nickNameFuzzy != null){
-            resultVO = orderCommentService.findByNickNameFuzzy(resultVO, nickNameFuzzy);
-        }
-        if (productNameFuzzy != null){
-            resultVO = orderCommentService.findByProductNameFuzzy(resultVO, productNameFuzzy);
-        }
-        return getSuccessResponseVO(TrialOrderPrivacy.redact(resultVO));
-    }
-    // 获取相应orderId的评论
-    @PostMapping("/getComment")
-    public ResponseVO getComment(@NotEmpty String orderId){
-        return getSuccessResponseVO(TrialOrderPrivacy.redact(orderCommentService.getComment(null,orderId)));
-    }
-
-    // 商家评论
-    @PostMapping("/bizComment")
-    public ResponseVO bizComment(@NotEmpty String orderId, @NotEmpty String commentBizReply, String reCommentImages){
-        orderCommentService.bizComment(orderId,commentBizReply,reCommentImages);
-        return getSuccessResponseVO(null);
-    }
-
-    // 删除评论，逻辑删除
-    @PostMapping("/delComment")
-    public ResponseVO delComment(@NotEmpty String orderId){
-        orderCommentService.delMyComment(null, orderId);
-        return getSuccessResponseVO(null);
     }
 
     // 获取收货地址

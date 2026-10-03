@@ -7,7 +7,6 @@
         <el-tab-pane label="待发货" name="1" />
         <el-tab-pane label="待收货" name="2" />
         <el-tab-pane label="已完成" name="completed" />
-        <el-tab-pane label="待评价" name="evaluate" />
       </el-tabs>
     </div>
 
@@ -95,28 +94,6 @@
                       确认收货
                     </el-button>
                     <el-button
-                      v-if="canComment(order)"
-                      type="primary"
-                      size="small"
-                      @click.stop="openComment(order.orderId)"
-                    >
-                      评价
-                    </el-button>
-                    <el-button
-                      v-if="canRecomment(order)"
-                      size="small"
-                      @click.stop="openRecomment(order.orderId)"
-                    >
-                      追评
-                    </el-button>
-                    <el-button
-                      v-if="canViewComment(order)"
-                      size="small"
-                      @click.stop="openCommentPreview(order.orderId)"
-                    >
-                      查看评价
-                    </el-button>
-                    <el-button
                       v-if="showLogistics(order)"
                       size="small"
                       @click.stop="goLogistics(order.orderId)"
@@ -142,9 +119,6 @@
       </el-skeleton>
     </div>
 
-    <OrderCommentDialog ref="commentDialogRef" @success="onTabChange" />
-    <OrderRecommentDialog ref="recommentDialogRef" @success="onTabChange" />
-    <OrderCommentPreviewDialog ref="commentPreviewDialogRef" />
   </div>
 
 </template>
@@ -157,15 +131,6 @@ import ProductImage from '@/components/common/ProductImage.vue';
 import SwipeDeleteRow from '@/components/business/SwipeDeleteRow.vue';
 import OrderAmountSummary from '@/components/business/OrderAmountSummary.vue';
 import OrderItemIdText from '@/components/business/OrderItemIdText.vue';
-const OrderCommentDialog = defineAsyncComponent(
-  () => import('@/components/business/OrderCommentDialog.vue')
-);
-const OrderRecommentDialog = defineAsyncComponent(
-  () => import('@/components/business/OrderRecommentDialog.vue')
-);
-const OrderCommentPreviewDialog = defineAsyncComponent(
-  () => import('@/components/business/OrderCommentPreviewDialog.vue')
-);
 import { usePageListCache } from '@/composables/usePageListCache';
 import { usePageRefresh } from '@/composables/pullRefresh';
 import { useDevice } from '@/composables/useDevice';
@@ -183,17 +148,14 @@ const { propose } = useAgentSession();
 const { openAgent } = useOpenAgent();
 
 const initTab = (() => {
-  if (route.query.commentPending === '1' || route.query.status === 'evaluate') return 'evaluate';
   const q = route.query.status as string | undefined;
   if (q === '3') return 'completed';
-  if (q === '8') return 'evaluate';
   return q || '';
 })();
 
 const tab = ref(initTab);
 const apiStatus = computed(() => {
   if (tab.value === 'completed') return '3';
-  if (tab.value === 'evaluate') return undefined;
   return tab.value || undefined;
 });
 const pageNo = ref(0);
@@ -206,9 +168,6 @@ const finished = ref(false);
 const scrollRoot = ref<HTMLElement>();
 const tabsRef = ref<HTMLElement>();
 const sentinelRef = ref<HTMLElement>();
-const commentDialogRef = ref<InstanceType<typeof OrderCommentDialog>>();
-const recommentDialogRef = ref<InstanceType<typeof OrderRecommentDialog>>();
-const commentPreviewDialogRef = ref<InstanceType<typeof OrderCommentPreviewDialog>>();
 const openSwipeId = ref<string | null>(null);
 let observer: IntersectionObserver | null = null;
 let tabsResizeObserver: ResizeObserver | null = null;
@@ -234,9 +193,6 @@ const syncOrdersTabsInset = () => {
 const isCouponOrder = (order: Record<string, any>) => String(order.payScene) === '2';
 
 const displayList = computed(() => {
-  if (tab.value === 'evaluate') {
-    return list.value.filter((o) => !isCouponOrder(o) && Number(o.commentStatus) === 0);
-  }
   return list.value;
 });
 
@@ -261,26 +217,12 @@ const statusClass = (order: Record<string, any>) => {
   if (status === 3) {
     if (tab.value === 'completed') return '';
     if (isCouponOrder(order)) return '';
-    if (order.commentStatus === 0) return 'is-comment-pending';
-    if (order.commentStatus === 1) return 'is-commented';
-    if (order.commentStatus === 2) return 'is-recommented';
   }
   if (status === 0) return 'is-wait-pay';
   if (status === 2) return 'is-shipped';
   if (status === 4 || status === 5) return 'is-cancel';
   return '';
 };
-
-const canComment = (order: Record<string, any>) =>
-  !isCouponOrder(order) && order.orderStatus === 3 && Number(order.commentStatus) === 0;
-
-const canRecomment = (order: Record<string, any>) =>
-  !isCouponOrder(order) && order.orderStatus === 3 && Number(order.commentStatus) === 1;
-
-const canViewComment = (order: Record<string, any>) =>
-  !isCouponOrder(order) &&
-  order.orderStatus === 3 &&
-  (Number(order.commentStatus) === 1 || Number(order.commentStatus) === 2);
 
 const showLogistics = (order: Record<string, any>) =>
   !isCouponOrder(order) &&
@@ -419,18 +361,6 @@ const confirmReceive = async (id: string) => {
 
 const goPay = (id: string) => {
   if (id) router.push(`/payment/${id}`);
-};
-
-const openComment = (orderId: string) => {
-  commentDialogRef.value?.show(orderId);
-};
-
-const openRecomment = (orderId: string) => {
-  recommentDialogRef.value?.show(orderId);
-};
-
-const openCommentPreview = (orderId: string) => {
-  commentPreviewDialogRef.value?.show(orderId);
 };
 
 const onSwipeClose = (orderId: string) => {

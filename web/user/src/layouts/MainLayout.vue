@@ -1,7 +1,6 @@
 <template>
   <div class="layout" :class="layoutClasses">
     <HomeSearchHeader v-if="isHomeTab" />
-    <NotificationPopup @click="handleNotificationClick" />
 
     <TabPageHeader v-if="tabHeader" :title="tabHeader.title">
       <template v-if="route.path === '/search'" #right>
@@ -13,16 +12,6 @@
       <template v-else-if="route.path === '/account'" #right>
         <div class="tab-header-actions">
           <AgentServiceEntry />
-          <button
-            type="button"
-            class="header-action header-action-btn"
-            aria-label="消息"
-            @click="router.push('/notifications')"
-          >
-            <el-badge :value="unreadCount" :hidden="!unreadCount" :max="99">
-              <el-icon :size="22"><Bell /></el-icon>
-            </el-badge>
-          </button>
           <el-icon
             class="header-action"
             :size="22"
@@ -100,7 +89,6 @@
                 <el-dropdown-item @click="router.push('/orders')">我的订单</el-dropdown-item>
                 <el-dropdown-item @click="router.push('/my-coupons')">我的优惠券</el-dropdown-item>
                 <el-dropdown-item @click="router.push('/account')">个人中心</el-dropdown-item>
-                <el-dropdown-item @click="router.push('/sign')">签到中心</el-dropdown-item>
                 <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -122,13 +110,6 @@
             <el-icon :size="22"><ChatDotRound /></el-icon>
             <span class="icon-label">客服</span>
           </button>
-
-          <button type="button" class="icon-action" title="消息" @click="router.push('/notifications')">
-            <el-badge :value="unreadCount" :hidden="!unreadCount" :max="99">
-              <el-icon :size="22"><Bell /></el-icon>
-            </el-badge>
-            <span class="icon-label">消息</span>
-          </button>
         </nav>
       </div>
     </header>
@@ -146,8 +127,6 @@
           <el-menu-item index="/cart">购物车</el-menu-item>
           <el-menu-item index="/orders">我的订单</el-menu-item>
           <el-menu-item index="/account">个人中心</el-menu-item>
-          <el-menu-item index="/notifications">消息中心</el-menu-item>
-          <el-menu-item index="/member-center">会员中心</el-menu-item>
           <el-menu-item index="/ai-assistant">智能客服</el-menu-item>
         </el-menu>
       </div>
@@ -180,7 +159,6 @@ import { useAuthStore } from '@/stores/auth';
 import { PUBLIC_REGISTER_ENABLED } from '@/constants/trial';
 import { useCartStore } from '@/stores/cart';
 import { productApi } from '@/api/modules';
-import { useUnreadCount } from '@/composables/useUnreadCount';
 import AppFooter from '@/components/layout/AppFooter.vue';
 import MobileTabBar from '@/components/layout/MobileTabBar.vue';
 import PageBackBar from '@/components/layout/PageBackBar.vue';
@@ -189,14 +167,12 @@ import AgentServiceEntry from '@/components/agent/AgentServiceEntry.vue';
 import BrandMark from '@/components/common/BrandMark.vue';
 import HomeSearchHeader from '@/components/layout/HomeSearchHeader.vue';
 import PullRefreshHost from '@/components/common/PullRefreshHost.vue';
-import NotificationPopup from '@/components/business/NotificationPopup.vue';
 import { isPrimaryTabPath } from '@/constants/tabPages';
 import { resolveAvatarUrl } from '@/utils/image';
 import { useSearchStore } from '@/stores/search';
 import { flattenCategoryOptions, storefrontCategoryTree } from '@/utils/category';
 import { confirmAction } from '@/utils/confirm';
 import { restoreScrollForPath, saveScrollForPath } from '@/utils/scrollMemory';
-import { navigateNotification, type NotificationData } from '@/utils/notification';
 import { toast } from '@/utils/toast';
 import { useOpenAgent } from '@/composables/useOpenAgent';
 
@@ -212,7 +188,6 @@ const searchCategoryId = ref('');
 const categoryList = ref<any[]>([]);
 const mobileMenuOpen = ref(false);
 const isMobile = ref(false);
-const { unreadCount, refreshUnreadCount } = useUnreadCount();
 
 const isHomeTab = computed(() => route.path === '/');
 const isPrimaryTab = computed(() => isPrimaryTabPath(route.path));
@@ -305,18 +280,11 @@ const logout = async () => {
   await router.replace({ path: '/login', query: {} });
 };
 
-const handleNotificationClick = (notification: NotificationData) => {
-  void navigateNotification(router, notification, { refreshUnread: refreshUnreadCount });
-};
-
 watch(
   () => route.path,
   (path) => {
     if (path === '/cart' && authStore.isLoggedIn) {
       cartStore.fetchCartCount();
-    }
-    if (path === '/notifications' || path === '/account') {
-      refreshUnreadCount();
     }
   },
   { immediate: true }
@@ -325,11 +293,6 @@ watch(
 watch(
   () => authStore.isLoggedIn,
   (loggedIn) => {
-    if (loggedIn) {
-      refreshUnreadCount();
-    } else {
-      unreadCount.value = 0;
-    }
   }
 );
 
@@ -340,7 +303,6 @@ onMounted(async () => {
   categoryList.value = flattenCategoryOptions(storefrontCategoryTree(cats || []));
   if (authStore.isLoggedIn) {
     cartStore.fetchCartCount();
-    refreshUnreadCount();
   }
 });
 

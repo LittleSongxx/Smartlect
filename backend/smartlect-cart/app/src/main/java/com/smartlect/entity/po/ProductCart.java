@@ -2,7 +2,6 @@ package com.smartlect.entity.po;
 
 import java.math.BigDecimal;
 import java.util.Date;
-import com.smartlect.entity.dto.RecommendationAttributionCarrier;
 import com.smartlect.entity.enums.DateTimePatternEnum;
 import com.smartlect.utils.DateUtil;
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -11,7 +10,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 
 import java.io.Serializable;
 
-public class ProductCart implements Serializable, RecommendationAttributionCarrier {
+public class ProductCart implements Serializable {
 
 	private String cartId;
 
@@ -30,15 +29,6 @@ public class ProductCart implements Serializable, RecommendationAttributionCarri
 
 	private BigDecimal addPrice;
 
-	private String recommendationRequestId;
-
-	private Integer recommendationPosition;
-
-	private String recommendationSource;
-
-	@JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-	@DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-	private Date recommendationAttributedAt;
 
 	@JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
 	@DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
@@ -102,38 +92,6 @@ public class ProductCart implements Serializable, RecommendationAttributionCarri
 
 	public BigDecimal getAddPrice(){
 		return this.addPrice;
-	}
-
-	public String getRecommendationRequestId() {
-		return recommendationRequestId;
-	}
-
-	public void setRecommendationRequestId(String recommendationRequestId) {
-		this.recommendationRequestId = recommendationRequestId;
-	}
-
-	public Integer getRecommendationPosition() {
-		return recommendationPosition;
-	}
-
-	public void setRecommendationPosition(Integer recommendationPosition) {
-		this.recommendationPosition = recommendationPosition;
-	}
-
-	public String getRecommendationSource() {
-		return recommendationSource;
-	}
-
-	public void setRecommendationSource(String recommendationSource) {
-		this.recommendationSource = recommendationSource;
-	}
-
-	public Date getRecommendationAttributedAt() {
-		return recommendationAttributedAt;
-	}
-
-	public void setRecommendationAttributedAt(Date recommendationAttributedAt) {
-		this.recommendationAttributedAt = recommendationAttributedAt;
 	}
 
 	public void setLastUpdateTime(Date lastUpdateTime){

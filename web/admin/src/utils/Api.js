@@ -30,16 +30,6 @@ const Api = {
     loadOrder: "/order/loadOrder",
     getLogistics: "/order/getLogistics",
     delivery: "/order/delivery",
-    getComment: "/order/getComment",
-    bizComment: "/order/bizComment",
-
-    loadComment: "/order/loadComment",
-    delComment: "/order/delComment",
-
-    loadCommentReport: "/commentReport/loadDataList",
-    getCommentReport: "/commentReport/getCommentReportByReportId",
-    handleCommentReport: "/commentReport/handleReport",
-    deleteCommentReport: "/commentReport/deleteCommentReportByReportId",
     imageModerationLoadList: "/imageModeration/loadDataList",
     imageModerationGetByRecordId: "/imageModeration/getByRecordId",
     imageModerationHandleReview: "/imageModeration/handleReview",
@@ -78,22 +68,8 @@ const Api = {
     searchHotKeywordSave: "/searchHotKeyword/save",
     searchHotKeywordDel: "/searchHotKeyword/del",
 
-    sensitiveWordList: "/sensitiveWord/list",
-    sensitiveWordSave: "/sensitiveWord/save",
-    sensitiveWordDelete: "/sensitiveWord/delete",
-    sensitiveWordRefresh: "/sensitiveWord/refresh",
-
     warmupRushStock: "/discountCoupon/warmupRushStock",
     reconcileRushStock: "/discountCoupon/reconcileRushStock",
-
-    signRewardGetConfig: "/signRewardConfig/getConfig",
-    signRewardSaveConfig: "/signRewardConfig/saveConfig",
-    signRecordSyncAllFromDb: "/signRecord/syncAllFromDb",
-    signRecordSyncUserFromDb: "/signRecord/syncUserFromDb",
-    signRecordSyncSignDatesFromDb: "/signRecord/syncSignDatesFromDb",
-    signRecordForceRebuildToday: "/signRecord/forceRebuildToday",
-    memberLevelRewardGetConfig: "/memberLevelRewardConfig/getConfig",
-    memberLevelRewardSaveConfig: "/memberLevelRewardConfig/saveConfig",
 
     toolStatistics: "/tool/statistics",
     toolAddAllOrderToDelayQueue: "/tool/addAllOrderToDelayQueue",

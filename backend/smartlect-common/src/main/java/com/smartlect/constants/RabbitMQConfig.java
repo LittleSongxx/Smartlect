@@ -45,12 +45,8 @@ public class RabbitMQConfig {
     // 支付、订单相关的交换机
     public static final String PAY_EXCHANGE = "smartlect.pay.exchange";
     // 浏览足迹交换机
-    public static final String BROWSE_EXCHANGE = "smartlect.browse.exchange";
     // 通知交换机
-    public static final String NOTIFY_EXCHANGE = "smartlect.notify.exchange";
     public static final String REFUND_EXCHANGE = "smartlect.refund.exchange";
-    public static final String USER_MEMBER_EXCHANGE = "smartlect.user.member.exchange";
-    public static final String COMMERCE_OUTCOME_EXCHANGE = "smartlect.commerce.outcome.exchange";
     public static final String MQ_RETRY_EXCHANGE = "smartlect.mq.retry.exchange";
     public static final String MQ_FAILURE_EXCHANGE = "smartlect.mq.failure.exchange";
     public static final String MQ_FAILURE_QUEUE = "smartlect.mq.failure.queue";
@@ -59,15 +55,10 @@ public class RabbitMQConfig {
 
     // 队列
     public static final String RUSHING_ORDER_QUEUE = "smartlect.rushing.order.queue";
-    public static final String BROWSE_RECORD_QUEUE = "smartlect.browse.record.queue";
     public static final String REFUND_STOCK_QUEUE = "smartlect.refund.stock.queue";
     public static final String REFUND_STOCK_DEAD_QUEUE = "smartlect.refund.stock.dead.queue";
     public static final String REFUND_RESULT_QUEUE = "smartlect.refund.result.queue";
     public static final String REFUND_RESULT_DEAD_QUEUE = "smartlect.refund.result.dead.queue";
-    public static final String USER_MEMBER_QUEUE = "smartlect.user.member.queue";
-    public static final String USER_MEMBER_DEAD_QUEUE = "smartlect.user.member.dead.queue";
-    public static final String COMMERCE_OUTCOME_QUEUE = "smartlect.assistant.commerce.queue";
-    public static final String COMMERCE_OUTCOME_DEAD_QUEUE = "smartlect.commerce.outcome.dead.queue";
 
     // 死信队列（超时未支付释放库存）
     public static final String RUSHING_DELAY_QUEUE = "smartlect.rushing.delay.queue";
@@ -95,27 +86,17 @@ public class RabbitMQConfig {
     public static final String PAY_LOGISTICS_DEAD_KEY = "smartlect.pay.logistics.dead";
     public static final String PAY_CONFIRM_DELAY_KEY = "smartlect.pay.confirm.delay";
     public static final String PAY_CONFIRM_DEAD_KEY = "smartlect.pay.confirm.dead";
-    public static final String BROWSE_RECORD_KEY = "smartlect.browse.record";
     public static final String REFUND_STOCK_KEY = "smartlect.refund.stock";
     public static final String REFUND_STOCK_DEAD_KEY = "smartlect.refund.stock.dead";
     public static final String REFUND_RESULT_KEY = "smartlect.refund.result";
     public static final String REFUND_RESULT_DEAD_KEY = "smartlect.refund.result.dead";
-    public static final String USER_MEMBER_KEY = "smartlect.user.member";
-    public static final String USER_MEMBER_DEAD_KEY = "smartlect.user.member.dead";
-    public static final String COMMERCE_OUTCOME_KEY = "smartlect.commerce.outcome";
-    public static final String COMMERCE_OUTCOME_DEAD_KEY = "smartlect.commerce.outcome.dead";
 
     // 通知队列
-    public static final String NOTIFY_QUEUE = "smartlect.notify.queue";
     // 通知路由键
-    public static final String NOTIFY_KEY = "smartlect.notify";
 
     // 签到记录交换机
-    public static final String SIGN_RECORD_EXCHANGE = "smartlect.sign_record.exchange";
     // 签到记录队列
-    public static final String SIGN_RECORD_QUEUE = "smartlect.sign_record.queue";
     // 签到记录路由键
-    public static final String SIGN_RECORD_KEY = "smartlect.sign_record";
 
     // 用户临时封禁（延时解封）
     public static final String USER_TEMP_BAN_EXCHANGE = "smartlect.user.tempban.exchange";
@@ -130,12 +111,8 @@ public class RabbitMQConfig {
             PAY_TIMEOUT_DEAD_QUEUE,
             PAY_LOGISTICS_DEAD_QUEUE,
             PAY_CONFIRM_DEAD_QUEUE,
-            BROWSE_RECORD_QUEUE,
-            NOTIFY_QUEUE,
-            SIGN_RECORD_QUEUE,
             REFUND_STOCK_QUEUE,
             REFUND_RESULT_QUEUE,
-            USER_MEMBER_QUEUE,
             USER_TEMP_BAN_DEAD_QUEUE
     );
 
@@ -288,42 +265,6 @@ public class RabbitMQConfig {
                 .to(payExchange())
                 .with(PAY_CONFIRM_DEAD_KEY);
     }
-
-    @Bean
-    public DirectExchange commerceOutcomeExchange() {
-        return new DirectExchange(COMMERCE_OUTCOME_EXCHANGE, true, false);
-    }
-
-    @Bean
-    public Queue commerceOutcomeQueue() {
-        QueueBuilder builder = durableQueue(COMMERCE_OUTCOME_QUEUE)
-                .withArgument("x-dead-letter-exchange", COMMERCE_OUTCOME_EXCHANGE)
-                .withArgument("x-dead-letter-routing-key", COMMERCE_OUTCOME_DEAD_KEY);
-        if ("quorum".equalsIgnoreCase(queueType)) {
-            builder.withArgument("x-delivery-limit", 10);
-        }
-        return builder.build();
-    }
-
-    @Bean
-    public Queue commerceOutcomeDeadQueue() {
-        return durableQueue(COMMERCE_OUTCOME_DEAD_QUEUE).build();
-    }
-
-    @Bean
-    public Binding commerceOutcomeBinding() {
-        return BindingBuilder.bind(commerceOutcomeQueue())
-                .to(commerceOutcomeExchange())
-                .with(COMMERCE_OUTCOME_KEY);
-    }
-
-    @Bean
-    public Binding commerceOutcomeDeadBinding() {
-        return BindingBuilder.bind(commerceOutcomeDeadQueue())
-                .to(commerceOutcomeExchange())
-                .with(COMMERCE_OUTCOME_DEAD_KEY);
-    }
-
     @Bean
     public DirectExchange refundExchange() {
         return new DirectExchange(REFUND_EXCHANGE, true, false);
@@ -376,92 +317,6 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(refundResultDeadQueue())
                 .to(refundExchange()).with(REFUND_RESULT_DEAD_KEY);
     }
-
-    // ========== 订单完成后会员成长值 ==========
-    @Bean
-    public DirectExchange userGrowthExchange() {
-        return new DirectExchange(USER_MEMBER_EXCHANGE, true, false);
-    }
-
-    @Bean
-    public Queue userGrowthQueue() {
-        return durableQueue(USER_MEMBER_QUEUE)
-                .withArgument("x-dead-letter-exchange", USER_MEMBER_EXCHANGE)
-                .withArgument("x-dead-letter-routing-key", USER_MEMBER_DEAD_KEY)
-                .build();
-    }
-
-    @Bean
-    public Queue userGrowthDeadQueue() {
-        return durableQueue(USER_MEMBER_DEAD_QUEUE).build();
-    }
-
-    @Bean
-    public Binding userGrowthBinding() {
-        return BindingBuilder.bind(userGrowthQueue())
-                .to(userGrowthExchange()).with(USER_MEMBER_KEY);
-    }
-
-    @Bean
-    public Binding userGrowthDeadBinding() {
-        return BindingBuilder.bind(userGrowthDeadQueue())
-                .to(userGrowthExchange()).with(USER_MEMBER_DEAD_KEY);
-    }
-
-    // ========== 浏览足迹异步落库 ==========
-    @Bean
-    public DirectExchange browseExchange() {
-        return new DirectExchange(BROWSE_EXCHANGE, true, false);
-    }
-
-    @Bean
-    public Queue browseRecordQueue() {
-        return durableQueue(BROWSE_RECORD_QUEUE).build();
-    }
-
-    @Bean
-    public Binding browseRecordBinding() {
-        return BindingBuilder.bind(browseRecordQueue())
-                .to(browseExchange())
-                .with(BROWSE_RECORD_KEY);
-    }
-
-    // ========== 通知队列 ==========
-    @Bean
-    public DirectExchange notifyExchange() {
-        return new DirectExchange(NOTIFY_EXCHANGE, true, false);
-    }
-
-    @Bean
-    public Queue notifyQueue() {
-        return durableQueue(NOTIFY_QUEUE).build();
-    }
-
-    @Bean
-    public Binding notifyBinding() {
-        return BindingBuilder.bind(notifyQueue())
-                .to(notifyExchange())
-                .with(NOTIFY_KEY);
-    }
-
-    // ========== 签到记录队列 ==========
-    @Bean
-    public DirectExchange signRecordExchange() {
-        return new DirectExchange(SIGN_RECORD_EXCHANGE, true, false);
-    }
-
-    @Bean
-    public Queue signRecordQueue() {
-        return durableQueue(SIGN_RECORD_QUEUE).build();
-    }
-
-    @Bean
-    public Binding signRecordBinding() {
-        return BindingBuilder.bind(signRecordQueue())
-                .to(signRecordExchange())
-                .with(SIGN_RECORD_KEY);
-    }
-
     // ========== 用户临时封禁（延时解封）==========
     @Bean
     public DirectExchange userTempBanExchange() {

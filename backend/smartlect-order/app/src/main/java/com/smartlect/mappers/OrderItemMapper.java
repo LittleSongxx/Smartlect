@@ -109,10 +109,4 @@ public interface OrderItemMapper<T,P> extends BaseMapper<T,P> {
 
 	 List<T> selectByOrderIds(@Param("orderIds") List<String> orderIds);
 
-	 Integer countPriorSuccessfulPurchases(
-			 @Param("userId") String userId,
-			 @Param("productId") String productId,
-			 @Param("excludedOrderIds") List<String> excludedOrderIds,
-			 @Param("successfulStatuses") List<Integer> successfulStatuses);
-
 }

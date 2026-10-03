@@ -91,7 +91,7 @@ spring:
             - id: admin-user
               uri: lb://smartlect-user
               predicates:
-                - Path=/admin-api/account/**,/admin-api/user/**,/admin-api/userInfo/**,/admin-api/userAddress/**,/admin-api/file/**,/admin-api/signRecord/**,/admin-api/signRewardConfig/**,/admin-api/memberLevelRewardConfig/**,/admin-api/imageModeration/**
+                - Path=/admin-api/account/**,/admin-api/user/**,/admin-api/userInfo/**,/admin-api/userAddress/**,/admin-api/file/**,/admin-api/imageModeration/**
               filters:
                 - RewritePath=/admin-api/(?<segment>.*), /admin/$\{segment}
             - id: admin-product
@@ -103,7 +103,7 @@ spring:
             - id: admin-order
               uri: lb://smartlect-order
               predicates:
-                - Path=/admin-api/order/**,/admin-api/orderInfo/**,/admin-api/orderItem/**,/admin-api/orderComment/**,/admin-api/commentReport/**,/admin-api/refundReview/**
+                - Path=/admin-api/order/**,/admin-api/orderInfo/**,/admin-api/orderItem/**,/admin-api/refundReview/**
               filters:
                 - RewritePath=/admin-api/(?<segment>.*), /admin/$\{segment}
             - id: admin-coupon
@@ -139,7 +139,7 @@ spring:
             - id: user
               uri: lb://smartlect-user
               predicates:
-                - Path=/api/account/**,/api/sign/**,/api/captcha/**,/api/userAddress/**,/api/userBrowse/**,/api/browseHistory/**,/api/userFavorite/**,/api/userMember/**,/api/userNotification/**,/api/location/**,/api/file/**
+                - Path=/api/account/**,/api/captcha/**,/api/userAddress/**,/api/location/**,/api/file/**
               filters:
                 - RewritePath=/api/(?<segment>.*), /$\{segment}
             - id: product
@@ -157,7 +157,7 @@ spring:
             - id: order
               uri: lb://smartlect-order
               predicates:
-                - Path=/api/order/**,/api/orderComment/**,/api/commentReport/**
+                - Path=/api/order/**
               filters:
                 - RewritePath=/api/(?<segment>.*), /$\{segment}
             - id: pay
@@ -208,10 +208,7 @@ smartlect:
         - /api/product/**
         - /api/discountCoupon/getDiscountCouponDetail
         - /api/discountCoupon/loadDiscountCoupon
-        - /api/order/comment/loadComment
-        - /api/order/comment/getProductCommentStats
         - /api/file/getResource
-        - /api/userMember/getLevelBadge
         - /api/notify/alipayNotify
       admin-exclude-paths:
         - /admin-api/account/checkCode

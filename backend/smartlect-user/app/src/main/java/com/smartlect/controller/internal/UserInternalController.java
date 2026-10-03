@@ -1,10 +1,8 @@
 package com.smartlect.controller.internal;
 
 import com.smartlect.api.dto.UserAddressQueryDTO;
-import com.smartlect.api.dto.UserGrowthAddDTO;
 import com.smartlect.api.dto.UserIdsDTO;
 import com.smartlect.api.dto.UserJoinCountDTO;
-import com.smartlect.api.dto.UserNotifyDTO;
 import com.smartlect.api.vo.UserAddressVO;
 import com.smartlect.api.vo.UserBriefVO;
 import com.smartlect.biz.UserInternalService;
@@ -31,19 +29,6 @@ public class UserInternalController extends ABaseController {
     public ResponseVO<UserAddressVO> getAddress(@Valid @RequestBody UserAddressQueryDTO dto) {
         com.smartlect.security.DelegatedUserIdentity.requireAndMatch(dto.getUserId());
         return getSuccessResponseVO(userInternalService.getAddress(dto.getAddressId(), dto.getUserId()));
-    }
-
-    @PostMapping("/member/addGrowthOnPay")
-    public ResponseVO<Void> addGrowthOnPay(@Valid @RequestBody UserGrowthAddDTO dto) {
-        com.smartlect.security.DelegatedUserIdentity.requireAndMatch(dto.getUserId());
-        userInternalService.addGrowthOnPay(dto.getUserId(), dto.getPayAmount());
-        return getSuccessResponseVO(null);
-    }
-
-    @PostMapping("/notify/sendAsync")
-    public ResponseVO<Void> sendNotifyAsync(@RequestBody UserNotifyDTO dto) {
-        userInternalService.sendNotifyAsync(dto);
-        return getSuccessResponseVO(null);
     }
 
     @PostMapping("/listAllUserIds")

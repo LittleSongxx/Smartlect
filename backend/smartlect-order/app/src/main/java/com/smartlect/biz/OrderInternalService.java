@@ -71,10 +71,6 @@ public class OrderInternalService {
         return orderInfoService.confirmOrderReceipt(dto.getUserId(), dto.getOrderId());
     }
 
-    public void onConfirmed(OrderIdDTO dto) {
-        orderInfoService.onOrderConfirmed(dto.getUserId(), dto.getOrderId());
-    }
-
     public void paySuccess(PayOrderNotifyDTO dto) {
         orderInfoService.paySuccess(dto);
     }

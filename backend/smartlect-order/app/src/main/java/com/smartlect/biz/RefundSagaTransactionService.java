@@ -3,10 +3,8 @@ package com.smartlect.biz;
 import com.smartlect.api.dto.RefundStockRestoreDTO;
 import com.smartlect.api.enums.OrderItemStatusEnum;
 import com.smartlect.api.enums.OrderStatusEnum;
-import com.smartlect.component.OrderNotificationPublisher;
 import com.smartlect.constants.RabbitMQConfig;
 import com.smartlect.constants.TransactionalMqSender;
-import com.smartlect.integration.CommerceOutcomeClient;
 import com.smartlect.entity.enums.MessageReliabilityLevelEnum;
 import com.smartlect.entity.enums.RefundSagaStatus;
 import com.smartlect.entity.po.OrderInfo;
@@ -44,12 +42,6 @@ public class RefundSagaTransactionService {
     private OrderItemMapper<OrderItem, ?> orderItemMapper;
     @Resource
     private TransactionalMqSender transactionalMqSender;
-    @Resource
-    private CommerceOutcomeClient commerceOutcomeClient;
-    @Resource
-    private OrderAttributionService orderAttributionService;
-    @Resource
-    private OrderNotificationPublisher orderNotificationPublisher;
     @Resource
     private OrderStateMachine orderStateMachine;
 
@@ -219,40 +211,6 @@ public class RefundSagaTransactionService {
         if (!newlyCompleted) {
             return;
         }
-        orderNotificationPublisher.send(
-                request.getUserId(),
-                "退款已完成",
-                "订单 " + request.getOrderId() + " 的退款已完成，款项将按支付渠道到账。",
-                "refund_complete",
-                request.getRefundRequestId());
-        OrderItem item = orderItemMapper.selectByOrderItemId(request.getOrderItemId());
-        if (item == null) {
-            return;
-        }
-        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
-        if (request.getRefundAmount() != null) {
-            payload.put("refundAmount", request.getRefundAmount());
-        }
-        if (request.getBuyCount() != null) {
-            payload.put("quantity", request.getBuyCount());
-        }
-        payload.put("currency", "CNY");
-        payload.put("refundStatus", "COMPLETED");
-        payload.put("payOrderId", request.getSourcePayOrderId());
-        payload.put("orderItemId", request.getOrderItemId());
-        payload.put("refundRequestId", request.getRefundRequestId());
-        payload.put("attribution", orderAttributionService.eventAttribution(request.getOrderId()));
-        commerceOutcomeClient.recordV2AfterCommit(CommerceOutcomeClient.fromVerifiedCarrier(
-                CommerceOutcomeClient.stableEventId("refund", request.getRefundRequestId()),
-                "AFTER_SALES",
-                CommerceOutcomeClient.stableIdempotencyKey("refund", request.getRefundRequestId()),
-                "REFUND",
-                request.getUserId(),
-                item,
-                item.getPropertyValueIdHash(),
-                request.getOrderId(),
-                payload,
-                request.getCompletedAt() == null ? new Date() : request.getCompletedAt()));
     }
 
     private void finalizeOrderRefund(RefundRequest request) {

@@ -31,10 +31,6 @@
 		<result column="remark" property="remark"  />
 		<!--退款订单号-->
 		<result column="refund_order_id" property="refundOrderId"  />
-		<result column="recommendation_request_id" property="recommendationRequestId"  />
-		<result column="recommendation_position" property="recommendationPosition"  />
-		<result column="recommendation_source" property="recommendationSource"  />
-		<result column="recommendation_attributed_at" property="recommendationAttributedAt"  />
 	</resultMap>
 
 
@@ -42,8 +38,7 @@
 	<sql id="base_column_list">
 		 o.order_item_id,o.order_id,o.cover,o.product_id,o.product_name,
 		 o.property_value_id_hash,o.property_info,o.item_amount,o.paid_amount,o.refunded_amount,o.buy_count,o.order_item_status,
-		 o.remark,o.refund_order_id,o.recommendation_request_id,o.recommendation_position,o.recommendation_source,
-		 o.recommendation_attributed_at
+		 o.remark,o.refund_order_id
 	</sql>
 
 	<sql id="base_condition_filed">
@@ -175,18 +170,6 @@
 			<if test="bean.refundOrderId != null">
 				 refund_order_id,
 			</if>
-			<if test="bean.recommendationRequestId != null">
-				 recommendation_request_id,
-			</if>
-			<if test="bean.recommendationPosition != null">
-				 recommendation_position,
-			</if>
-			<if test="bean.recommendationSource != null">
-				 recommendation_source,
-			</if>
-			<if test="bean.recommendationAttributedAt != null">
-				 recommendation_attributed_at,
-			</if>
 		 </trim>
 		 <trim prefix="values (" suffix=")" suffixOverrides="," >
 			<if test="bean.orderItemId!=null">
@@ -224,18 +207,6 @@
 			</if>
 			<if test="bean.refundOrderId!=null">
 				 #{bean.refundOrderId},
-			</if>
-			<if test="bean.recommendationRequestId!=null">
-				 #{bean.recommendationRequestId},
-			</if>
-			<if test="bean.recommendationPosition!=null">
-				 #{bean.recommendationPosition},
-			</if>
-			<if test="bean.recommendationSource!=null">
-				 #{bean.recommendationSource},
-			</if>
-			<if test="bean.recommendationAttributedAt!=null">
-				 #{bean.recommendationAttributedAt},
 			</if>
 		 </trim>
 	</insert>
@@ -280,18 +251,6 @@
 			<if test="bean.refundOrderId != null">
 				 refund_order_id,
 			</if>
-			<if test="bean.recommendationRequestId != null">
-				 recommendation_request_id,
-			</if>
-			<if test="bean.recommendationPosition != null">
-				 recommendation_position,
-			</if>
-			<if test="bean.recommendationSource != null">
-				 recommendation_source,
-			</if>
-			<if test="bean.recommendationAttributedAt != null">
-				 recommendation_attributed_at,
-			</if>
 		 </trim>
 		 <trim prefix="values (" suffix=")" suffixOverrides=",">
 			<if test="bean.orderItemId!=null">
@@ -329,18 +288,6 @@
 			</if>
 			<if test="bean.refundOrderId!=null">
 				 #{bean.refundOrderId},
-			</if>
-			<if test="bean.recommendationRequestId!=null">
-				 #{bean.recommendationRequestId},
-			</if>
-			<if test="bean.recommendationPosition!=null">
-				 #{bean.recommendationPosition},
-			</if>
-			<if test="bean.recommendationSource!=null">
-				 #{bean.recommendationSource},
-			</if>
-			<if test="bean.recommendationAttributedAt!=null">
-				 #{bean.recommendationAttributedAt},
 			</if>
 		 </trim>
 		 on DUPLICATE key update 
@@ -399,10 +346,6 @@
 			 order_item_status,
 			 remark,
 			 refund_order_id,
-			 recommendation_request_id,
-			 recommendation_position,
-			 recommendation_source,
-			 recommendation_attributed_at
 		 )values
 		 <foreach collection="list" item="item" separator=",">
 			 (
@@ -418,10 +361,6 @@
 				 #{item.orderItemStatus},
 				 #{item.remark},
 				 #{item.refundOrderId},
-				 #{item.recommendationRequestId},
-				 #{item.recommendationPosition},
-				 #{item.recommendationSource},
-				 #{item.recommendationAttributedAt}
 			 )
 		 </foreach>
 	</insert>
@@ -441,10 +380,6 @@
 			 order_item_status,
 			 remark,
 			 refund_order_id,
-			 recommendation_request_id,
-			 recommendation_position,
-			 recommendation_source,
-			 recommendation_attributed_at
 		 )values
 		 <foreach collection="list" item="item" separator=",">
 			 (
@@ -460,10 +395,6 @@
 				 #{item.orderItemStatus},
 				 #{item.remark},
 				 #{item.refundOrderId},
-				 #{item.recommendationRequestId},
-				 #{item.recommendationPosition},
-				 #{item.recommendationSource},
-				 #{item.recommendationAttributedAt}
 			 )
 		 </foreach>
 			on DUPLICATE key update 
@@ -609,22 +540,5 @@
 		order by o.order_item_id
 	</select>
 
-	<select id="countPriorSuccessfulPurchases" resultType="java.lang.Integer">
-		SELECT COUNT(1)
-		FROM order_item i
-		INNER JOIN order_info o ON o.order_id = i.order_id
-		WHERE o.user_id = #{userId}
-		  AND i.product_id = #{productId}
-		  AND o.order_status IN
-		<foreach collection="successfulStatuses" item="status" open="(" separator="," close=")">
-			#{status}
-		</foreach>
-		<if test="excludedOrderIds != null and excludedOrderIds.size() > 0">
-		  AND o.order_id NOT IN
-			<foreach collection="excludedOrderIds" item="orderId" open="(" separator="," close=")">
-				#{orderId}
-			</foreach>
-		</if>
-	</select>
 
 </mapper>

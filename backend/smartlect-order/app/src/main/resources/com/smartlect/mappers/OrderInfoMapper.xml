@@ -24,7 +24,6 @@
 		<!--通道ID-->
 		<result column="channel_order_Id" property="channelOrderId"  />
 		<!--评价状态 0:未评价  1:已评价  2:已追评-->
-		<result column="comment_status" property="commentStatus"  />
 		<!--订单标题-->
 		<result column="subject" property="subject"  />
 		<collection property="orderItemList" ofType="com.smartlect.entity.po.OrderItem">
@@ -48,7 +47,7 @@
 	<!-- 通用查询结果列-->
 	<sql id="base_column_list">
 		 o.order_id,o.amount,o.user_id,o.order_time,o.order_status,
-		 o.pay_channel,o.pay_scene,o.pay_order_id,o.channel_order_Id,o.comment_status,o.subject
+		 o.pay_channel,o.pay_scene,o.pay_order_id,o.channel_order_Id,o.subject
 		 
 	</sql>
 
@@ -79,15 +78,6 @@
 			</if>
 			<if test="query.channelOrderId != null and query.channelOrderId!=''">
 				 and  o.channel_order_Id = #{query.channelOrderId}
-			</if>
-			<if test="query.commentStatus != null">
-				 and  o.comment_status = #{query.commentStatus}
-			</if>
-			<if test="query.commentStatusList != null and query.commentStatusList.length > 0">
-				and o.comment_status in
-				<foreach item="item" collection="query.commentStatusList" separator="," open="(" close=")">
-					#{item}
-				</foreach>
 			</if>
 			<if test="query.subject != null and query.subject!=''">
 				 and  o.subject = #{query.subject}
@@ -196,9 +186,6 @@
 			<if test="bean.channelOrderId != null">
 				 channel_order_Id,
 			</if>
-			<if test="bean.commentStatus != null">
-				 comment_status,
-			</if>
 			<if test="bean.subject != null">
 				 subject,
 			</if>
@@ -230,9 +217,6 @@
 			</if>
 			<if test="bean.channelOrderId!=null">
 				 #{bean.channelOrderId},
-			</if>
-			<if test="bean.commentStatus!=null">
-				 #{bean.commentStatus},
 			</if>
 			<if test="bean.subject!=null">
 				 #{bean.subject},
@@ -271,9 +255,6 @@
 			<if test="bean.channelOrderId != null">
 				 channel_order_Id,
 			</if>
-			<if test="bean.commentStatus != null">
-				 comment_status,
-			</if>
 			<if test="bean.subject != null">
 				 subject,
 			</if>
@@ -305,9 +286,6 @@
 			</if>
 			<if test="bean.channelOrderId!=null">
 				 #{bean.channelOrderId},
-			</if>
-			<if test="bean.commentStatus!=null">
-				 #{bean.commentStatus},
 			</if>
 			<if test="bean.subject!=null">
 				 #{bean.subject},
@@ -342,9 +320,6 @@
 			<if test="bean.channelOrderId!=null">
 				 channel_order_Id = VALUES(channel_order_Id),
 			</if>
-			<if test="bean.commentStatus!=null">
-				 comment_status = VALUES(comment_status),
-			</if>
 			<if test="bean.subject!=null">
 				 subject = VALUES(subject),
 			</if>
@@ -363,7 +338,6 @@
 			 pay_scene,
 			 pay_order_id,
 			 channel_order_Id,
-			 comment_status,
 			 subject
 		 )values
 		 <foreach collection="list" item="item" separator=",">
@@ -377,7 +351,6 @@
 				 #{item.payScene},
 				 #{item.payOrderId},
 				 #{item.channelOrderId},
-				 #{item.commentStatus},
 			  	 #{item.subject}
 			 )
 		 </foreach>
@@ -395,7 +368,6 @@
 			 pay_scene,
 			 pay_order_id,
 			 channel_order_Id,
-			 comment_status,
 			 subject
 		 )values
 		 <foreach collection="list" item="item" separator=",">
@@ -409,7 +381,6 @@
 				 #{item.payScene},
 				 #{item.payOrderId},
 				 #{item.channelOrderId},
-				 #{item.commentStatus},
 			 	 #{item.subject}
 			 )
 		 </foreach>
@@ -423,7 +394,6 @@
 			pay_scene = VALUES(pay_scene),
 			pay_order_id = VALUES(pay_order_id),
 			channel_order_Id = VALUES(channel_order_Id),
-			comment_status = VALUES(comment_status),
 			subject = VALUES(subject)
 	</insert>
 
@@ -457,9 +427,6 @@
 			</if>
 			<if test="bean.channelOrderId != null">
 				 channel_order_Id = #{bean.channelOrderId},
-			</if>
-			<if test="bean.commentStatus != null">
-				 comment_status = #{bean.commentStatus},
 			</if>
 			 <if test="bean.subject != null">
 				 subject = #{bean.subject},
@@ -502,29 +469,11 @@
 			<if test="bean.channelOrderId != null">
 				 channel_order_Id = #{bean.channelOrderId},
 			</if>
-			<if test="bean.commentStatus != null">
-				 comment_status = #{bean.commentStatus},
-			</if>
 			 <if test="bean.subject != null">
 				 subject = #{bean.subject},
 			</if>
  		 </set>
  		 where order_id=#{orderId}
-	</update>
-
-	<update id="markCommentEvaluatedIfNotEvaluated">
-		UPDATE order_info
-		SET comment_status = 1
-		WHERE order_id = #{orderId}
-		  AND user_id = #{userId}
-		  AND comment_status = 0
-	</update>
-
-	<update id="revertCommentStatusIfEvaluated">
-		UPDATE order_info
-		SET comment_status = 0
-		WHERE order_id = #{orderId}
-		  AND comment_status = 1
 	</update>
 
 	<!-- 根据OrderId删除-->

@@ -1,9 +1,5 @@
 package com.smartlect.controller;
 
-import com.smartlect.constants.RabbitMQConfig;
-import com.smartlect.constants.ReliableMessageSender;
-import com.smartlect.api.dto.BrowseHistoryMessageDTO;
-import com.smartlect.entity.enums.MessageReliabilityLevelEnum;
 import com.smartlect.entity.enums.ProductSortKey;
 import com.smartlect.entity.enums.SortDirection;
 import com.smartlect.entity.query.ProductInfoQuery;
@@ -11,10 +7,8 @@ import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.query.SysCategoryQuery;
 import com.smartlect.entity.vo.Product4VO;
 import com.smartlect.entity.vo.ResponseVO;
-import com.smartlect.entity.dto.TokenUserInfoDTO;
 import com.smartlect.biz.ProductInfoService;
 import com.smartlect.biz.SysCategoryService;
-import com.smartlect.support.MqIdempotencyKeys;
 import jakarta.annotation.Resource;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -38,9 +32,6 @@ public class ProductController extends ABaseController {
 
     @Resource
     private ProductInfoService productInfoService;
-
-    @Resource
-    private ReliableMessageSender reliableMessageSender;
 
     @GetMapping("/loadCategory")
     public ResponseVO loadCategory() {
@@ -131,21 +122,6 @@ public class ProductController extends ABaseController {
     @PostMapping("/getProduct")
     public ResponseVO getProduct(@NotNull String productId) {
         Product4VO product = productInfoService.getProduct4VOByProductId(productId);
-        TokenUserInfoDTO tokenUserInfo = getTokenUserInfo();
-        if (tokenUserInfo != null && tokenUserInfo.getUserId() != null) {
-            BrowseHistoryMessageDTO message = new BrowseHistoryMessageDTO();
-            message.setUserId(tokenUserInfo.getUserId());
-            message.setProductId(productId);
-            long browseTime = System.currentTimeMillis();
-            message.setBrowseTime(browseTime);
-            reliableMessageSender.sendMessage(
-                    RabbitMQConfig.BROWSE_EXCHANGE,
-                    RabbitMQConfig.BROWSE_RECORD_KEY,
-                    message,
-                    MqIdempotencyKeys.browseRecord(
-                            tokenUserInfo.getUserId(), productId, browseTime),
-                    MessageReliabilityLevelEnum.HIGH);
-        }
         return getSuccessResponseVO(product);
     }
 }

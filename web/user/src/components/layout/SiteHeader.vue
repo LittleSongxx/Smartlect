@@ -13,13 +13,8 @@
           </template>
         </div>
         <nav class="topbar-right" aria-label="顶部快捷入口">
-          <RouterLink v-if="authStore.isLoggedIn" class="topbar-link" to="/notifications">
-            消息<span v-if="unreadCount" class="topbar-badge">({{ unreadCount > 99 ? '99+' : unreadCount }})</span>
-          </RouterLink>
-          <RouterLink v-if="authStore.isLoggedIn" class="topbar-link topbar-link--fold" to="/member-center">会员中心</RouterLink>
           <RouterLink class="topbar-link topbar-link--fold" to="/orders">我的订单</RouterLink>
           <RouterLink class="topbar-link topbar-link--fold" to="/cart">购物车</RouterLink>
-          <RouterLink class="topbar-link topbar-link--fold" to="/wishlist">收藏夹</RouterLink>
           <RouterLink class="topbar-link topbar-link--fold" to="/coupons">优惠券</RouterLink>
           <button type="button" class="topbar-link topbar-link--fold" @click="openAgent()">智能客服</button>
         </nav>
@@ -113,11 +108,6 @@
                 <el-dropdown-item @click="router.push('/orders')">我的订单</el-dropdown-item>
                 <el-dropdown-item @click="router.push('/my-coupons')">我的优惠券</el-dropdown-item>
                 <el-dropdown-item @click="router.push('/account')">个人中心</el-dropdown-item>
-                <el-dropdown-item @click="router.push('/member-center')">会员中心</el-dropdown-item>
-                <el-dropdown-item @click="router.push('/notifications')">
-                  消息中心<span v-if="unreadCount" class="menu-badge">{{ unreadCount }}</span>
-                </el-dropdown-item>
-                <el-dropdown-item @click="router.push('/sign')">签到中心</el-dropdown-item>
                 <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -129,19 +119,6 @@
             </el-badge>
             <span class="icon-label">购物车</span>
           </button>
-
-          <button
-            v-if="authStore.isLoggedIn"
-            type="button"
-            class="icon-action"
-            title="消息"
-            @click="router.push('/notifications')"
-          >
-            <el-badge :value="unreadCount" :hidden="!unreadCount" :max="99" :offset="[-2, 8]">
-              <el-icon :size="26"><Bell /></el-icon>
-            </el-badge>
-            <span class="icon-label">消息</span>
-          </button>
         </nav>
       </div>
     </div>
@@ -152,7 +129,6 @@
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { ArrowDown, Bell, ShoppingCart } from '@element-plus/icons-vue';
-import { useUnreadCount } from '@/composables/useUnreadCount';
 import { productApi, searchApi } from '@/api/modules';
 import { DEFAULT_HOT_SEARCH_WORDS } from '@/constants/searchHotWords';
 import { confirmAction } from '@/utils/confirm';
@@ -179,7 +155,6 @@ const { openAgent } = useOpenAgent();
 const searchStore = useSearchStore();
 const authStore = useAuthStore();
 const cartStore = useCartStore();
-const { unreadCount } = useUnreadCount();
 
 const keyword = ref('');
 const searchCategoryId = ref('');

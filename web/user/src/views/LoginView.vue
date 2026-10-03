@@ -42,7 +42,6 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { errorText, javaGet, javaPost, loadSession } from '@/api/client';
 import { useAgentSession } from '@/composables/useAgentSession';
-import { bindVisitor } from '@/api/traffic';
 import { safeNext } from '@/utils/navigation';
 import { useOpenAgent } from '@/composables/useOpenAgent';
 import { useAuthStore } from '@/stores/auth';
@@ -61,7 +60,7 @@ function fillVisitor() {
 }
 const busy = ref(false); const error = ref(''); const notice = ref(''); const mode = ref<'login' | 'register'>('login');
 const router = useRouter(); const route = useRoute(); const authStore = useAuthStore();
-const { conversationId, reset, restore } = useAgentSession();
+const { reset } = useAgentSession();
 const { openAgent } = useOpenAgent();
 async function captcha() {
   try { const result = await javaGet('/account/checkCode'); key.value = result.checkCodeKey; captchaImage.value = result.checkCode; code.value = ''; }
@@ -91,7 +90,6 @@ async function register() {
 }
 async function login() {
   if (busy.value) return; busy.value = true; error.value = ''; notice.value = '';
-  const previousConversation = conversationId.value;
   try {
     const data = await javaPost('/account/login', {
       email: email.value,
@@ -102,9 +100,7 @@ async function login() {
     password.value = '';
     if (data?.userId) authStore.userInfo = data;
     await loadSession();
-    const binding = await bindVisitor();
     reset();
-    if (binding?.bound && previousConversation && binding.conversation_ids.includes(previousConversation)) await restore(previousConversation);
     await router.replace(safeNext(route.query.next || route.query.redirect, '/'));
   } catch (reason) { error.value = errorText(reason); if (!usingTrial.value) await captcha(); }
   finally { busy.value = false; }

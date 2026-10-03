@@ -9,7 +9,6 @@ import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderQuoteService;
 import com.smartlect.biz.OrderRequestIdempotencyService;
 import com.smartlect.biz.RefundSagaService;
-import com.smartlect.component.OrderNotificationPublisher;
 import com.smartlect.component.RedisComponent;
 import com.smartlect.component.PayOrderRedisComponent;
 import com.smartlect.component.RemoteCompensateRecorder;
@@ -33,7 +32,6 @@ import com.smartlect.mappers.OrderCouponRelMapper;
 import com.smartlect.mappers.OrderInfoMapper;
 import com.smartlect.mappers.OrderItemMapper;
 import com.smartlect.mappers.OrderLogisticsInfoMapper;
-import com.smartlect.integration.CommerceOutcomeClient;
 import com.smartlect.support.MqIdempotencyKeys;
 import com.smartlect.utils.OrderListPayAmountHelper;
 import com.smartlect.utils.OrderPayAmountUtil;
@@ -107,12 +105,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 	private OrderQuoteService orderQuoteService;
 	@Resource
 	private CouponRushOrderService couponRushOrderService;
-	@Resource
-	private CommerceOutcomeClient commerceOutcomeClient;
-	@Resource
-	private com.smartlect.biz.OrderAttributionService orderAttributionService;
-	@Resource
-	private OrderNotificationPublisher orderNotificationPublisher;
 
 	@Override
 	public List<OrderInfo> findListByParam(OrderInfoQuery param) {
@@ -227,14 +219,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 	@Transactional(rollbackFor = Exception.class)
 	public PayInfoDTO createConfirmed(String userId, PostOrderDTO request, String quoteId,
 			Long confirmedAmountCents, String idempotencyKey) {
-		return createConfirmed(userId, request, quoteId, confirmedAmountCents, idempotencyKey, null);
-	}
-
-	@Override
-	@GlobalTransactional(name = "smartlect-confirmed-order", rollbackFor = Exception.class)
-	@Transactional(rollbackFor = Exception.class)
-	public PayInfoDTO createConfirmed(String userId, PostOrderDTO request, String quoteId,
-			Long confirmedAmountCents, String idempotencyKey, String attributionContextToken) {
 		if (quoteId == null || confirmedAmountCents == null) OrderQuoteService.reconfirm();
 		// Idempotency precedes quote expiry/consumption checks and all remote business reads.
 		return orderRequestIdempotencyService.execute(userId,
@@ -243,7 +227,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 						"order", OrderQuoteService.input(request)), PayInfoDTO.class, () -> {
 			OrderQuoteService.Quote quote = orderQuoteService.lock(userId, quoteId);
 			orderQuoteService.validateRequest(quote, userId, request, confirmedAmountCents);
-			PayInfoDTO response = createOrder(userId, request, quote, confirmedAmountCents, attributionContextToken);
+			PayInfoDTO response = createOrder(userId, request, quote, confirmedAmountCents);
 			orderQuoteService.consume(quote, response.getPayOrderId());
 			return response;
 		});
@@ -348,8 +332,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 				orderInfo.setOrderTime(now);
 				// 订单状态为待付款
 				orderInfo.setOrderStatus(OrderStatusEnum.WAIT_PAYMENT.getStatus());
-				// 评论状态为未评论
-				orderInfo.setCommentStatus(CommentStatusEnum.NORMAL.getStatus());
 				orderInfo.setPayChannel(postOrderDTO.getPayMethod());
 				orderInfo.setPayScene(postOrderDTO.getOrderFrom().toString());
 				orderInfo.setPayOrderId(unifiedPayOrderId);
@@ -399,10 +381,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 			orderItem.setOrderItemStatus(OrderItemStatusEnum.NORMAL.getStatus());
 			orderItem.setRemark(productItem.getRemark());
 			orderItem.setRefundOrderId(null);
-			orderItem.setRecommendationRequestId(productItem.getRecommendationRequestId());
-			orderItem.setRecommendationPosition(productItem.getRecommendationPosition());
-			orderItem.setRecommendationSource(productItem.getRecommendationSource());
-			orderItem.setRecommendationAttributedAt(productItem.getRecommendationAttributedAt());
 			String cover = null;
 			// 优先取 propertyValue 中的 cover
 			for (ProductPropertyValueSnapshotVO pv : propertyValueList) {
@@ -462,11 +440,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 
 	private PayInfoDTO createOrder(String userId, PostOrderDTO postOrderDTO,
 			OrderQuoteService.Quote quote, Long confirmedAmountCents) {
-		return createOrder(userId, postOrderDTO, quote, confirmedAmountCents, null);
-	}
-
-	private PayInfoDTO createOrder(String userId, PostOrderDTO postOrderDTO,
-			OrderQuoteService.Quote quote, Long confirmedAmountCents, String attributionContextToken) {
 		PreparedOrder prepared = prepareOrder(userId, postOrderDTO);
 		PayChannelEnum payChannelEnum = prepared.channel();
 		OrderFromTypeEnum orderFromTypeEnum = prepared.from();
@@ -523,7 +496,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 			orderInfoMapper.insertBatch(orderInfoList);
 			orderItemMapper.insertBatch(orderItemList);
 			orderLogisticsInfoMapper.insertBatch(orderLogisticsInfoList);
-			orderAttributionService.freeze(userId, orderInfoList, attributionContextToken);
 			// 远程扣减库存（与本地订单事务分离；后续步骤失败时补偿回补）
 			stockFeignSupport.changeStockBatch(deductList, "order-deduct:" + unifiedPayOrderId);
 			stockDeducted = true;
@@ -727,7 +699,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 			return;
 		}
 		restoreStockForOrders(orderId, List.of(orderInfo));
-		recordCancellationOutcomes(List.of(orderInfo), "USER_CANCEL", "CANCELLED");
 	}
 
 	private void cancelUnpaidPayOrderForUser(String userId, String payOrderId) {
@@ -765,7 +736,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		cancelOrder4Channel(waitingOrders.get(0));
 		releaseCouponIfNeeded(payOrderId);
 		restoreStockForOrders(payOrderId, waitingOrders);
-		recordCancellationOutcomes(waitingOrders, "USER_CANCEL", "CANCELLED");
 	}
 
 	private boolean isPaidOrBeyond(Integer status) {
@@ -810,7 +780,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		cancelOrder4Channel(channelRef);
 		releaseCouponIfNeeded(payOrderId);
 		restoreStockForOrders(payOrderId, orderList);
-		recordCancellationOutcomes(orderList, "PAYMENT_TIMEOUT", "CLOSED");
 	}
 
 	private void restoreStockForOrders(String restoreReferenceId, List<OrderInfo> orderList) {
@@ -1187,16 +1156,13 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		OrderCountVO orderCountVO1 = new OrderCountVO();
 		OrderCountVO orderCountVO2 = new OrderCountVO();
 		OrderCountVO orderCountVO3 = new OrderCountVO();
-		OrderCountVO orderCountVO4 = new OrderCountVO();
 		OrderCountVO orderCountVO5 = new OrderCountVO();
 		List<OrderCountVO> orderCountVOList = new ArrayList<>();
 		Integer waitPayCount = 0;
 		Integer waitShipCount = 0;
 		Integer waitReceiveCount = 0;
-		Integer waitCommentCount = 0;
 		Set<String> completedPayOrderIds = new HashSet<>();
 		for (OrderInfo orderInfo : orderInfoList) {
-			boolean isCouponOrder = "2".equals(orderInfo.getPayScene());
 			// 已删除的不统计
 			if (OrderStatusEnum.DELETE.getStatus().equals(orderInfo.getOrderStatus())){
 				continue;
@@ -1207,10 +1173,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 				waitShipCount++;
 			}else if(OrderStatusEnum.SHIPPED.getStatus().equals(orderInfo.getOrderStatus())){
 				waitReceiveCount++;
-			}else if (OrderStatusEnum.COMPLETED.getStatus().equals(orderInfo.getOrderStatus())
-				&& !isCouponOrder
-				&& OrderCommentStatusEnum.NOT_EVALUATED.getStatus().equals(orderInfo.getCommentStatus())){
-			waitCommentCount++;
 			}
 			if (OrderStatusEnum.COMPLETED.getStatus().equals(orderInfo.getOrderStatus())){
 				completedPayOrderIds.add(orderInfo.getOrderId());
@@ -1226,9 +1188,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		orderCountVO3.setCode("pendingReceipt");
 		orderCountVO3.setCount(waitReceiveCount);
 		orderCountVOList.add(orderCountVO3);
-		orderCountVO4.setCode("pendingComment");
-		orderCountVO4.setCount(waitCommentCount);
-		orderCountVOList.add(orderCountVO4);
 		orderCountVO5.setCode("completed");
 		orderCountVO5.setCount(completedCount);
 		orderCountVOList.add(orderCountVO5);
@@ -1377,18 +1336,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 	}
 
 	@Override
-	public void onOrderConfirmed(String userId, String orderId) {
-		OrderInfo orderInfo = orderInfoMapper.selectByOrderId(orderId);
-		if (orderInfo != null && OrderCommentStatusEnum.EVALUATED.getStatus().equals(orderInfo.getCommentStatus())) {
-			orderNotificationPublisher.send(userId, "追评提醒",
-					"订单已完成，欢迎追加评价分享购物体验", "comment_re", orderId);
-		} else {
-			orderNotificationPublisher.send(userId, "确认收货成功",
-					"订单已完成，欢迎评价商品获取成长值", "order", orderId);
-		}
-	}
-
-	@Override
 	@Transactional(rollbackFor = Exception.class)
 	public boolean confirmOrderReceipt(String userId, String orderId) {
 		if (StringTools.isEmpty(orderId)) {
@@ -1410,27 +1357,8 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		if (rows == 0) {
 			return false;
 		}
-		enqueueOrderGrowth(existing);
 		increaseProductSalesForOrder(orderId);
 		return true;
-	}
-
-	private void enqueueOrderGrowth(OrderInfo orderInfo) {
-		if (orderInfo == null
-				|| StringTools.isEmpty(orderInfo.getOrderId())
-				|| StringTools.isEmpty(orderInfo.getUserId())
-				|| orderInfo.getAmount() == null
-				|| orderInfo.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-			return;
-		}
-		OrderGrowthEventDTO event = new OrderGrowthEventDTO(
-				orderInfo.getOrderId(), orderInfo.getUserId(), orderInfo.getAmount());
-		transactionalMqSender.sendAfterCommit(
-				RabbitMQConfig.USER_MEMBER_EXCHANGE,
-				RabbitMQConfig.USER_MEMBER_KEY,
-				event,
-				MqIdempotencyKeys.orderGrowth(orderInfo.getOrderId()),
-				MessageReliabilityLevelEnum.STANDARD);
 	}
 
 	@Override
@@ -1486,15 +1414,13 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		}
 	}
 
+	/**
+	 * 支付成功后按原价权重把订单实付分摊到明细（累计取整，末行吸收分差），并做金额不变量校验。
+	 */
 	private void recordPaymentOutcomes(List<OrderInfo> orders, String payOrderId) {
 		if (orders == null || orders.isEmpty()) {
 			return;
 		}
-		Date occurredAt = new Date();
-		List<String> currentOrderIds = orders.stream()
-				.map(OrderInfo::getOrderId)
-				.filter(Objects::nonNull)
-				.toList();
 		for (OrderInfo order : orders) {
 			List<OrderItem> items = new ArrayList<>(loadOrderItems(order.getOrderId()));
 			items.sort(Comparator.comparing(OrderItem::getOrderItemId));
@@ -1511,8 +1437,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
             BigDecimal allocated = BigDecimal.ZERO;
 			for (int index = 0; index < items.size(); index++) {
 				OrderItem item = items.get(index);
-				boolean repeatPurchase = hasPriorSuccessfulPurchase(
-						order.getUserId(), item.getProductId(), currentOrderIds);
                 cumulativeGross = cumulativeGross.add(item.getItemAmount());
                 // Fixed payment basis; cumulative rounding prevents a tiny final line absorbing excess cents.
                 BigDecimal cumulativePaid = index == items.size() - 1 || grossTotal.signum() == 0
@@ -1528,100 +1452,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
                 } else if (item.getPaidAmount().compareTo(paidAmount) != 0) {
                     throw new BusinessException("订单明细实付与已确认金额不一致");
                 }
-				Map<String, Object> payload = new LinkedHashMap<>();
-				if (item.getBuyCount() != null) {
-					payload.put("quantity", item.getBuyCount());
-				}
-				payload.put("paidAmount", paidAmount);
-				payload.put("payOrderId", payOrderId);
-				payload.put("orderItemId", item.getOrderItemId());
-				payload.put("currency", "CNY");
-				payload.put("payStatus", "PAID");
-				payload.put("attribution", orderAttributionService.eventAttribution(order.getOrderId()));
-				commerceOutcomeClient.recordV2AfterCommit(CommerceOutcomeClient.fromVerifiedCarrier(
-						CommerceOutcomeClient.stableEventId(
-								"payment", payOrderId, order.getOrderId(), item.getOrderItemId()),
-						"PAYMENT",
-						CommerceOutcomeClient.stableIdempotencyKey(
-								"payment", payOrderId, order.getOrderId(), item.getOrderItemId()),
-						"PAYMENT",
-						order.getUserId(),
-						item,
-						item.getPropertyValueIdHash(),
-						order.getOrderId(),
-						payload,
-						occurredAt));
-				if (repeatPurchase) {
-					Map<String, Object> repeatPayload = new LinkedHashMap<>();
-					if (item.getBuyCount() != null) {
-						repeatPayload.put("quantity", item.getBuyCount());
-					}
-					repeatPayload.put("paidAmount", paidAmount);
-					repeatPayload.put("payOrderId", payOrderId);
-					repeatPayload.put("orderItemId", item.getOrderItemId());
-					repeatPayload.put("currency", "CNY");
-					commerceOutcomeClient.recordAfterCommit(
-							CommerceOutcomeClient.fromVerifiedCarrier(
-									CommerceOutcomeClient.stableEventId(
-											"repeat-purchase", payOrderId,
-											order.getOrderId(), item.getOrderItemId()),
-									"ORDER",
-									CommerceOutcomeClient.stableIdempotencyKey(
-											"repeat-purchase", payOrderId,
-											order.getOrderId(), item.getOrderItemId()),
-									"REPEAT_PURCHASE",
-									order.getUserId(),
-									item,
-									item.getPropertyValueIdHash(),
-									order.getOrderId(),
-									repeatPayload,
-									occurredAt));
-				}
-			}
-		}
-	}
-
-	private boolean hasPriorSuccessfulPurchase(
-			String userId, String productId, List<String> currentOrderIds) {
-		if (StringTools.isEmpty(userId) || StringTools.isEmpty(productId)) {
-			return false;
-		}
-		Integer count = orderItemMapper.countPriorSuccessfulPurchases(
-				userId,
-				productId,
-				currentOrderIds,
-				List.of(
-						OrderStatusEnum.PAID.getStatus(),
-						OrderStatusEnum.SHIPPED.getStatus(),
-						OrderStatusEnum.COMPLETED.getStatus(),
-						OrderStatusEnum.PARTIALLY_REFUNDED.getStatus()));
-		return count != null && count > 0;
-	}
-
-	private void recordCancellationOutcomes(
-			List<OrderInfo> orders, String reasonCode, String orderStatus) {
-		if (orders == null || orders.isEmpty()) {
-			return;
-		}
-		Date occurredAt = new Date();
-		for (OrderInfo order : orders) {
-			for (OrderItem item : loadOrderItems(order.getOrderId())) {
-				Map<String, Object> payload = new LinkedHashMap<>();
-				payload.put("reasonCode", reasonCode);
-				payload.put("orderStatus", orderStatus);
-				commerceOutcomeClient.recordAfterCommit(CommerceOutcomeClient.fromVerifiedCarrier(
-						CommerceOutcomeClient.stableEventId(
-								"cancel", order.getOrderId(), item.getOrderItemId()),
-						"ORDER",
-						CommerceOutcomeClient.stableIdempotencyKey(
-								"cancel", order.getOrderId(), item.getOrderItemId()),
-						"CANCEL",
-						order.getUserId(),
-						item,
-						item.getPropertyValueIdHash(),
-						order.getOrderId(),
-						payload,
-						occurredAt));
 			}
 		}
 	}

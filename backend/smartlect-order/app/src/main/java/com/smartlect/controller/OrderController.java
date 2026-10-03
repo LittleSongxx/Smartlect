@@ -6,7 +6,6 @@ import com.smartlect.constants.Constants;
 import com.smartlect.api.dto.PayInfoDTO;
 import com.smartlect.api.dto.PostOrderDTO;
 import com.smartlect.entity.dto.TokenUserInfoDTO;
-import com.smartlect.api.enums.OrderCommentStatusEnum;
 import com.smartlect.api.enums.OrderFromTypeEnum;
 import com.smartlect.api.enums.OrderStatusEnum;
 import com.smartlect.entity.po.OrderInfo;
@@ -24,7 +23,6 @@ import com.smartlect.biz.OrderLogisticsInfoService;
 import com.smartlect.biz.OrderRequestIdempotencyService;
 import com.smartlect.state.OrderStateEvent;
 import com.smartlect.state.OrderStateMachine;
-import com.smartlect.integration.RecommendationAttributionClient;
 import com.smartlect.utils.OrderPayAmountUtil;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
@@ -66,9 +64,6 @@ public class OrderController extends ABaseController{
     @Resource
     private OrderRequestIdempotencyService orderRequestIdempotencyService;
 
-    @Resource
-    private RecommendationAttributionClient recommendationAttributionClient;
-
     // 提交订单
     @PostMapping("/postOrder")
     @GlobalInterceptor(checkLogin = true)
@@ -77,9 +72,6 @@ public class OrderController extends ABaseController{
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             HttpServletResponse response){
         String userId = getTokenUserInfo().getUserId();
-        // Remote attribution validation happens before the transactional service
-        // proxy. Failure only clears optional touchpoints and never blocks checkout.
-        recommendationAttributionClient.validateAndApply(userId, postOrderDTO.getOrderList());
         // 根据userId和postOrderDTO生成订单
         PayInfoDTO payInfoDTO = orderInfoService.postOrder(
                 userId, postOrderDTO, idempotencyKey);
@@ -128,7 +120,7 @@ public class OrderController extends ABaseController{
     // 查询我的订单
     @PostMapping("/loadMyOrder")
     @GlobalInterceptor(checkLogin = true)
-    public ResponseVO loadMyOrder(@NotNull Integer pageNo, Integer status, Integer commentPending){
+    public ResponseVO loadMyOrder(@NotNull Integer pageNo, Integer status){
         // 返回PaginationResultVO<OrderInfo> 分页对象，包含订单列表和分页信息
         // 不查询OrderStatus为-1，即已删除的订单
         OrderInfoQuery query = new OrderInfoQuery();
@@ -149,12 +141,6 @@ public class OrderController extends ABaseController{
             });
         }else {
             query.setOrderStatus(status);
-        }
-        if (commentPending != null && commentPending == 1) {
-            query.setOrderStatus(OrderStatusEnum.COMPLETED.getStatus());
-            query.setCommentStatusList(new Integer[]{
-                    OrderCommentStatusEnum.NOT_EVALUATED.getStatus(),
-            });
         }
         PaginationResultVO<OrderInfo> resultVO = orderInfoService.findListByPage(query);
         return getSuccessResponseVO(resultVO);
@@ -248,7 +234,6 @@ public class OrderController extends ABaseController{
         if (!orderInfoService.confirmOrderReceipt(userId, orderId)) {
             return false;
         }
-        orderInfoService.onOrderConfirmed(userId, orderId);
         return true;
     }
 

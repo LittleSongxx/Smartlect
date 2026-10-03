@@ -16,10 +16,6 @@ public interface OrderInfoMapper<T,P> extends BaseMapper<T,P> {
 
 	 T selectByOrderIdForUpdate(@Param("orderId") String orderId);
 
-	Integer markCommentEvaluatedIfNotEvaluated(@Param("orderId") String orderId, @Param("userId") String userId);
-
-	Integer revertCommentStatusIfEvaluated(@Param("orderId") String orderId);
-
 		@Select("""
 				SELECT order_id AS orderId, user_id AS userId FROM order_info
 				WHERE order_status = 1

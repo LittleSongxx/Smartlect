@@ -30,8 +30,6 @@ public class OrderRequestIdempotencyService {
     public static final String COMMAND_COMMERCE_REFUND = "COMMERCE_REFUND";
     public static final String COMMAND_COMMERCE_CANCEL_ORDER = "COMMERCE_CANCEL_ORDER";
     public static final String COMMAND_COMMERCE_CONFIRM_RECEIPT = "COMMERCE_CONFIRM_RECEIPT";
-    public static final String COMMAND_COMMERCE_PRODUCT_REVIEW = "COMMERCE_PRODUCT_REVIEW";
-    public static final String COMMAND_COMMERCE_RECOMMENT = "COMMERCE_RECOMMENT";
 
     private static final Pattern KEY_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{16,64}");
     static final long STALE_PROCESSING_MILLIS = 120_000L;

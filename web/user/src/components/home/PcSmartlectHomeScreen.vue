@@ -148,10 +148,9 @@ import {
 import BrandMark from '@/components/common/BrandMark.vue';
 import ProductImage from '@/components/common/ProductImage.vue';
 import { useOpenAgent } from '@/composables/useOpenAgent';
-import { recommendationTouch, reportClick } from '@/api/traffic';
 import { useAuthStore } from '@/stores/auth';
 import { PUBLIC_REGISTER_ENABLED } from '@/constants/trial';
-import { mixHomeRecommendations, recommendationProductPath } from '@/utils/homeRecommendations';
+import { mixHomeRecommendations } from '@/utils/homeRecommendations';
 import { resolveAvatarUrl } from '@/utils/image';
 
 const props = defineProps<{
@@ -238,13 +237,7 @@ const goDetail = (p: any) => {
   if (p?.productId) router.push(`/product/${p.productId}`);
 };
 
-const goBannerProduct = async (p: any) => {
-  if (p?.kind === 'recommend') {
-    const touch = recommendationTouch(p);
-    if (touch) await reportClick(touch);
-    router.push(recommendationProductPath(p));
-    return;
-  }
+const goBannerProduct = (p: any) => {
   goDetail(p);
 };
 

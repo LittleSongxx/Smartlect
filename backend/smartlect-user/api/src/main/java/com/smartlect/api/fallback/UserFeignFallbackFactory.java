@@ -2,10 +2,8 @@ package com.smartlect.api.fallback;
 
 import com.smartlect.api.UserFeignClient;
 import com.smartlect.api.dto.UserAddressQueryDTO;
-import com.smartlect.api.dto.UserGrowthAddDTO;
 import com.smartlect.api.dto.UserIdsDTO;
 import com.smartlect.api.dto.UserJoinCountDTO;
-import com.smartlect.api.dto.UserNotifyDTO;
 import com.smartlect.api.support.FeignFallbackResponses;
 import com.smartlect.api.vo.UserAddressVO;
 import com.smartlect.api.vo.UserBriefVO;
@@ -26,16 +24,6 @@ public class UserFeignFallbackFactory implements FallbackFactory<UserFeignClient
         return new UserFeignClient() {
             @Override
             public ResponseVO<UserAddressVO> getAddress(UserAddressQueryDTO dto, String userId) {
-                return FeignFallbackResponses.unavailable("用户服务");
-            }
-
-            @Override
-            public ResponseVO<Void> addGrowthOnPay(UserGrowthAddDTO dto, String userId) {
-                return FeignFallbackResponses.unavailable("用户服务");
-            }
-
-            @Override
-            public ResponseVO<Void> sendNotifyAsync(UserNotifyDTO dto) {
                 return FeignFallbackResponses.unavailable("用户服务");
             }
 

@@ -102,19 +102,6 @@
               show-label
               :consult-product="agentConsultProduct"
             />
-            <button
-              type="button"
-              class="btn-fav"
-              :class="{ active: favorited }"
-              :disabled="favoriteLoading"
-              @click="toggleFavorite"
-            >
-              <el-icon :size="18">
-                <StarFilled v-if="favorited" />
-                <Star v-else />
-              </el-icon>
-              <span>{{ favorited ? '已收藏' : '收藏' }}</span>
-            </button>
           </div>
           <div class="action-main">
             <el-button class="btn-cart" type="primary" size="large" @click="openAddCartSheet">
@@ -136,51 +123,6 @@
             </article>
           </div>
           <MarkdownContent :content="productContent.extra || productInfo.productDesc" class="desc-content" allow-images center-images />
-        </el-tab-pane>
-        <el-tab-pane :label="`商品评价${commentTotal > 0 ? ` (${commentTotal})` : ''}`" name="comments">
-          <div class="tab-comments">
-            <div class="tab-comments-head">
-              <p class="comments-summary">
-                累计评价 {{ commentTotal }} 条
-                <template v-if="commentTotal > 0">
-                  · 好评率 {{ commentGoodRate }}%
-                  <template v-if="commentImageCount > 0"> · {{ commentImageCount }} 条带图</template>
-                </template>
-              </p>
-              <button v-if="commentTotal > 0" type="button" class="link-more" @click="goAllComments">
-                查看全部评价
-                <el-icon><ArrowRight /></el-icon>
-              </button>
-            </div>
-            <div v-if="comments.length" class="comment-list">
-              <article v-for="c in comments" :key="c.orderId" class="comment-item">
-                <div class="comment-head">
-                  <div class="user-info">
-                    <el-avatar :size="36" :src="resolveAvatarUrl(c.avatar)" class="user-avatar">
-                      {{ (c.nickName || '用')[0] }}
-                    </el-avatar>
-                    <div class="user-detail">
-                      <span class="user">{{ maskCommenterName(c.nickName) }}</span>
-                      <span v-if="getCommentLevelProxy(c.userId)" class="comment-level-tag" :class="commentLevelTagClass(getCommentLevelProxy(c.userId)!.levelCode)">
-                        {{ getCommentLevelProxy(c.userId)!.levelName }}
-                      </span>
-                    </div>
-                  </div>
-                  <el-rate v-if="c.star" :model-value="c.star" disabled size="small" />
-                </div>
-                <p v-if="c.propertyInfo" class="sku-info">{{ c.propertyInfo }}</p>
-                <p class="comment-text">{{ c.commentContent }}</p>
-                <button
-                  type="button"
-                  class="report-btn"
-                  @click="openReport({ orderId: c.orderId, commentContent: c.commentContent })"
-                >
-                  举报
-                </button>
-              </article>
-            </div>
-            <el-empty v-else description="暂无评价，快来抢沙发吧" :image-size="80" />
-          </div>
         </el-tab-pane>
       </el-tabs>
     </section>
@@ -205,7 +147,6 @@
       <p v-if="loadingMore" class="load-tip">加载中…</p>
       <p v-else-if="finished && similarProducts.length" class="load-tip">已展示全部推荐商品</p>
     </section>
-    <CommentReportDialog ref="reportDialogRef" />
   </div>
 
   <div v-else-if="loading" class="pc-detail-loading card">
@@ -226,11 +167,8 @@ import { ArrowRight, Star, StarFilled } from '@element-plus/icons-vue';
 import AgentServiceEntry from '@/components/agent/AgentServiceEntry.vue';
 import ProductImage from '@/components/common/ProductImage.vue';
 import MarkdownContent from '@/components/common/MarkdownContent.vue';
-import CommentReportDialog from '@/components/business/CommentReportDialog.vue';
 import { useProductDetailPage } from '@/composables/useProductDetailPage';
-import { maskCommenterName } from '@/utils/comment';
 import { useSimilarProducts } from '@/composables/useSimilarProducts';
-import { useCommentLevels } from '@/composables/useCommentLevels';
 import { resolveAvatarUrl } from '@/utils/image';
 
 const route = useRoute();
@@ -243,16 +181,10 @@ const {
   productInfo,
   productContent,
   productPropertyList,
-  comments,
-  commentTotal,
-  commentGoodRate,
-  commentImageCount,
   quantity,
   selectedSku,
   selectedProperty,
   activeImageIndex,
-  favorited,
-  favoriteLoading,
   detailTab,
   galleryImages,
   displayPrice,
@@ -261,13 +193,10 @@ const {
   openGalleryPreview,
   selectGalleryIndex,
   selectProperty,
-  toggleFavorite,
-  goAllComments,
   openAddCartSheet,
   buyNow
 } = useProductDetailPage();
 
-const reportDialogRef = ref<InstanceType<typeof CommentReportDialog>>();
 
 // "猜你喜欢"分批放出 + 滚动触底与移动端共用同一份（滚动监听由 composable 注册）
 const { similarProducts, loadingMore, finished } = useSimilarProducts({
@@ -281,34 +210,6 @@ const formatPrice = (price: any): string => {
 };
 
 const goDetail = (p: any) => router.push(`/product/${p.productId}`);
-
-// 等级徽章缓存/懒加载与移动端共用；PC 用 level-normal 作为基线档类名
-const {
-  fetchLevel: fetchCommentLevel,
-  fetchLevels: fetchCommentLevels,
-  getLevel: getCommentLevel,
-  tagClass: commentLevelTagClass
-} = useCommentLevels({ baseClass: 'level-normal' });
-
-// PC 是"取用即拉取"：列表渲染时顺手补一次缺失的等级
-const getCommentLevelProxy = (userId: string | number | undefined) => {
-  if (!userId) return null;
-  fetchCommentLevel(userId);
-  return getCommentLevel(userId);
-};
-
-watch(comments, (val) => {
-  if (!val?.length) return;
-  fetchCommentLevels(val);
-}, { immediate: true });
-
-const openReport = (payload: { orderId: string; commentContent?: string }) => {
-  reportDialogRef.value?.show({
-    orderId: payload.orderId,
-    productId: String(route.params.productId || ''),
-    commentContent: payload.commentContent
-  });
-};
 </script>
 
 <style scoped lang="scss">

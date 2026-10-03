@@ -12,6 +12,4 @@ public interface UserCouponMapper<T,P> extends BaseMapper<T,P> {
 
 	 T selectByUserCouponId(@Param("userCouponId") String userCouponId);
 
-	java.util.List<java.util.Map<String, Object>> selectExpiringUnused(@Param("limit") int limit);
-
 }

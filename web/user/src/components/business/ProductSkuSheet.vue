@@ -93,10 +93,6 @@ import { useCartStore } from '@/stores/cart';
 import { toast } from '@/utils/toast';
 import { TRIAL_USER_DENIED } from '@/constants/trial';
 import { useDevice } from '@/composables/useDevice';
-import {
-  loadRecommendationAttribution,
-  recommendationAttributionCommandFields
-} from '@/utils/recommendationAttribution';
 
 const route = useRoute();
 const router = useRouter();
@@ -146,15 +142,10 @@ const confirmAdd = async () => {
 
   submitting.value = true;
   try {
-    const attribution = loadRecommendationAttribution(
-      authStore.userInfo?.userId as string | undefined,
-      String(productInfo.value.productId)
-    );
     await cartApi.add2Cart({
       productId: productInfo.value.productId,
       buyCount: quantity.value,
       propertyValueIds: selectedSku.value.propertyValueIds,
-      ...recommendationAttributionCommandFields(attribution)
     });
     await cartStore.fetchCartCount();
     toast.success('已加入购物车');

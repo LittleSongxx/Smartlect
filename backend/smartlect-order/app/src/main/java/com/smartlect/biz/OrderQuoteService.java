@@ -51,11 +51,7 @@ public class OrderQuoteService {
     public record Line(String productId, String propertyValueIds, Integer buyCount, String remark) { }
     public record Input(String payMethod, String addressId, Integer orderFrom,
                         String userCouponId, List<Line> orderList) { }
-    public record Confirmed(String quoteId, Long confirmedAmountCents, Input order, String attributionContextToken) {
-        public Confirmed(String quoteId, Long confirmedAmountCents, Input order) {
-            this(quoteId, confirmedAmountCents, order, null);
-        }
-    }
+    public record Confirmed(String quoteId, Long confirmedAmountCents, Input order) { }
     public record Quote(String quoteId, String userId, String requestHash, String offerHash,
                         long amountCents, Instant expiresAt, String payOrderId) { }
 

@@ -1,6 +1,6 @@
 <template>
-  <div ref="container" class="agent-products">
-    <article v-for="(item, index) in list" :key="`${item.recommendation_id || item.productId}:${item.position || item.propertyValueIds || index}`" class="product-tile">
+  <div class="agent-products">
+    <article v-for="(item, index) in list" :key="`${item.productId}:${item.propertyValueIds || index}`" class="product-tile">
       <button type="button" class="product-link" @click="select(item)">
         <ProductImage class="tile-cover" :product="item" width="100%" height="176" />
         <div class="tile-body">
@@ -22,80 +22,19 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import ProductImage from '@/components/common/ProductImage.vue';
 import { money } from '@/utils/assistant';
-import { ownerKey, session } from '@/api/client';
-import { recommendationTouch, reportClick, reportExposure, type RecommendationTouch } from '@/api/traffic';
 import { useProductSkuSheet } from '@/composables/useProductSkuSheet';
 const props = defineProps<{ list: Record<string, any>[] }>();
 const emit = defineEmits<{ select: [item: Record<string, any>] }>();
 const { open: openSkuSheet } = useProductSkuSheet();
-const container = ref<HTMLElement>();
-const owner = computed(() => session.value ? ownerKey(session.value.actor) : '');
-const visible = new Map<Element, RecommendationTouch>();
-const exposed = new Set<string>(); const pending = new Set<string>(); const clicked = new Set<string>(); const clicking = new Set<string>();
-const touchKey = (touch: RecommendationTouch) => `${touch.recommendation_id}:${touch.position}`;
-let observer: IntersectionObserver | undefined; let revision = 0;
-function recordVisible() {
-  if (document.visibilityState !== 'visible' || !owner.value) return;
-  const requestedOwner = owner.value;
-  const groups = new Map<string, Set<number>>();
-  for (const touch of visible.values()) {
-    const key = touchKey(touch);
-    if (exposed.has(key) || pending.has(key)) continue;
-    pending.add(key);
-    if (!groups.has(touch.recommendation_id)) groups.set(touch.recommendation_id, new Set());
-    groups.get(touch.recommendation_id)!.add(touch.position);
-  }
-  for (const [id, positions] of groups) {
-    void reportExposure(id, [...positions]).then((success) => {
-      for (const position of positions) {
-        const key = touchKey({ recommendation_id: id, position });
-        if (success && requestedOwner === owner.value) exposed.add(key);
-        pending.delete(key);
-      }
-    });
-  }
-}
-async function observeCards() {
-  const current = ++revision; observer?.disconnect(); visible.clear();
-  await nextTick();
-  if (current !== revision || !container.value || typeof IntersectionObserver === 'undefined') return;
-  const receipts = new Map<Element, RecommendationTouch>();
-  observer = new IntersectionObserver((entries) => {
-    if (current !== revision) return;
-    for (const entry of entries) {
-      const receipt = receipts.get(entry.target);
-      if (receipt && entry.isIntersecting && entry.intersectionRatio >= 0.5) visible.set(entry.target, receipt);
-      else visible.delete(entry.target);
-    }
-    recordVisible();
-  }, { threshold: 0.5 });
-  container.value.querySelectorAll('article').forEach((element, index) => {
-    const touch = recommendationTouch(props.list[index] || {});
-    if (touch) { receipts.set(element, touch); observer!.observe(element); }
-  });
-}
-async function select(item: Record<string, any>) {
-  const requestedOwner = owner.value;
-  const touch = recommendationTouch(item);
-  if (!touch) { emit('select', item); return; }
-  const key = touchKey(touch);
-  if (clicking.has(key)) return;
-  clicking.add(key);
-  try {
-    if (!clicked.has(key) && await reportClick(touch)) clicked.add(key);
-    if (requestedOwner === owner.value) emit('select', item);
-  } finally { clicking.delete(key); }
+function select(item: Record<string, any>) {
+  emit('select', item);
 }
 function add(item: Record<string, any>) {
   if (item.productId) openSkuSheet(String(item.productId));
 }
 const reasons = (item: Record<string, any>) => Array.isArray(item.reasons) ? item.reasons.filter((reason: unknown) => typeof reason === 'string').join(' · ') : String(item.reason || '');
-watch(() => [props.list, owner.value], observeCards);
-onMounted(() => { void observeCards(); document.addEventListener('visibilitychange', recordVisible); });
-onUnmounted(() => { revision++; observer?.disconnect(); visible.clear(); document.removeEventListener('visibilitychange', recordVisible); });
 const priceText = (item: Record<string, any>) => {
   const price = item.price ?? item.minPrice;
   return price == null || !Number.isFinite(Number(price)) ? '价格待核实' : `¥${Number(price).toFixed(2)}`;

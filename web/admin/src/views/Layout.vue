@@ -184,8 +184,6 @@ const menuList = ref([
     opened: true,
     children: [
       { name: '订单管理', path: '/order/orderList' },
-      { name: '订单评论', path: '/order/comment' },
-      { name: '举报管理', path: '/order/report' },
       { name: '退款复核', path: '/order/refundReview' },
     ],
   },
@@ -204,8 +202,6 @@ const menuList = ref([
     opened: true,
     children: [
       { name: '优惠券管理', path: '/discountCoupon' },
-      { name: '签到发券', path: '/marketing/signReward' },
-      { name: '会员升级礼券', path: '/marketing/memberLevelReward' },
     ],
   },
   {
@@ -227,7 +223,6 @@ const menuList = ref([
     opened: true,
     children: [
       { name: '发货地址', path: '/setting/logistics' },
-      { name: '敏感词', path: '/setting/sensitiveWord' },
       { name: '图片审核', path: '/setting/imageModeration' },
     ],
   },

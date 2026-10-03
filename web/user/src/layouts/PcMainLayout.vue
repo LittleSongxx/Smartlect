@@ -27,7 +27,6 @@
     </main>
     <AppFooter />
     <PcFloatToolbar />
-    <NotificationPopup @click="handleNotificationClick" />
   </div>
 </template>
 
@@ -46,14 +45,10 @@ import AppFooter from '@/components/layout/AppFooter.vue';
 import PcFloatToolbar from '@/components/layout/PcFloatToolbar.vue';
 import SiteHeader from '@/components/layout/SiteHeader.vue';
 import PcSmartlectScreenNav from '@/components/home/PcSmartlectScreenNav.vue';
-import NotificationPopup from '@/components/business/NotificationPopup.vue';
 import { useRouter } from 'vue-router';
-import { useUnreadCount } from '@/composables/useUnreadCount';
-import { navigateNotification, type NotificationData } from '@/utils/notification';
 
 const route = useRoute();
 const router = useRouter();
-const { refreshUnreadCount } = useUnreadCount();
 const isHomePage = computed(() => route.path === '/');
 
 const navItems = [
@@ -70,9 +65,6 @@ const isActive = (path: string) => {
   return route.path === path || route.path.startsWith(`${path}/`);
 };
 
-const handleNotificationClick = (notification: NotificationData) => {
-  void navigateNotification(router, notification, { refreshUnread: refreshUnreadCount });
-};
 </script>
 
 <style scoped lang="scss">

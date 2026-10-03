@@ -17,7 +17,6 @@ import ImagePreviewHost from '@/components/common/ImagePreviewHost.vue';
 import PcAgentFloatingPanel from '@/components/pc/PcAgentFloatingPanel.vue';
 import { useDeviceStore } from './stores/device';
 import { useAuthStore } from './stores/auth';
-import { recordLanding } from '@/api/traffic';
 import { loadSession } from '@/api/client';
 
 const deviceStore = useDeviceStore();
@@ -29,6 +28,5 @@ useAuthStore().tryRestoreSession();
 onMounted(() => {
   deviceStore.sync();
   void loadSession().catch(() => undefined);
-  void recordLanding();
 });
 </script>

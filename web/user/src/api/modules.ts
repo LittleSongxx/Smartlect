@@ -140,21 +140,6 @@ export const addressApi = {
   updateDefault: (addressId: string) => request.postForm('/userAddress/updateDefault', { addressId })
 };
 
-export const commentApi = {
-  loadComment: (params: Record<string, unknown>) => request.postForm('/order/comment/loadComment', params),
-  getProductCommentStats: (productId: string) =>
-    request.postForm('/order/comment/getProductCommentStats', { productId }),
-  getComment: (orderId: string) => request.postForm('/order/comment/getComment', { orderId }),
-  postComment: (params: Record<string, unknown>) => request.postForm('/order/comment/postComment', params),
-  postReComment: (params: Record<string, unknown>) => request.postForm('/order/comment/postReComment', params),
-  loadMyComment: (params: Record<string, unknown>) => request.postForm('/order/comment/loadMyComment', params),
-  delMyComment: (orderId: string) => request.postForm('/order/comment/delMyComment', { orderId })
-};
-
-export const commentReportApi = {
-  submitReport: (params: Record<string, unknown>) => request.postForm('/commentReport/submitReport', params)
-};
-
 export const couponApi = {
   loadDiscountCoupon: (params: Record<string, unknown>) =>
     request.postForm('/discountCoupon/loadDiscountCoupon', params),
@@ -174,49 +159,6 @@ export const couponApi = {
     request.postForm('/discountCoupon/loadUserCoupon', params),
   getDiscountCouponDetail: (couponId: string) =>
     request.postForm('/discountCoupon/getDiscountCouponDetail', { couponId })
-};
-
-export const signApi = {
-  getSignCalendar: (yearMonth: string) => request.postForm('/sign/getSignCalendar', { yearMonth }),
-  sign: () => request.postForm('/sign/sign'),
-  msign: (date: string) => request.postForm('/sign/msign', { date })
-};
-
-export const favoriteApi = {
-  loadFavorite: (params: Record<string, unknown>) => request.postForm('/userFavorite/loadFavorite', params),
-  toggleFavorite: (productId: string) => request.postForm('/userFavorite/toggleFavorite', { productId }),
-  isFavorite: (productId: string) => request.postForm('/userFavorite/isFavorite', { productId }),
-  removeFavorite: (favoriteId: string) => request.postForm('/userFavorite/removeFavorite', { favoriteId })
-};
-
-export const browseApi = {
-  loadBrowse: (params: Record<string, unknown>) => request.postForm('/browseHistory/loadBrowse', params),
-  clearBrowse: () => request.postForm('/browseHistory/clearBrowse'),
-  removeBrowse: (historyId: number) => request.postForm('/browseHistory/removeBrowse', { historyId })
-};
-
-export const userMemberApi = {
-  getProfile: () => request.get('/userMember/getProfile'),
-  getProfileWithCenter: () => request.get('/userMember/getProfile', { params: { center: true } }),
-  getMemberCenter: () => request.get('/userMember/getMemberCenter'),
-  loadMemberCenter: () => request.get('/userMember/loadMemberCenter'),
-  claimLevelReward: (levelCode: number) =>
-    request.postForm('/userMember/claimLevelReward', { levelCode }),
-  getLevelBadge: (userId: string) => request.get('/userMember/getLevelBadge', { params: { userId } })
-};
-
-export const notificationApi = {
-  loadNotification: (params: Record<string, unknown>) =>
-    request.postForm('/userNotification/loadNotification', params),
-  countUnread: () => request.get('/userNotification/countUnread'),
-  markRead: (notificationId: string) => request.postForm('/userNotification/markRead', { notificationId }),
-  markAllRead: () => request.postForm('/userNotification/markAllRead'),
-  deleteNotification: (notificationId: string) =>
-    request.postForm('/userNotification/deleteNotification', { notificationId }),
-  clearAll: () => request.postForm('/userNotification/clearAll'),
-  getPopupNotification: () => request.get('/userNotification/getPopupNotification'),
-  clearPopupNotification: (notificationId: string) =>
-    request.postForm('/userNotification/clearPopupNotification', { notificationId })
 };
 
 export const payTradeApi = {

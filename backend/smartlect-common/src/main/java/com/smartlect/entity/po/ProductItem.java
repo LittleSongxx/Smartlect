@@ -1,7 +1,6 @@
 package com.smartlect.entity.po;
 
 import com.smartlect.constants.Constants;
-import com.smartlect.entity.dto.RecommendationAttributionCarrier;
 import com.smartlect.utils.StringTools;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -12,7 +11,7 @@ import org.springframework.validation.annotation.Validated;
 import java.util.Date;
 
 @Validated
-public class ProductItem implements RecommendationAttributionCarrier {
+public class ProductItem {
     @NotEmpty
     private String productId;
     @NotEmpty
@@ -62,14 +61,6 @@ public class ProductItem implements RecommendationAttributionCarrier {
 
     private String propertyValueIdHash;
 
-    private String recommendationRequestId;
-
-    private Integer recommendationPosition;
-
-    private String recommendationSource;
-
-    private Date recommendationAttributedAt;
-
     public String getPropertyValueIdHash() {
         return propertyValueIdHash;
     }
@@ -78,35 +69,4 @@ public class ProductItem implements RecommendationAttributionCarrier {
         this.propertyValueIdHash = propertyValueIdHash;
     }
 
-    public String getRecommendationRequestId() {
-        return recommendationRequestId;
-    }
-
-    public void setRecommendationRequestId(String recommendationRequestId) {
-        this.recommendationRequestId = recommendationRequestId;
-    }
-
-    public Integer getRecommendationPosition() {
-        return recommendationPosition;
-    }
-
-    public void setRecommendationPosition(Integer recommendationPosition) {
-        this.recommendationPosition = recommendationPosition;
-    }
-
-    public String getRecommendationSource() {
-        return recommendationSource;
-    }
-
-    public void setRecommendationSource(String recommendationSource) {
-        this.recommendationSource = recommendationSource;
-    }
-
-    public Date getRecommendationAttributedAt() {
-        return recommendationAttributedAt;
-    }
-
-    public void setRecommendationAttributedAt(Date recommendationAttributedAt) {
-        this.recommendationAttributedAt = recommendationAttributedAt;
-    }
 }

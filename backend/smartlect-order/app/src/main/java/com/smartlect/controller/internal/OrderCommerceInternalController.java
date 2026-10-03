@@ -1,9 +1,6 @@
 package com.smartlect.controller.internal;
 
-import com.smartlect.api.enums.CommentStatusEnum;
-import com.smartlect.api.enums.OrderCommentStatusEnum;
 import com.smartlect.api.enums.OrderStatusEnum;
-import com.smartlect.biz.OrderCommentService;
 import com.smartlect.biz.CommerceActionStatusService;
 import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderItemService;
@@ -11,12 +8,10 @@ import com.smartlect.biz.OrderLogisticsInfoService;
 import com.smartlect.biz.RefundSagaTransactionService;
 import com.smartlect.controller.ABaseController;
 import com.smartlect.security.DelegatedUserIdentity;
-import com.smartlect.entity.po.OrderComment;
 import com.smartlect.entity.po.OrderInfo;
 import com.smartlect.entity.po.OrderItem;
 import com.smartlect.entity.po.OrderLogisticsInfo;
 import com.smartlect.entity.po.RefundRequest;
-import com.smartlect.entity.query.OrderCommentQuery;
 import com.smartlect.entity.query.OrderInfoQuery;
 import com.smartlect.entity.query.OrderItemQuery;
 import com.smartlect.entity.query.SafeSort;
@@ -60,8 +55,6 @@ public class OrderCommerceInternalController extends ABaseController {
     private OrderItemMapper<OrderItem, OrderItemQuery> orderItemMapper;
     @Resource
     private OrderLogisticsInfoService orderLogisticsInfoService;
-    @Resource
-    private OrderCommentService orderCommentService;
     @Resource
     private CommerceActionStatusService commerceActionStatusService;
     @Resource
@@ -188,77 +181,6 @@ public class OrderCommerceInternalController extends ABaseController {
         map.put("receiverAddress", info.getReceiverAddress());
         map.put("recordList", info.getRecordList());
         return getSuccessResponseVO(map);
-    }
-
-    @PostMapping("/getComment")
-    public ResponseVO<Map<String, Object>> getComment(@RequestBody Map<String, Object> body) {
-        String userId = DelegatedUserIdentity.requireAndMatch(body.get("userId"));
-        String orderId = str(body, "orderId");
-        if (StringTools.isEmpty(orderId)) {
-            return getSuccessResponseVO(null);
-        }
-        OrderCommentQuery q = new OrderCommentQuery();
-        q.setUserId(userId);
-        q.setOrderId(orderId);
-        List<OrderComment> list = orderCommentService.findListByParam(q);
-        if (list == null || list.isEmpty()) {
-            return getSuccessResponseVO(null);
-        }
-        OrderComment c = list.get(0);
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("orderId", c.getOrderId());
-        map.put("productId", c.getProductId());
-        map.put("userId", c.getUserId());
-        map.put("commentContent", c.getCommentContent());
-        map.put("star", c.getStar());
-        map.put("commentTime", formatDate(c.getCommentTime()));
-        map.put("commentImages", c.getCommentImages());
-        map.put("commentBizReply", c.getCommentBizReply());
-        map.put("recommentContent", c.getRecommentContent());
-        return getSuccessResponseVO(map);
-    }
-
-    /**
-     * Product-level comment facts for the assistant service. Soft-deleted and
-     * image-review-pending rows stay out, exactly like the admin comment list.
-     */
-    @PostMapping("/productComments")
-    public ResponseVO<List<Map<String, Object>>> productComments(@RequestBody Map<String, Object> body) {
-        String productId = str(body, "productId");
-        if (StringTools.isEmpty(productId)) {
-            return getSuccessResponseVO(List.of());
-        }
-        int limit = 200;
-        Object rawLimit = body.get("limit");
-        if (rawLimit instanceof Number number && number.intValue() > 0) {
-            limit = Math.min(number.intValue(), 200);
-        }
-        OrderCommentQuery q = new OrderCommentQuery();
-        q.setProductId(productId);
-        q.setStatus(CommentStatusEnum.NORMAL.getStatus());
-        q.setOrderBy(SafeSort.of("o.comment_time desc"));
-        q.setSimplePage(new SimplePage(0, limit));
-        List<OrderComment> list = orderCommentService.findListByParam(q);
-        List<Map<String, Object>> result = new java.util.ArrayList<>();
-        if (list == null) {
-            return getSuccessResponseVO(result);
-        }
-        for (OrderComment c : list) {
-            if (c == null || c.getStar() == null || StringTools.isEmpty(c.getCommentContent())) {
-                continue;
-            }
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("orderId", c.getOrderId());
-            m.put("productId", c.getProductId());
-            m.put("productName", c.getProductName());
-            m.put("nickName", c.getNickName());
-            m.put("star", c.getStar());
-            m.put("commentContent", c.getCommentContent());
-            m.put("commentTime", formatDate(c.getCommentTime()));
-            m.put("recommentContent", c.getRecommentContent());
-            result.add(m);
-        }
-        return getSuccessResponseVO(result);
     }
 
     @PostMapping("/refundStatus")
@@ -406,7 +328,6 @@ public class OrderCommerceInternalController extends ABaseController {
         m.put("payOrderId", o.getPayOrderId());
         m.put("orderTime", formatDate(o.getOrderTime()));
         m.put("subject", o.getSubject());
-        m.put("commentStatus", o.getCommentStatus());
         if (withItems) {
             List<Map<String, Object>> items = new ArrayList<>();
             if (o.getOrderItemList() != null) {
@@ -506,7 +427,6 @@ public class OrderCommerceInternalController extends ABaseController {
             String orderId,
             String orderItemId) {
         Integer status = order.getOrderStatus();
-        Integer commentStatus = order.getCommentStatus();
         return switch (action) {
             case "CANCEL_ORDER" -> capabilityResult(
                     OrderStatusEnum.WAIT_PAYMENT.getStatus().equals(status)
@@ -533,30 +453,7 @@ public class OrderCommerceInternalController extends ABaseController {
                     order,
                     item);
             // These conditions intentionally mirror the command services. Do
-            // not add a synthetic order-status rule here: postComment and
-            // postReComment own their real eligibility via commentStatus.
-            case "PRODUCT_REVIEW" -> capabilityResult(
-                    OrderCommentStatusEnum.NOT_EVALUATED.getStatus().equals(commentStatus)
-                            ? "ALLOWED" : "DENIED",
-                    action,
-                    orderId,
-                    orderItemId,
-                    OrderCommentStatusEnum.NOT_EVALUATED.getStatus().equals(commentStatus)
-                            ? "COMMENT_NOT_EVALUATED"
-                            : "COMMENT_ALREADY_EVALUATED",
-                    order,
-                    item);
-            case "RECOMMENT" -> capabilityResult(
-                    OrderCommentStatusEnum.EVALUATED.getStatus().equals(commentStatus)
-                            ? "ALLOWED" : "DENIED",
-                    action,
-                    orderId,
-                    orderItemId,
-                    OrderCommentStatusEnum.EVALUATED.getStatus().equals(commentStatus)
-                            ? "COMMENT_RECOMMENTABLE"
-                            : "COMMENT_NOT_RECOMMENTABLE",
-                    order,
-                    item);
+            // not add a synthetic order-status rule here.
             default -> capabilityResult(
                     "UNAVAILABLE", action, orderId, orderItemId, "UNSUPPORTED_ACTION",
                     order,
@@ -576,7 +473,6 @@ public class OrderCommerceInternalController extends ABaseController {
         snapshot.put("orderId", orderId);
         snapshot.put("orderItemId", StringTools.isEmpty(orderItemId) ? null : orderItemId);
         snapshot.put("orderStatus", order == null ? null : order.getOrderStatus());
-        snapshot.put("commentStatus", order == null ? null : order.getCommentStatus());
         snapshot.put("payOrderIdPresent", order != null && !StringTools.isEmpty(order.getPayOrderId()));
         snapshot.put("orderItemStatus", item == null ? null : item.getOrderItemStatus());
         return snapshot;

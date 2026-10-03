@@ -8,7 +8,7 @@ beforeEach(() => {
 
 describe('原版商城路由', () => {
   it('首页、搜索、详情、购物车与助手可解析', async () => {
-    for (const path of ['/', '/search', '/search-result', '/product/622491960431656', '/assistant', '/catalog', '/browse', '/category/home', '/login']) {
+    for (const path of ['/', '/search', '/search-result', '/product/622491960431656', '/assistant', '/category/home', '/login']) {
       await router.push(path);
       await router.isReady();
       expect(router.currentRoute.value.path).toBe(path);

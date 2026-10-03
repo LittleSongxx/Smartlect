@@ -27,8 +27,6 @@ public class Constants {
 
     public static final String USED_COUNT = "usedCount";
 
-    public static final String TOTAL_SIGN_DAYS = "totalSignDays";
-
     public static final Long REDIS_KEY_EXPIRES_ONE_MIN = 60L;
 
     public static final Long REDIS_KEY_EXPIRES_DAY = REDIS_KEY_EXPIRES_ONE_MIN * 60 * 24;
@@ -164,8 +162,6 @@ public class Constants {
 
     public static final String REDIS_KEY_SETTING_LOGISTICS = REDIS_KEY_PREFIX + "setting:logistics:";
 
-    public static final String REDIS_KEY_SIGN_REWARD_CONFIG = REDIS_KEY_PREFIX + "sign:reward:config";
-
     public static final String REDIS_KEY_MEMBER_LEVEL_REWARD_CONFIG = REDIS_KEY_PREFIX + "member:level:reward:config";
 
     public static final String REDIS_KEY_USER_LOCATION = REDIS_KEY_PREFIX + "user:location:";
@@ -209,13 +205,6 @@ public class Constants {
     public static final String REDIS_KEY_MQ_COMPENSATE_AUTO_REPLAY_LOCK = REDIS_KEY_PREFIX + "mq:compensate:auto:replay:lock";
 
     public static final String MQ_CONSUME_FAILURE_EXCHANGE = "mq.consume";
-
-
-    public static final String REDIS_KEY_SENSITIVE_WORD_PAYLOAD = REDIS_KEY_PREFIX + "sensitive:word:payload";
-
-    public static final String REDIS_KEY_SENSITIVE_WORD_VERSION = REDIS_KEY_PREFIX + "sensitive:word:version";
-
-    public static final String REDIS_KEY_SENSITIVE_WORD_DB_SYNC_LOCK = REDIS_KEY_PREFIX + "sensitive:word:db:sync:lock";
 
     public static final String IMAGE_THUMBNAIL_SUFFIX = "_thumbnail";
 

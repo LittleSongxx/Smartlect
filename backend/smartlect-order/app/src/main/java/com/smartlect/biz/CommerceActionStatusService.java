@@ -3,7 +3,6 @@ package com.smartlect.biz;
 import com.smartlect.api.enums.OrderItemStatusEnum;
 import com.smartlect.api.enums.OrderStatusEnum;
 import com.smartlect.entity.enums.RefundSagaStatus;
-import com.smartlect.entity.po.OrderComment;
 import com.smartlect.entity.po.OrderInfo;
 import com.smartlect.entity.po.OrderItem;
 import com.smartlect.entity.po.OrderRequestIdempotency;
@@ -42,8 +41,6 @@ public class CommerceActionStatusService {
     private OrderInfoService orderInfoService;
     @Resource
     private OrderItemService orderItemService;
-    @Resource
-    private OrderCommentService orderCommentService;
     @Resource
     private RefundSagaTransactionService refundSagaTransactionService;
 
@@ -136,9 +133,6 @@ public class CommerceActionStatusService {
                     OrderRequestIdempotencyService.COMMAND_COMMERCE_CANCEL_ORDER;
             case "CONFIRM_RECEIPT" ->
                     OrderRequestIdempotencyService.COMMAND_COMMERCE_CONFIRM_RECEIPT;
-            case "PRODUCT_REVIEW" ->
-                    OrderRequestIdempotencyService.COMMAND_COMMERCE_PRODUCT_REVIEW;
-            case "RECOMMENT" -> OrderRequestIdempotencyService.COMMAND_COMMERCE_RECOMMENT;
             default -> null;
         };
     }
@@ -151,10 +145,6 @@ public class CommerceActionStatusService {
                     cancellationObserved(userId, stringValue(params.get("orderId")));
             case "CONFIRM_RECEIPT" ->
                     receiptObserved(userId, stringValue(params.get("orderId")));
-            case "PRODUCT_REVIEW" ->
-                    reviewObserved(userId, stringValue(params.get("orderId")), false);
-            case "RECOMMENT" ->
-                    reviewObserved(userId, stringValue(params.get("orderId")), true);
             default -> false;
         };
     }
@@ -201,20 +191,6 @@ public class CommerceActionStatusService {
                 && OrderStatusEnum.CANCELLED.getStatus().equals(order.getOrderStatus());
     }
 
-    private boolean reviewObserved(String userId, String orderId, boolean recomment) {
-        if (StringTools.isEmpty(orderId)) {
-            return false;
-        }
-        OrderComment comment = orderCommentService.getOrderCommentByOrderId(orderId);
-        if (comment == null || !userId.equals(comment.getUserId())) {
-            return false;
-        }
-        String content = recomment
-                ? comment.getRecommentContent()
-                : comment.getCommentContent();
-        return !StringTools.isEmpty(content);
-    }
-
     @SuppressWarnings("unchecked")
     private static Map<String, Object> params(Object raw) {
         if (!(raw instanceof Map<?, ?> map)) {
@@ -250,8 +226,6 @@ public class CommerceActionStatusService {
             case "REFUND" -> "退款操作已受理";
             case "CANCEL_ORDER" -> "订单已取消";
             case "CONFIRM_RECEIPT" -> "订单已确认收货";
-            case "PRODUCT_REVIEW" -> "订单评价已提交";
-            case "RECOMMENT" -> "订单追评已提交";
             default -> "操作已完成";
         };
     }

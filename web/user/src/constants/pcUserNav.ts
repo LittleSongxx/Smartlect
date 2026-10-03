@@ -5,8 +5,6 @@ export const PC_USER_NAV_GROUPS = [
     title: '我的智选商城',
     items: [
       { label: '个人中心', path: '/account' },
-      { label: '会员中心', path: '/member-center' },
-      { label: '消息中心', path: '/notifications' },
       { label: '我的购物车', path: '/cart' }
     ]
   },
@@ -22,17 +20,9 @@ export const PC_USER_NAV_GROUPS = [
     ]
   },
   {
-    title: '收藏',
-    items: [
-      { label: '我的收藏', path: '/wishlist' },
-      { label: '我的足迹', path: '/footprint' }
-    ]
-  },
-  {
     title: '账户设置',
     items: [
       { label: '收货地址', path: '/address' },
-      { label: '签到中心', path: '/sign' },
       { label: '个人资料', path: '/account/settings' },
       { label: '账号设置', path: '/account/manage' },
       { label: 'AI 数据与隐私', path: '/account/privacy' }
@@ -47,13 +37,8 @@ export const PC_USER_NAV_GROUPS = [
 export const PC_USER_CENTER_PATHS = [
   '/orders',
   '/order/',
-  '/wishlist',
-  '/footprint',
   '/my-coupons',
   '/address',
-  '/sign',
-  '/member-center',
-  '/notifications',
   '/pay-records',
   '/account/manage',
   '/account/settings',

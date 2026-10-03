@@ -1,20 +1,17 @@
 package com.smartlect.biz;
 
-import com.smartlect.api.dto.UserNotifyDTO;
 import com.smartlect.api.vo.UserAddressVO;
 import com.smartlect.api.vo.UserBriefVO;
 import com.smartlect.entity.po.UserAddress;
 import com.smartlect.entity.po.UserInfo;
 import com.smartlect.entity.query.UserAddressQuery;
 import com.smartlect.entity.query.UserInfoQuery;
-import com.smartlect.exception.BusinessException;
 import com.smartlect.mappers.UserAddressMapper;
 import com.smartlect.mappers.UserInfoMapper;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -25,10 +22,6 @@ public class UserInternalService {
 
     @Resource
     private UserAddressMapper<UserAddress, UserAddressQuery> userAddressMapper;
-    @Resource
-    private UserMemberProfileService userMemberProfileService;
-    @Resource
-    private UserNotificationService userNotificationService;
     @Resource
     private UserInfoMapper<UserInfo, UserInfoQuery> userInfoMapper;
 
@@ -47,21 +40,6 @@ public class UserInternalService {
         vo.setAddressee(address.getAddressee());
         vo.setPhone(address.getPhone());
         return vo;
-    }
-
-    public void addGrowthOnPay(String userId, BigDecimal payAmount) {
-        if (StringTools.isEmpty(userId)) {
-            throw new BusinessException("用户ID为空");
-        }
-        userMemberProfileService.addGrowthOnPay(userId, payAmount);
-    }
-
-    public void sendNotifyAsync(UserNotifyDTO dto) {
-        if (dto == null) {
-            return;
-        }
-        userNotificationService.sendAsync(
-                dto.getUserId(), dto.getTitle(), dto.getContent(), dto.getBizType(), dto.getBizId());
     }
 
     public List<String> listAllUserIds() {

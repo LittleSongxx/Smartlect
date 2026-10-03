@@ -10,20 +10,6 @@
       </el-badge>
       <span>购物车</span>
     </RouterLink>
-    <RouterLink to="/wishlist" class="tool-item" title="收藏夹">
-      <el-icon :size="20"><Star /></el-icon>
-      <span>收藏</span>
-    </RouterLink>
-    <RouterLink to="/footprint" class="tool-item" title="足迹">
-      <el-icon :size="20"><Clock /></el-icon>
-      <span>足迹</span>
-    </RouterLink>
-    <RouterLink v-if="authStore.isLoggedIn" to="/notifications" class="tool-item" title="消息">
-      <el-badge :value="unreadCount" :hidden="!unreadCount" :max="99">
-        <el-icon :size="20"><Bell /></el-icon>
-      </el-badge>
-      <span>消息</span>
-    </RouterLink>
     <button type="button" class="tool-item" title="智能客服" @click="openAgent()">
       <el-icon :size="20"><ChatDotRound /></el-icon>
       <span>客服</span>
@@ -39,7 +25,6 @@
 import { onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import { Bell, ChatDotRound, Clock, ShoppingCart, Star, Top, User } from '@element-plus/icons-vue';
-import { useUnreadCount } from '@/composables/useUnreadCount';
 import { useOpenAgent } from '@/composables/useOpenAgent';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
@@ -48,7 +33,6 @@ const { openAgent } = useOpenAgent();
 
 const authStore = useAuthStore();
 const cartStore = useCartStore();
-const { unreadCount } = useUnreadCount();
 
 const scrollTop = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });

@@ -53,12 +53,6 @@ public class OrderInternalController extends ABaseController {
         return getSuccessResponseVO(orderInternalService.confirmReceipt(dto));
     }
 
-    @PostMapping("/onConfirmed")
-    public ResponseVO<Void> onConfirmed(@RequestBody OrderIdDTO dto) {
-        orderInternalService.onConfirmed(dto);
-        return getSuccessResponseVO(null);
-    }
-
     @PostMapping("/paySuccess")
     public ResponseVO<Void> paySuccess(@RequestBody PayOrderNotifyDTO dto) {
         orderInternalService.paySuccess(dto);

@@ -7,8 +7,7 @@ import { session } from '../src/api/client';
 import { mixHomeRecommendations } from '../src/utils/homeRecommendations';
 
 const recommendation = {
-  productId: 'p1', productName: '帆布袋', position: 1, recommendation_id: 'rec1',
-  propertyValueIds: 'sku1', sku_key: 'hash1', price_cents: 1900, cover: '2026-06/bag.jpg',
+  productId: 'p1', productName: '帆布袋', minPrice: 19, cover: '2026-06/bag.jpg',
 };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 let wrapper: VueWrapper | undefined;
@@ -71,7 +70,6 @@ describe('首页确定性推荐', () => {
     );
     expect(mixed.map((row) => row.productId)).toEqual(['p1', 'p2']);
     expect(mixed[0]?.kind).toBe('recommend');
-    expect(mixed[0]?.recommendation_id).toBe('rec1');
     expect(mixed.some((row) => row.kind === 'hot' && row.productId === 'p1')).toBe(false);
   });
 
@@ -92,8 +90,6 @@ describe('首页确定性推荐', () => {
     expect(wrapper.text()).not.toContain('商家推广');
     await wrapper.get('.sl-banner-btn').trigger('click');
     await flushPromises();
-    expect(calls.some((call) => call.path.includes('/recommendations/rec1/clicks'))).toBe(true);
     expect(screenRouter.currentRoute.value.path).toBe('/product/p1');
-    expect(screenRouter.currentRoute.value.query).toEqual({ sku: 'sku1' });
   });
 });

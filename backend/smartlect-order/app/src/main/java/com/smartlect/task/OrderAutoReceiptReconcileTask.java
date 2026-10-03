@@ -47,7 +47,6 @@ public class OrderAutoReceiptReconcileTask {
         for (OrderInfo order : candidates) {
             try {
                 if (orderInfoService.confirmOrderReceipt(null, order.getOrderId())) {
-                    orderInfoService.onOrderConfirmed(order.getUserId(), order.getOrderId());
                     confirmed++;
                 }
             } catch (Exception e) {

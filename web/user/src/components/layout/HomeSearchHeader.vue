@@ -8,17 +8,6 @@
         </button>
       </div>
       <div class="home-search-header__actions">
-        <button
-          v-if="authStore.isLoggedIn"
-          type="button"
-          class="icon-btn"
-          aria-label="消息"
-          @click="goNotifications"
-        >
-          <el-badge :value="unreadCount" :hidden="!unreadCount" :max="99">
-            <el-icon :size="20"><Bell /></el-icon>
-          </el-badge>
-        </button>
         <button type="button" class="icon-btn" aria-label="智能客服" @click="goAgent">
           <el-icon :size="20"><ChatDotRound /></el-icon>
         </button>
@@ -34,7 +23,6 @@ import CategoryNavCard from '@/components/business/CategoryNavCard.vue';
 import { useRouter } from 'vue-router';
 import { Bell, ChatDotRound, Search } from '@element-plus/icons-vue';
 import { useOpenAgent } from '@/composables/useOpenAgent';
-import { useUnreadCount } from '@/composables/useUnreadCount';
 import { useAuthStore } from '@/stores/auth';
 
 withDefaults(
@@ -47,10 +35,8 @@ withDefaults(
 const router = useRouter();
 const { openAgent } = useOpenAgent();
 const authStore = useAuthStore();
-const { unreadCount } = useUnreadCount();
 
 const goSearchPortal = () => router.push('/search-result');
-const goNotifications = () => router.push('/notifications');
 const goAgent = () => openAgent();
 </script>
 

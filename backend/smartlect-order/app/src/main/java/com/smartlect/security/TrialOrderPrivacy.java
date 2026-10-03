@@ -1,7 +1,6 @@
 package com.smartlect.security;
 
 import com.smartlect.constants.TrialIdentities;
-import com.smartlect.entity.po.OrderComment;
 import com.smartlect.entity.po.OrderInfo;
 import com.smartlect.entity.po.OrderItem;
 import com.smartlect.entity.vo.PaginationResultVO;
@@ -55,11 +54,6 @@ public final class TrialOrderPrivacy {
                 }
             }
             return;
-        }
-        if (item instanceof OrderComment comment) {
-            comment.setUserId(null);
-            comment.setNickName(MASKED_BUYER);
-            comment.setAvatar(null);
         }
     }
 }

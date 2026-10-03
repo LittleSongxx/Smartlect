@@ -21,17 +21,8 @@
         <div class="profile-info">
           <div class="nick-row">
             <h2 class="nick">{{ user?.nickName || '智选商城用户' }}</h2>
-            <RouterLink v-if="memberProfile" to="/member-center" class="level-tag" :class="levelTagClass" @click.stop>
-              {{ memberProfile.levelName || '普通会员' }}
-            </RouterLink>
           </div>
           <p class="account">{{ user?.email || '完善资料享更多权益' }}</p>
-          <div v-if="memberProfile" class="exp-bar-wrap" @click.stop="router.push('/member-center')">
-            <div class="exp-bar">
-              <div class="exp-bar-fill" :style="{ width: growthPercent + '%' }"></div>
-            </div>
-            <span class="exp-bar-text">{{ memberProfile.growthValue ?? 0 }}/{{ nextLevelGrowth }}</span>
-          </div>
         </div>
         <el-icon class="profile-arrow"><ArrowRight /></el-icon>
       </button>
@@ -42,25 +33,12 @@
         <span class="wallet-value-top">{{ totalOrderCount }}</span>
         <span class="wallet-label-top">订单</span>
       </div>
-      <div class="wallet-item-top" @click="router.push('/wishlist')">
-        <span class="wallet-value-top">{{ wishlistCount }}</span>
-        <span class="wallet-label-top">收藏</span>
-      </div>
       <div class="wallet-item-top" @click="router.push('/my-coupons')">
         <span class="wallet-value-top">{{ couponCount }}</span>
         <span class="wallet-label-top">优惠券</span>
       </div>
     </section>
     </div>
-
-    <MemberSummaryCard
-      v-if="isDesktop && memberProfile"
-      :profile="memberProfile"
-      :claimable-count="memberClaimableCount"
-      :next-level-growth="memberNextLevelGrowth"
-      :growth-to-next="memberGrowthToNext"
-      class="member-summary--pc"
-    />
 
     <section class="order-card card">
       <div class="card-head">
@@ -100,26 +78,9 @@
     </section>
 
     <section class="discover-card card">
-      <div class="discover-tabs toolbar-row">
-        <button
-          type="button"
-          class="discover-tab"
-          :class="{ active: discoverTab === 'recommend' }"
-          @click="discoverTab = 'recommend'"
-        >
-          推荐
-        </button>
-        <button
-          type="button"
-          class="discover-tab"
-          :class="{ active: discoverTab === 'reviews' }"
-          @click="switchToReviews"
-        >
-          我的评价
-        </button>
-      </div>
+      <div class="discover-tabs toolbar-row"><span class="discover-tab active">推荐</span></div>
 
-      <div v-if="discoverTab === 'recommend'" class="discover-body">
+      <div class="discover-body">
         <div v-if="recommendProducts.length" :class="isDesktop ? 'pc-recommend-grid' : 'recommend-grid'">
           <template v-if="isDesktop">
             <PcProductTile
@@ -148,55 +109,8 @@
         </div>
       </div>
 
-      <div v-else class="discover-body">
-        <div v-if="sortedComments.length" class="review-list" :class="{ 'review-grid': isDesktop }">
-          <button
-            v-for="c in sortedComments"
-            :key="c.orderId"
-            type="button"
-            class="review-item"
-            @click="openCommentDetail(c)"
-          >
-            <div class="review-head">
-              <img v-if="commentCover(c)" :src="commentCover(c)" class="review-cover" alt="" />
-              <p class="product-name">
-                {{ c.productName || '商品' }}
-                <span v-if="c.orderItems && c.orderItems.length > 1" class="more-products-btn" @click.stop="showAllProducts(c)">等{{ c.orderItems.length }}件商品</span>
-              </p>
-              <el-rate v-if="c.star" :model-value="c.star" disabled size="small" />
-            </div>
-            <p class="review-text">{{ c.commentContent }}</p>
-            <p v-if="c.commentBizReply" class="review-biz-reply">
-              <span class="tag">商家回复</span>{{ c.commentBizReply }}
-            </p>
-            <div v-if="commentThumbImages(c).length" class="review-thumbs">
-              <img
-                v-for="(img, idx) in commentThumbImages(c)"
-                :key="idx"
-                :src="toCommentImg(img)"
-                alt=""
-              />
-            </div>
-            <p v-if="c.recommentContent" class="review-reply">
-              <span class="tag">追评</span>{{ c.recommentContent }}
-            </p>
-            <p v-if="c.recommentTime || c.commentTime" class="review-time">{{ formatCommentTime(c.recommentTime || c.commentTime) }}</p>
-          </button>
-        </div>
-        <el-empty v-else-if="!discoverLoading" description="暂无评价" :image-size="72" />
-        <p v-if="discoverLoading" class="discover-tip">加载中…</p>
-        <button
-          v-if="sortedComments.length && !commentFinished && !discoverLoading"
-          type="button"
-          class="load-more-btn"
-          @click="loadMoreComments"
-        >
-          加载更多评价
-        </button>
-      </div>
     </section>
 
-    <OrderCommentPreviewDialog ref="commentPreviewRef" />
     </div>
   </div>
 </template>
@@ -224,12 +138,10 @@ import {
   Tickets
 } from '@element-plus/icons-vue';
 import UserAvatar from '@/components/common/UserAvatar.vue';
-import MemberSummaryCard from '@/components/account/MemberSummaryCard.vue';
 import ProductCard from '@/components/business/ProductCard.vue';
 import PcProductTile from '@/components/pc/PcProductTile.vue';
-import OrderCommentPreviewDialog from '@/components/business/OrderCommentPreviewDialog.vue';
 import { resolveImageUrl, splitImagePaths } from '@/utils/image';
-import { accountApi, commentApi, couponApi, favoriteApi, orderApi, productApi } from '@/api/modules';
+import { accountApi, couponApi, orderApi, productApi } from '@/api/modules';
 import { useAuthStore } from '@/stores/auth';
 import { filterStorefrontProducts } from '@/utils/product';
 import { usePageRefresh } from '@/composables/pullRefresh';
@@ -241,14 +153,8 @@ const { openAgent } = useOpenAgent();
 const authStore = useAuthStore();
 const user = ref<Record<string, any>>({});
 const countMap = reactive<Record<string, number>>({});
-const memberProfile = ref<Record<string, any> | null>(null);
-const memberClaimableCount = ref(0);
-const memberNextLevelGrowth = ref<number | null>(null);
-const memberGrowthToNext = ref<number | null>(null);
-const wishlistCount = ref(0);
 const couponCount = ref(0);
 
-const discoverTab = ref<'recommend' | 'reviews'>('recommend');
 const discoverLoading = ref(false);
 const recommendProducts = ref<any[]>([]);
 const recommendSourceProducts = ref<any[]>([]);
@@ -256,68 +162,10 @@ const recommendDisplayCount = ref(0);
 const MAX_RECOMMEND = 90;
 const recommendSentinel = ref<HTMLElement | null>(null);
 let recommendObserver: IntersectionObserver | null = null;
-const myComments = ref<any[]>([]);
-const commentPageNo = ref(0);
-const commentPageTotal = ref(1);
-const commentFinished = ref(false);
-const commentPreviewRef = ref<InstanceType<typeof OrderCommentPreviewDialog>>();
 
-const splitCommentImages = (val: unknown) => splitImagePaths(val as string | null);
-
-const toCommentImg = (path: string) => resolveImageUrl(path, { useThumbnail: true }) || path;
-
-const commentCover = (c: Record<string, unknown>) => {
-  const cover = c.cover as string | undefined;
-  return cover ? resolveImageUrl(cover, { useThumbnail: true }) : '';
-};
-
-const commentThumbImages = (c: Record<string, unknown>) => {
-  const all = [...splitCommentImages(c.commentImages), ...splitCommentImages(c.recommentImages)];
-  return all.slice(0, 3);
-};
-
-const formatCommentTime = (val: unknown) => {
-  if (!val) return '';
-  if (typeof val === 'string') return val.replace('T', ' ').slice(0, 19);
-  const d = new Date(val as string | number);
-  if (Number.isNaN(d.getTime())) return String(val);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
-
-const commentSortTime = (c: Record<string, unknown>) => {
-  const t = (c.recommentTime as string) || (c.commentTime as string);
-  return t ? new Date(t).getTime() : 0;
-};
-
-const sortedComments = computed(() =>
-  [...myComments.value].sort((a, b) => commentSortTime(b) - commentSortTime(a))
-);
-
-const totalOrderCount = computed(() => countMap['completed'] || 0);
-
-const levelTagClass = computed(() => {
-  const code = Number(memberProfile.value?.levelCode ?? 1);
-  if (code >= 3) return 'level-gold';
-  if (code >= 2) return 'level-silver';
-  return 'level-default';
-});
-
-const nextLevelGrowth = computed(() => {
-  const current = memberProfile.value?.growthValue ?? 0;
-  const toNext = memberGrowthToNext.value ?? 0;
-  return current + toNext;
-});
-
-const growthPercent = computed(() => {
-  const current = memberProfile.value?.growthValue ?? 0;
-  const total = nextLevelGrowth.value;
-  if (total <= 0) return 0;
-  return Math.min(Math.round((current / total) * 100), 100);
-});
-
-const openCommentDetail = (c: Record<string, unknown>) => {
-  commentPreviewRef.value?.show(c);
+const goProfile = () => router.push('/account/settings');
+const goProduct = (p: any) => {
+  if (p?.productId) router.push(`/product/${p.productId}`);
 };
 
 const showAllProducts = (row: Record<string, any>) => {
@@ -351,40 +199,19 @@ const orderTabs = [
   { code: 'pendingPayment', name: '待付款', status: '0', icon: Wallet },
   { code: 'pendingShipment', name: '待发货', status: '1', icon: Box },
   { code: 'pendingReceipt', name: '待收货', status: '2', icon: Van },
-  { code: 'pendingComment', name: '待评价', commentPending: 1, icon: Star },
   { code: 'afterSale', name: '售后', status: 'all', icon: ChatDotRound }
 ];
 
 const menus: Array<{ label: string; path: string; icon: typeof Medal; openAgent?: boolean }> = [
-  { label: '会员中心', path: '/member-center', icon: Medal },
-  { label: '消息中心', path: '/notifications', icon: Bell },
   { label: '支付记录', path: '/pay-records', icon: Wallet },
   { label: '收货地址', path: '/address', icon: Location },
   { label: '优惠券', path: '/my-coupons', icon: Ticket },
-  { label: '收藏', path: '/wishlist', icon: Star },
-  { label: '足迹', path: '/footprint', icon: Box },
-  { label: '签到中心', path: '/sign', icon: Present },
   { label: '智能客服', path: '/ai-assistant', icon: ChatDotRound, openAgent: true },
   { label: '购物偏好', path: '/shopping-profile', icon: User },
   { label: '我的工单', path: '/assistant', icon: Tickets, openAgent: true }
 ];
 
-const loadMember = async () => {
-  try {
-    const center: any = await authStore.loadMemberCenter();
-    if (!center) return;
-    memberProfile.value = center?.profile ?? null;
-    const rewards = center?.rewards || [];
-    memberClaimableCount.value = rewards.filter((r: { claimable?: boolean }) => r.claimable).length;
-    memberNextLevelGrowth.value = center?.nextLevelGrowth ?? null;
-    memberGrowthToNext.value = center?.growthToNext ?? null;
-  } catch {
-    memberProfile.value = null;
-    memberClaimableCount.value = 0;
-    memberNextLevelGrowth.value = null;
-    memberGrowthToNext.value = null;
-  }
-};
+const totalOrderCount = computed(() => countMap['completed'] || 0);
 
 const load = async () => {
   user.value = (await accountApi.getUserInfo()) || authStore.userInfo || {};
@@ -396,17 +223,10 @@ const load = async () => {
     });
   }
   if (authStore.isLoggedIn) {
-    await loadMember();
-
     try {
-      const [favRes, couponRes] = await Promise.all([
-        favoriteApi.loadFavorite({ pageNo: 1 }),
-        couponApi.loadUserCoupon({ pageNo: 1, status: 0 })
-      ]);
-      wishlistCount.value = favRes?.list?.length ?? 0;
+      const couponRes = await couponApi.loadUserCoupon({ pageNo: 1, status: 0 });
       couponCount.value = couponRes?.list?.length ?? 0;
     } catch {
-      wishlistCount.value = 0;
       couponCount.value = 0;
     }
   }
@@ -480,50 +300,9 @@ const cleanupRecommendObserver = () => {
   }
 };
 
-const loadComments = async (reset = false) => {
-  if (reset) {
-    commentPageNo.value = 0;
-    commentPageTotal.value = 1;
-    commentFinished.value = false;
-    myComments.value = [];
-  }
-  if (commentFinished.value) return;
-  discoverLoading.value = true;
-  try {
-    const next = commentPageNo.value + 1;
-    const r = await commentApi.loadMyComment({ pageNo: next });
-    const chunk = r?.list || [];
-    if (next === 1) myComments.value = chunk;
-    else myComments.value = myComments.value.concat(chunk);
-    commentPageNo.value = r?.pageNo ?? next;
-    commentPageTotal.value = r?.pageTotal ?? commentPageNo.value;
-    commentFinished.value = commentPageNo.value >= commentPageTotal.value;
-  } finally {
-    discoverLoading.value = false;
-  }
-};
-
-const switchToReviews = () => {
-  discoverTab.value = 'reviews';
-  if (!myComments.value.length && !commentFinished.value) {
-    loadComments(true);
-  }
-};
-
-const loadMoreComments = () => loadComments(false);
-
-const goProfile = () => router.push('/account/settings');
-const goProduct = (p: any) => {
-  if (p?.productId) router.push(`/product/${p.productId}`);
-};
-
-const goOrders = (item: { code?: string; status?: string; commentPending?: number }) => {
+const goOrders = (item: { code?: string; status?: string }) => {
   if (item.code === 'afterSale' || item.status === 'all') {
     router.push('/after-sale');
-    return;
-  }
-  if (item.commentPending) {
-    router.push({ path: '/orders', query: { commentPending: '1' } });
     return;
   }
   router.push({ path: '/orders', query: { status: item.status } });
@@ -531,12 +310,7 @@ const goOrders = (item: { code?: string; status?: string; commentPending?: numbe
 
 const refreshPage = async () => {
   await load();
-  if (authStore.isLoggedIn) await loadMember();
-  if (discoverTab.value === 'reviews') {
-    await loadComments(true);
-  } else {
-    await loadRecommend();
-  }
+  await loadRecommend();
 };
 
 onMounted(async () => {

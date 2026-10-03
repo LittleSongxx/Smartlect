@@ -157,13 +157,7 @@ public class RabbitMQPayOrderDeadListenerComponent {
     @Transactional(rollbackFor = Exception.class)
     public void processOrderConfirm(PayOrderMessageDTO message, Long deliveryTag, Channel channel, Message mqMessage) {
         registerAckSync(deliveryTag, channel, mqMessage);
-        boolean confirmed = orderInfoService.confirmOrderReceipt(null, message.getOrderId());
-        if (confirmed) {
-            OrderInfo orderInfo = orderInfoService.getOrderInfoByOrderId(message.getOrderId());
-            if (orderInfo != null && !StringTools.isEmpty(orderInfo.getUserId())) {
-                orderInfoService.onOrderConfirmed(orderInfo.getUserId(), message.getOrderId());
-            }
-        }
+        orderInfoService.confirmOrderReceipt(null, message.getOrderId());
     }
 
     @RabbitListener(queues = RabbitMQConfig.PAY_LOGISTICS_DEAD_QUEUE, ackMode = "MANUAL")

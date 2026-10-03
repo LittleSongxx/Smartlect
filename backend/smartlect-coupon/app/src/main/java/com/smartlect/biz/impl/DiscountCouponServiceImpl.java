@@ -8,7 +8,6 @@ import com.smartlect.api.enums.RushingCouponStatusEnum;
 import com.smartlect.api.enums.RushingStatusEnum;
 import com.smartlect.api.enums.UserCouponStatusEnum;
 import com.smartlect.api.support.OrderFeignSupport;
-import com.smartlect.api.support.UserFeignSupport;
 import com.smartlect.biz.DiscountCouponService;
 import com.smartlect.component.CouponRushStockService;
 import com.smartlect.component.DiscountCouponCacheComponent;
@@ -58,7 +57,6 @@ private CouponRushRedisComponent couponRushRedisComponent;
 	@Resource
 	private CouponRushStockService couponRushStockService;
 	@Resource
-	private UserFeignSupport userFeignSupport;
 
 	@Override
 	public List<DiscountCoupon> findListByParam(DiscountCouponQuery param) {
@@ -376,22 +374,6 @@ private CouponRushRedisComponent couponRushRedisComponent;
 	}
 
 	private void broadcastRushCouponNotification(DiscountCoupon coupon) {
-		try {
-			List<String> userIds = userFeignSupport.listAllUserIds();
-			if (userIds == null || userIds.isEmpty()) {
-				return;
-			}
-			String title = "秒杀券上线";
-			String content = coupon.getCouponName() + " 已上线，快去抢购！";
-			String bizType = "rush_coupon";
-			String bizId = coupon.getCouponId();
-
-			for (String userId : userIds) {
-				userFeignSupport.sendNotifyAsync(userId, title, content, bizType, bizId);
-			}
-			log.info("秒杀券 {} 已通过 RabbitMQ 通知 {} 个用户", coupon.getCouponId(), userIds.size());
-		} catch (Exception e) {
-			log.error("秒杀券通知广播失败: {}", coupon.getCouponId(), e);
-		}
+		// 站内通知线已随 2026-10 收敛重构退役；保留空实现避免调用点扩散。
 	}
 }

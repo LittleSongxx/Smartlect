@@ -33,7 +33,6 @@ public class OrderInfo implements Serializable {
 
 	private String channelOrderId;
 
-	private Integer commentStatus;
 
 	public String getSubject() {
 		return subject;
@@ -205,16 +204,8 @@ public class OrderInfo implements Serializable {
 		return this.channelOrderId;
 	}
 
-	public void setCommentStatus(Integer commentStatus){
-		this.commentStatus = commentStatus;
-	}
-
-	public Integer getCommentStatus(){
-		return this.commentStatus;
-	}
-
 	@Override
 	public String toString (){
-		return "订单ID:"+(orderId == null ? "空" : orderId)+"，金额:"+(amount == null ? "空" : amount)+"，用户ID:"+(userId == null ? "空" : userId)+"，订单创建时间:"+(orderTime == null ? "空" : DateUtil.format(orderTime, DateTimePatternEnum.YYYY_MM_DD_HH_MM_SS.getPattern()))+"，-1已删除 0:待付款 1:已付款,待发货  2:已发货  3:已完成 4:已取消 5:已关闭 6:已退款 7:部分退款:"+(orderStatus == null ? "空" : orderStatus)+"，支付通道:"+(payChannel == null ? "空" : payChannel)+"，支付场景:"+(payScene == null ? "空" : payScene)+"，支付订单号:"+(payOrderId == null ? "空" : payOrderId)+"，通道ID:"+(channelOrderId == null ? "空" : channelOrderId)+"，评价状态 0:未评价  1:已评价  2:已追评:"+(commentStatus == null ? "空" : commentStatus);
+		return "订单ID:"+(orderId == null ? "空" : orderId)+"，金额:"+(amount == null ? "空" : amount)+"，用户ID:"+(userId == null ? "空" : userId)+"，订单创建时间:"+(orderTime == null ? "空" : DateUtil.format(orderTime, DateTimePatternEnum.YYYY_MM_DD_HH_MM_SS.getPattern()))+"，-1已删除 0:待付款 1:已付款,待发货  2:已发货  3:已完成 4:已取消 5:已关闭 6:已退款 7:部分退款:"+(orderStatus == null ? "空" : orderStatus)+"，支付通道:"+(payChannel == null ? "空" : payChannel)+"，支付场景:"+(payScene == null ? "空" : payScene)+"，支付订单号:"+(payOrderId == null ? "空" : payOrderId)+"，通道ID:"+(channelOrderId == null ? "空" : channelOrderId);
 	}
 }

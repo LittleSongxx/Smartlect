@@ -38,19 +38,15 @@ public class OrderCommerceV2Controller extends ABaseController {
     public ResponseVO<Map<String, Object>> createConfirmed(@RequestBody JsonNode body,
             @RequestHeader("Idempotency-Key") String key) {
         String userId = DelegatedUserIdentity.requireNonTrial();
-        JsonNode rawContext = body == null ? null : body.get("attributionContextToken");
         JsonNode purchase = body;
-        if (body != null && body.isObject()) {
+        if (body != null && body.isObject() && body.has("attributionContextToken")) {
             ObjectNode copy = body.deepCopy();
             copy.remove("attributionContextToken");
             purchase = copy;
         }
-        // Invalid optional context must not weaken purchase validation or fail an otherwise valid purchase.
-        String context = rawContext != null && rawContext.isTextual() ? rawContext.textValue() : null;
         OrderQuoteService.Confirmed request = OrderQuoteService.parse(purchase, OrderQuoteService.Confirmed.class);
         return getSuccessResponseVO(CommerceV2Service.created(orders.createConfirmed(userId,
-                OrderQuoteService.normalize(request.order()), request.quoteId(), request.confirmedAmountCents(), key,
-                context)));
+                OrderQuoteService.normalize(request.order()), request.quoteId(), request.confirmedAmountCents(), key)));
     }
 
     @PostMapping("/executeAction")

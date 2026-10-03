@@ -1,10 +1,8 @@
 package com.smartlect.api;
 
 import com.smartlect.api.dto.UserAddressQueryDTO;
-import com.smartlect.api.dto.UserGrowthAddDTO;
 import com.smartlect.api.dto.UserIdsDTO;
 import com.smartlect.api.dto.UserJoinCountDTO;
-import com.smartlect.api.dto.UserNotifyDTO;
 import com.smartlect.api.vo.UserAddressVO;
 import com.smartlect.api.vo.UserBriefVO;
 import com.smartlect.api.fallback.UserFeignFallbackFactory;
@@ -22,13 +20,6 @@ public interface UserFeignClient {
     @PostMapping("/address/get")
     ResponseVO<UserAddressVO> getAddress(@RequestBody UserAddressQueryDTO dto,
             @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
-
-    @PostMapping("/member/addGrowthOnPay")
-    ResponseVO<Void> addGrowthOnPay(@RequestBody UserGrowthAddDTO dto,
-            @org.springframework.web.bind.annotation.RequestHeader("X-Smartlect-User-Id") String userId);
-
-    @PostMapping("/notify/sendAsync")
-    ResponseVO<Void> sendNotifyAsync(@RequestBody UserNotifyDTO dto);
 
     @PostMapping("/listAllUserIds")
     ResponseVO<List<String>> listAllUserIds();

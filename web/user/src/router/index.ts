@@ -86,28 +86,13 @@ const router = createRouter({
       { title: '商品详情', hideTabBar: true, hidePcPageHead: true },
       () => import('@/views/pc/PcProductDetailView.vue')
     ),
-    subPage('/product/:productId/comments', () => import('@/views/ProductCommentsView.vue'), { title: '商品评价' }),
     subPage(
       '/coupons',
       () => import('@/views/CouponsView.vue'),
       { title: '优惠券广场' },
       () => import('@/views/pc/PcCouponsView.vue')
     ),
-    subPage(
-      '/wishlist',
-      () => import('@/views/WishlistView.vue'),
-      { title: '我的收藏' },
-      () => import('@/views/pc/PcWishlistView.vue')
-    ),
-    subPage(
-      '/footprint',
-      () => import('@/views/FootprintView.vue'),
-      { title: '我的足迹' },
-      () => import('@/views/pc/PcFootprintView.vue')
-    ),
-    subPage('/member-center', () => import('@/views/MemberCenterView.vue'), { title: '会员中心', requiresAuth: true }),
     subPage('/pay-records', () => import('@/views/PayRecordView.vue'), { title: '支付记录', requiresAuth: true }),
-    subPage('/notifications', () => import('@/views/NotificationView.vue'), { title: '消息中心', requiresAuth: true }),
     subPage('/after-sale', () => import('@/views/AfterSaleView.vue'), { title: '售后管理' }),
     subPage('/shopping-profile', () => import('@/views/ShoppingProfileView.vue'), { title: '购物偏好', requiresAuth: true }),
     subPage('/recommend', () => import('@/views/RecommendView.vue'), { title: '编辑精选' }),
@@ -152,12 +137,6 @@ const router = createRouter({
       () => import('@/views/pc/PcAddressView.vue')
     ),
     subPage(
-      '/sign',
-      () => import('@/views/SignView.vue'),
-      { title: '签到中心', requiresAuth: true },
-      () => import('@/views/pc/PcSignView.vue')
-    ),
-    subPage(
       '/account/manage',
       () => import('@/views/AccountManageView.vue'),
       { title: '设置', requiresAuth: true },
@@ -185,10 +164,8 @@ const router = createRouter({
       { title: '智能导购', hideTabBar: true, hidePcPageHead: true },
       () => import('@/views/pc/PcAIAssistantView.vue')
     ),
-    subPage('/catalog', () => import('@/views/CatalogView.vue'), { title: '导购精选' }),
     // 旧链接：/addresses 与 /address 是同一个页面，保留一条路径（重定向不 404）
     { path: '/addresses', redirect: (to) => ({ path: '/address', query: to.query }) },
-    subPage('/browse', () => import('@/views/BrowseView.vue'), { title: '全部商品' }),
     // 未知路径落回首页（此前会渲染空白页）
     { path: '/:pathMatch(.*)*', redirect: { path: '/' } }
   ],

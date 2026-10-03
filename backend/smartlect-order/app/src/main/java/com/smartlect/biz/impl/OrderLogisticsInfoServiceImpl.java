@@ -4,21 +4,17 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import com.smartlect.component.OrderNotificationPublisher;
 import com.smartlect.constants.RabbitMQConfig;
 import com.smartlect.constants.TransactionalMqSender;
 import com.smartlect.api.dto.PayOrderMessageDTO;
 import com.smartlect.entity.enums.MessageReliabilityLevelEnum;
 import com.smartlect.api.enums.LogisticsStatusEnum;
 import com.smartlect.api.enums.OrderStatusEnum;
-import com.smartlect.entity.po.OrderInfo;
 import com.smartlect.entity.po.OrderLogisticsInfoRecord;
-import com.smartlect.entity.query.OrderInfoQuery;
 import com.smartlect.entity.query.OrderLogisticsInfoRecordQuery;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.state.OrderStateEvent;
 import com.smartlect.state.OrderStateMachine;
-import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderLogisticsInfoRecordService;
 import com.smartlect.support.MqIdempotencyKeys;
 import jakarta.annotation.Resource;
@@ -45,13 +41,7 @@ public class OrderLogisticsInfoServiceImpl implements OrderLogisticsInfoService 
 	private OrderLogisticsInfoRecordService orderLogisticsInfoRecordService;
 
 	@Resource
-	private OrderInfoService orderInfoService;
-
-	@Resource
 	private OrderStateMachine orderStateMachine;
-
-	@Resource
-	private OrderNotificationPublisher orderNotificationPublisher;
 
 	@Resource
 	private TransactionalMqSender transactionalMqSender;
@@ -176,12 +166,5 @@ public class OrderLogisticsInfoServiceImpl implements OrderLogisticsInfoService 
 				confirmDto,
 				MqIdempotencyKeys.payConfirm(orderLogisticsInfo.getOrderId()),
 				MessageReliabilityLevelEnum.STANDARD);
-		OrderInfo shippedOrder = orderInfoService.getOrderInfoByOrderId(orderLogisticsInfo.getOrderId());
-		if (shippedOrder != null && !StringTools.isEmpty(shippedOrder.getUserId())) {
-			orderNotificationPublisher.send(shippedOrder.getUserId(), "订单已发货",
-					"您的订单 " + orderLogisticsInfo.getOrderId() + " 已发货，物流单号："
-							+ (orderLogisticsInfo.getLogisticsNo() == null ? "待更新" : orderLogisticsInfo.getLogisticsNo()),
-					"logistics", orderLogisticsInfo.getOrderId());
-		}
 	}
 }

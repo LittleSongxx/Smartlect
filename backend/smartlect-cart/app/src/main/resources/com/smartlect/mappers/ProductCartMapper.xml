@@ -19,10 +19,6 @@
 		<result column="buy_count" property="buyCount"  />
 		<!--加入购物车时的单价-->
 		<result column="add_price" property="addPrice"  />
-		<result column="recommendation_request_id" property="recommendationRequestId"  />
-		<result column="recommendation_position" property="recommendationPosition"  />
-		<result column="recommendation_source" property="recommendationSource"  />
-		<result column="recommendation_attributed_at" property="recommendationAttributedAt"  />
 		<!--更新时间-->
 		<result column="last_update_time" property="lastUpdateTime"  />
 		<!--创建时间-->
@@ -33,8 +29,7 @@
 	<!-- 通用查询结果列-->
 	<sql id="base_column_list">
 		 p.cart_id,p.user_id,p.product_id,p.property_value_ids,p.property_value_id_hash,
-		 p.buy_count,p.add_price,p.recommendation_request_id,p.recommendation_position,p.recommendation_source,
-		 p.recommendation_attributed_at,p.last_update_time,p.create_time
+		 p.buy_count,p.add_price,p.last_update_time,p.create_time
 	</sql>
 
 	<sql id="base_condition_filed">
@@ -139,18 +134,6 @@
 			<if test="bean.addPrice != null">
 				 add_price,
 			</if>
-			<if test="bean.recommendationRequestId != null">
-				 recommendation_request_id,
-			</if>
-			<if test="bean.recommendationPosition != null">
-				 recommendation_position,
-			</if>
-			<if test="bean.recommendationSource != null">
-				 recommendation_source,
-			</if>
-			<if test="bean.recommendationAttributedAt != null">
-				 recommendation_attributed_at,
-			</if>
 			<if test="bean.lastUpdateTime != null">
 				 last_update_time,
 			</if>
@@ -179,18 +162,6 @@
 			</if>
 			<if test="bean.addPrice!=null">
 				 #{bean.addPrice},
-			</if>
-			<if test="bean.recommendationRequestId!=null">
-				 #{bean.recommendationRequestId},
-			</if>
-			<if test="bean.recommendationPosition!=null">
-				 #{bean.recommendationPosition},
-			</if>
-			<if test="bean.recommendationSource!=null">
-				 #{bean.recommendationSource},
-			</if>
-			<if test="bean.recommendationAttributedAt!=null">
-				 #{bean.recommendationAttributedAt},
 			</if>
 			<if test="bean.lastUpdateTime!=null">
 				 #{bean.lastUpdateTime},
@@ -226,18 +197,6 @@
 			<if test="bean.addPrice != null">
 				 add_price,
 			</if>
-			<if test="bean.recommendationRequestId != null">
-				 recommendation_request_id,
-			</if>
-			<if test="bean.recommendationPosition != null">
-				 recommendation_position,
-			</if>
-			<if test="bean.recommendationSource != null">
-				 recommendation_source,
-			</if>
-			<if test="bean.recommendationAttributedAt != null">
-				 recommendation_attributed_at,
-			</if>
 			<if test="bean.lastUpdateTime != null">
 				 last_update_time,
 			</if>
@@ -267,18 +226,6 @@
 			<if test="bean.addPrice!=null">
 				 #{bean.addPrice},
 			</if>
-			<if test="bean.recommendationRequestId!=null">
-				 #{bean.recommendationRequestId},
-			</if>
-			<if test="bean.recommendationPosition!=null">
-				 #{bean.recommendationPosition},
-			</if>
-			<if test="bean.recommendationSource!=null">
-				 #{bean.recommendationSource},
-			</if>
-			<if test="bean.recommendationAttributedAt!=null">
-				 #{bean.recommendationAttributedAt},
-			</if>
 			<if test="bean.lastUpdateTime!=null">
 				 #{bean.lastUpdateTime},
 			</if>
@@ -306,12 +253,6 @@
 			<if test="bean.buyCount!=null">
 				 buy_count = VALUES(buy_count),
 			</if>
-			<if test="bean.recommendationAttributedAt!=null">
-				 recommendation_request_id = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; VALUES(recommendation_attributed_at), VALUES(recommendation_request_id), recommendation_request_id),
-				 recommendation_position = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; VALUES(recommendation_attributed_at), VALUES(recommendation_position), recommendation_position),
-				 recommendation_source = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; VALUES(recommendation_attributed_at), VALUES(recommendation_source), recommendation_source),
-				 recommendation_attributed_at = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; VALUES(recommendation_attributed_at), VALUES(recommendation_attributed_at), recommendation_attributed_at),
-			</if>
 			<!-- 已存在行不覆盖加入时单价 -->
 			<if test="bean.lastUpdateTime!=null">
 				 last_update_time = VALUES(last_update_time),
@@ -332,10 +273,6 @@
 			 property_value_id_hash,
 			 buy_count,
 			 add_price,
-			 recommendation_request_id,
-			 recommendation_position,
-			 recommendation_source,
-			 recommendation_attributed_at,
 			 last_update_time,
 			 create_time
 		 )values
@@ -348,10 +285,6 @@
 				 #{item.propertyValueIdHash},
 				 #{item.buyCount},
 				 #{item.addPrice},
-				 #{item.recommendationRequestId},
-				 #{item.recommendationPosition},
-				 #{item.recommendationSource},
-				 #{item.recommendationAttributedAt},
 				 #{item.lastUpdateTime},
 				 #{item.createTime}
 			 )
@@ -368,10 +301,6 @@
 			 property_value_id_hash,
 			 buy_count,
 			 add_price,
-			 recommendation_request_id,
-			 recommendation_position,
-			 recommendation_source,
-			 recommendation_attributed_at,
 			 last_update_time,
 			 create_time
 		 )values
@@ -384,10 +313,6 @@
 				 #{item.propertyValueIdHash},
 				 #{item.buyCount},
 				 #{item.addPrice},
-				 #{item.recommendationRequestId},
-				 #{item.recommendationPosition},
-				 #{item.recommendationSource},
-				 #{item.recommendationAttributedAt},
 				 #{item.lastUpdateTime},
 				 #{item.createTime}
 			 )
@@ -432,12 +357,6 @@
 			<if test="bean.addPrice != null">
 				 add_price = #{bean.addPrice},
 			</if>
-			<if test="bean.recommendationAttributedAt != null">
-				 recommendation_request_id = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationRequestId}, recommendation_request_id),
-				 recommendation_position = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationPosition}, recommendation_position),
-				 recommendation_source = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationSource}, recommendation_source),
-				 recommendation_attributed_at = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationAttributedAt}, recommendation_attributed_at),
-			</if>
 			<if test="bean.lastUpdateTime != null">
 				 last_update_time = #{bean.lastUpdateTime},
 			</if>
@@ -476,12 +395,6 @@
 			<if test="bean.addPrice != null">
 				 add_price = #{bean.addPrice},
 			</if>
-			<if test="bean.recommendationAttributedAt != null">
-				 recommendation_request_id = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationRequestId}, recommendation_request_id),
-				 recommendation_position = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationPosition}, recommendation_position),
-				 recommendation_source = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationSource}, recommendation_source),
-				 recommendation_attributed_at = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationAttributedAt}, recommendation_attributed_at),
-			</if>
 			<if test="bean.lastUpdateTime != null">
 				 last_update_time = #{bean.lastUpdateTime},
 			</if>
@@ -517,12 +430,6 @@
 			</if>
 			<if test="bean.addPrice != null">
 				 add_price = #{bean.addPrice},
-			</if>
-			<if test="bean.recommendationAttributedAt != null">
-				 recommendation_request_id = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationRequestId}, recommendation_request_id),
-				 recommendation_position = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationPosition}, recommendation_position),
-				 recommendation_source = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationSource}, recommendation_source),
-				 recommendation_attributed_at = IF(recommendation_attributed_at IS NULL OR recommendation_attributed_at &lt; #{bean.recommendationAttributedAt}, #{bean.recommendationAttributedAt}, recommendation_attributed_at),
 			</if>
 			<if test="bean.lastUpdateTime != null">
 				 last_update_time = #{bean.lastUpdateTime},

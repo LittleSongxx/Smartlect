@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartlect.exception.HttpBusinessException;
-import com.smartlect.integration.CommerceOutcomeClient;
 import com.smartlect.security.DelegatedUserIdentity;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DuplicateKeyException;
@@ -26,17 +25,15 @@ import java.util.Map;
 public class PayAttemptService {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final JdbcTemplate jdbc;
-    private final CommerceOutcomeClient outcomes;
 
-    public PayAttemptService(JdbcTemplate jdbc, CommerceOutcomeClient outcomes) {
+    public PayAttemptService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        this.outcomes = outcomes;
     }
 
     public record Request(String attemptId, String payOrderId) { }
     public record Attempt(String attemptId, String payOrderId, String orderId, String userId,
                           String payChannel, String attemptStatus, String reasonCode, String paymentMode,
-                          long attemptedAmountCents, String currency, String occurredAt, String eventId) { }
+                          long attemptedAmountCents, String currency, String occurredAt) { }
 
     public static Request parse(JsonNode body) {
         if (body == null || !body.isObject() || body.size() != 2
@@ -77,8 +74,7 @@ public class PayAttemptService {
         long occurred = Instant.now().toEpochMilli();
         Attempt result = new Attempt(request.attemptId(), request.payOrderId(),
                 text((String) intent.get("order_id"), 32), userId, "mock", "DECLINED",
-                "MOCK_CHANNEL_DECLINED", "mock", amount, "CNY", Instant.ofEpochMilli(occurred).toString(),
-                CommerceOutcomeClient.stableEventId("payment-attempt", request.attemptId()));
+                "MOCK_CHANNEL_DECLINED", "mock", amount, "CNY", Instant.ofEpochMilli(occurred).toString());
         try {
             jdbc.update("INSERT INTO pay_payment_attempt (attempt_id,pay_order_id,order_id,user_id,attempt_status,"
                             + "reason_code,payment_mode,attempted_amount_cents,occurred_at_epoch_ms,fingerprint,result_json) "
@@ -93,7 +89,6 @@ public class PayAttemptService {
         }
         // Both first response and event use the durable result, never a newly generated timestamp.
         result = saved(userId, request, fingerprint, true);
-        publish(result);
         return result;
     }
 
@@ -118,20 +113,6 @@ public class PayAttemptService {
         } catch (JsonProcessingException invalid) {
             throw new IllegalStateException("Invalid persisted payment attempt", invalid);
         }
-    }
-
-    private void publish(Attempt attempt) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("attemptId", attempt.attemptId());
-        payload.put("payOrderId", attempt.payOrderId());
-        payload.put("attemptStatus", attempt.attemptStatus());
-        payload.put("reasonCode", attempt.reasonCode());
-        payload.put("paymentMode", attempt.paymentMode());
-        payload.put("attemptedAmountCents", attempt.attemptedAmountCents());
-        payload.put("currency", attempt.currency());
-        outcomes.recordV2AfterCommit(new CommerceOutcomeClient.OutcomeEvent(attempt.eventId(), "PAYMENT_PROVIDER",
-                CommerceOutcomeClient.stableIdempotencyKey("payment-attempt", attempt.attemptId()),
-                "PAYMENT_ATTEMPT", attempt.userId(), null, null, null, attempt.orderId(), null, payload, attempt.occurredAt()));
     }
 
     private static void validate(String userId, Request request) {

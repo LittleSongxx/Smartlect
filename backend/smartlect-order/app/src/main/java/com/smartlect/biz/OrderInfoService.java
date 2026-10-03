@@ -50,9 +50,6 @@ public interface OrderInfoService {
     PayInfoDTO createConfirmed(String userId, PostOrderDTO request, String quoteId,
                               Long confirmedAmountCents, String idempotencyKey);
 
-    PayInfoDTO createConfirmed(String userId, PostOrderDTO request, String quoteId,
-                              Long confirmedAmountCents, String idempotencyKey, String attributionContextToken);
-
 	CouponRushPrepareDTO prepareCouponRush(
 			@NotEmpty String userId,
 			@NotEmpty String couponId,
@@ -75,8 +72,6 @@ public interface OrderInfoService {
 	void refund(@NotEmpty OrderItem orderItem, String userId);
 
 	List<OrderCountVO> getOrderCountInfo(String userId);
-
-	void onOrderConfirmed(String userId, String orderId);
 
 	boolean confirmOrderReceipt(String userId, String orderId);
 

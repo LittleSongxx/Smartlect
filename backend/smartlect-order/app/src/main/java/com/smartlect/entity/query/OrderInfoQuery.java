@@ -38,7 +38,6 @@ public class OrderInfoQuery extends BaseParam {
 
 	private String channelOrderIdFuzzy;
 
-	private Integer commentStatus;
 
 	// 标题
 	private String subject;
@@ -226,22 +225,5 @@ public class OrderInfoQuery extends BaseParam {
 		return this.channelOrderIdFuzzy;
 	}
 
-	public void setCommentStatus(Integer commentStatus){
-		this.commentStatus = commentStatus;
-	}
-
-	public Integer getCommentStatus(){
-		return this.commentStatus;
-	}
-
-	private Integer[] commentStatusList;
-
-	public Integer[] getCommentStatusList() {
-		return commentStatusList;
-	}
-
-	public void setCommentStatusList(Integer[] commentStatusList) {
-		this.commentStatusList = commentStatusList;
-	}
 
 }

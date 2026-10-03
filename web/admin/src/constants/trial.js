@@ -12,7 +12,6 @@ export const TRIAL_MENU_PATHS = new Set([
   '/product/category',
   '/product/ProductProperty',
   '/order/orderList',
-  '/order/comment',
   '/order/report',
   '/order/refundReview',
   '/discountCoupon',

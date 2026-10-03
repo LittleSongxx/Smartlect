@@ -38,8 +38,7 @@ public class FeignSentinelRulesConfig {
                 "ProductFeignClient#snapshotBatch(ProductIdListDTO)",
                 "ProductFeignClient#defaultSku(ProductIdDTO)",
                 "ProductFeignClient#increaseSales(ProductSalesIncreaseDTO)",
-                "UserFeignClient#getAddress(UserAddressQueryDTO,String)",
-                "UserFeignClient#addGrowthOnPay(UserGrowthAddDTO,String)"
+                "UserFeignClient#getAddress(UserAddressQueryDTO,String)"
         }) {
             DegradeRule rule = new DegradeRule(resource)
                     .setGrade(RuleConstant.DEGRADE_GRADE_EXCEPTION_RATIO)

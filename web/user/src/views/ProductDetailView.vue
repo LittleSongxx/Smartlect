@@ -124,42 +124,6 @@
       </div>
     </section>
 
-    <section class="block comment-block">
-      <div class="block-head">
-        <div>
-          <h3>商品评价</h3>
-          <p v-if="commentTotal > 0" class="comment-stats">
-            好评率 {{ commentGoodRate }}%
-            <span v-if="commentImageCount > 0"> · {{ commentImageCount }} 条带图</span>
-          </p>
-        </div>
-        <button type="button" class="link-all" @click="goAllComments">
-          查看全部{{ commentTotal > 0 ? `(${commentTotal})` : '' }}
-          <el-icon><ArrowRight /></el-icon>
-        </button>
-      </div>
-      <div v-if="previewComments.length" class="comment-preview-list">
-        <article v-for="c in previewComments" :key="c.orderId" class="comment-preview-item">
-          <div class="preview-head">
-            <span class="user">{{ maskCommenterName(c.nickName) }}</span>
-            <span v-if="getCommentLevel(c.userId)" class="comment-level-tag" :class="commentLevelTagClass(getCommentLevel(c.userId)!.levelCode)">
-              {{ getCommentLevel(c.userId)!.levelName }}
-            </span>
-            <el-rate v-if="c.star" :model-value="c.star" disabled size="small" />
-          </div>
-          <p class="text">{{ c.commentContent }}</p>
-          <button
-            type="button"
-            class="report-btn"
-            @click="openReport({ orderId: c.orderId, commentContent: c.commentContent })"
-          >
-            举报
-          </button>
-        </article>
-      </div>
-      <p v-else class="empty-tip">暂无评价，快来抢沙发吧</p>
-    </section>
-
     <section v-if="productContent.sections.length" class="block desc-block">
       <h3 class="block-title">商品资料</h3>
       <div v-for="section in productContent.sections" :key="section.key" class="content-section">
@@ -200,25 +164,10 @@
         show-label
         :consult-product="agentConsultProduct"
       />
-      <button
-        type="button"
-        class="footer-fav"
-        :class="{ active: favorited }"
-        :disabled="favoriteLoading"
-        aria-label="收藏"
-        @click="toggleFavorite"
-      >
-        <el-icon :size="22">
-          <StarFilled v-if="favorited" />
-          <Star v-else />
-        </el-icon>
-        <span class="label">{{ favorited ? '已收藏' : '收藏' }}</span>
-      </button>
       <p v-if="scopeDenied" class="scope-denied">该商品不在当前店铺可售范围内，请换一件再下单。</p>
       <el-button class="btn-cart" type="primary" plain round :disabled="scopeDenied" @click="openAddCartSheet">加入购物车</el-button>
       <el-button class="btn-buy" type="primary" round :disabled="scopeDenied" @click="buyNow">立即购买</el-button>
     </LiquidGlassSurface>
-    <CommentReportDialog ref="reportDialogRef" />
   </div>
   <div v-else-if="loading" class="detail-loading card">
     <el-skeleton animated :rows="10" />
@@ -240,11 +189,8 @@ import LiquidGlassSurface from '@/components/common/LiquidGlassSurface.vue';
 import ProductImage from '@/components/common/ProductImage.vue';
 import MarkdownContent from '@/components/common/MarkdownContent.vue';
 import BrandMark from '@/components/common/BrandMark.vue';
-import CommentReportDialog from '@/components/business/CommentReportDialog.vue';
 import { useProductDetailPage } from '@/composables/useProductDetailPage';
-import { maskCommenterName } from '@/utils/comment';
 import { useSimilarProducts } from '@/composables/useSimilarProducts';
-import { useCommentLevels } from '@/composables/useCommentLevels';
 
 const route = useRoute();
 const router = useRouter();
@@ -261,15 +207,9 @@ const {
   selectedSku,
   selectedProperty,
   activeImageIndex,
-  favorited,
-  favoriteLoading,
   galleryImages,
   displayPrice,
   agentConsultProduct,
-  previewComments,
-  commentTotal,
-  commentGoodRate,
-  commentImageCount,
   maxBuy,
   onTouchStart,
   onTouchMove,
@@ -278,19 +218,10 @@ const {
   onMouseMove,
   onMouseUp,
   selectProperty,
-  toggleFavorite,
-  goAllComments,
   openAddCartSheet,
   buyNow
 } = useProductDetailPage();
 
-// 会员等级徽章：缓存/懒加载/类名在 useCommentLevels 里（PC 详情页共用同一份）
-const { fetchLevels: fetchCommentLevels, getLevel: getCommentLevel, tagClass: commentLevelTagClass } =
-  useCommentLevels({ baseClass: 'level-default' });
-
-watch(previewComments, () => fetchCommentLevels(previewComments.value), { immediate: true });
-
-const reportDialogRef = ref<InstanceType<typeof CommentReportDialog>>();
 
 // "猜你喜欢"的分批放出与滚动触底也在 composable 里（滚动监听由它在挂载时注册）
 const { similarProducts, loadingMore, finished } = useSimilarProducts({
@@ -307,13 +238,6 @@ const goDetail = (p: any) => {
   if (p?.productId) router.push(`/product/${p.productId}`);
 };
 
-const openReport = (payload: { orderId: string; commentContent?: string }) => {
-  reportDialogRef.value?.show({
-    orderId: payload.orderId,
-    productId: String(route.params.productId || ''),
-    commentContent: payload.commentContent
-  });
-};
 </script>
 
 <style scoped lang="scss">
@@ -770,99 +694,7 @@ const openReport = (payload: { orderId: string; commentContent?: string }) => {
   }
 }
 
-.comment-block {
-  .block-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
 
-    h3 {
-      margin: 0;
-      font-size: 15px;
-      font-weight: 600;
-    }
-
-    .link-all {
-      display: inline-flex;
-      align-items: center;
-      gap: 2px;
-      border: none;
-      background: none;
-      font-size: 13px;
-      color: $color-text-muted;
-      cursor: pointer;
-
-      &:hover {
-        color: $color-primary;
-      }
-    }
-  }
-}
-
-.comment-preview-item {
-  padding: 10px 0;
-  border-bottom: 1px solid $color-border;
-
-  &:last-child {
-    border-bottom: none;
-  }
-
-  .preview-head {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-
-    .el-rate {
-      margin-left: auto;
-      flex-shrink: 0;
-    }
-  }
-
-  .user {
-    font-size: 12px;
-    color: $color-text-muted;
-  }
-
-  .comment-level-tag {
-    flex-shrink: 0;
-    padding: 1px 6px;
-    border-radius: $radius-pill;
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 1.6;
-
-    &.level-default {
-      background: $color-bg-subtle;
-      color: $color-text-muted;
-      border: 1px solid $color-border;
-    }
-
-    &.level-silver {
-      background: $level-silver-soft;
-      color: $level-silver;
-      border: 1px solid $level-silver;
-    }
-
-    &.level-gold {
-      background: $level-gold-soft;
-      color: $level-gold;
-      border: 1px solid $level-gold;
-    }
-  }
-
-  .text {
-    margin: 6px 0 0;
-    font-size: 14px;
-    line-height: 1.5;
-    color: $color-text-body;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-}
 
 .report-btn {
   margin-top: 6px;

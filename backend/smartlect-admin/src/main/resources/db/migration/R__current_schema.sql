@@ -3,16 +3,6 @@
 -- Pin the session charset so manual/bootstrap execution does not inherit latin1.
 SET NAMES utf8mb4 COLLATE utf8mb4_general_ci;
 
-create table if not exists admin_audit_log
-(
-    id             bigint auto_increment comment '主键' primary key,
-    operator       varchar(64)   not null comment '操作人账号',
-    action         varchar(64)   not null comment '动作标识',
-    target_user_id varchar(32)   null comment '目标用户ID',
-    detail         varchar(2000) null comment '详情 JSON/文本',
-    create_time    datetime      not null comment '创建时间'
-) comment '管理端操作审计' charset = utf8mb4;
-
 create table if not exists statistics_info
 (
     statistics_date varchar(10)    not null comment '日期',
@@ -20,17 +10,6 @@ create table if not exists statistics_info
     data_value      decimal(10, 2) null comment '统计数据',
     primary key (statistics_date, data_type)
 ) comment '数据统计结果' collate = utf8mb4_general_ci row_format = DYNAMIC;
-
-create table if not exists sensitive_word
-(
-    id           bigint auto_increment primary key,
-    word         varchar(128)                           not null comment '敏感词',
-    replace_word varchar(128) default '***'             null comment '替换词',
-    status       tinyint      default 1                 null comment '状态：1启用 0停用',
-    create_time  datetime     default CURRENT_TIMESTAMP null,
-    update_time  datetime     default CURRENT_TIMESTAMP null on update CURRENT_TIMESTAMP,
-    constraint uk_word unique (word)
-) comment '敏感词表' charset = utf8mb4;
 
 create table if not exists mq_compensation_log
 (

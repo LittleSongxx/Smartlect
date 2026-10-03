@@ -15,7 +15,6 @@ create table if not exists order_info
     pay_scene        varchar(20)                 null comment '支付场景',
     pay_order_id     varchar(32)                 null comment '支付订单号',
     channel_order_Id varchar(50)                 null comment '通道ID',
-    comment_status   tinyint        default 0    null comment '评价状态 0:未评价  1:已评价  2:已追评',
     subject          varchar(200)                null comment '订单标题'
 ) comment '订单信息' collate = utf8mb4_general_ci row_format = DYNAMIC;
 
@@ -34,11 +33,7 @@ create table if not exists order_item
     buy_count              int            null comment '数量',
     order_item_status      tinyint(1)     null comment '状态 1:正常 0:已退款',
     remark                 varchar(300)   null comment '备注',
-    refund_order_id        varchar(32)    null comment '退款订单号',
-    recommendation_request_id          varchar(128)   null comment '已验证的推荐请求ID',
-    recommendation_position            smallint unsigned null comment '推荐位次（从1开始）',
-    recommendation_source              varchar(40)    null comment '服务端推荐来源',
-    recommendation_attributed_at       datetime(3)    null comment '已验证点击时间'
+    refund_order_id        varchar(32)    null comment '退款订单号'
 ) comment '订单明细表' collate = utf8mb4_general_ci row_format = DYNAMIC;
 
 SET @sql = IF(
@@ -58,50 +53,6 @@ SET @sql = IF(
               AND column_name = 'refunded_amount'),
     'SELECT 1',
     'ALTER TABLE order_item ADD COLUMN refunded_amount decimal(10, 2) NOT NULL DEFAULT 0'
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
-SET @sql = IF(
-    EXISTS (SELECT 1 FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'order_item'
-              AND column_name = 'recommendation_request_id'),
-    'SELECT 1',
-    'ALTER TABLE order_item ADD COLUMN recommendation_request_id varchar(128) NULL COMMENT ''validated recommendation request ID'''
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
-SET @sql = IF(
-    EXISTS (SELECT 1 FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'order_item'
-              AND column_name = 'recommendation_position'),
-    'SELECT 1',
-    'ALTER TABLE order_item ADD COLUMN recommendation_position smallint unsigned NULL COMMENT ''one-based recommendation position'''
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
-SET @sql = IF(
-    EXISTS (SELECT 1 FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'order_item'
-              AND column_name = 'recommendation_source'),
-    'SELECT 1',
-    'ALTER TABLE order_item ADD COLUMN recommendation_source varchar(40) NULL COMMENT ''server-owned recommendation source'''
-);
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
-SET @sql = IF(
-    EXISTS (SELECT 1 FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'order_item'
-              AND column_name = 'recommendation_attributed_at'),
-    'SELECT 1',
-    'ALTER TABLE order_item ADD COLUMN recommendation_attributed_at datetime(3) NULL COMMENT ''validated click time'''
 );
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
@@ -180,23 +131,6 @@ create table if not exists refund_review_ledger
     key idx_refund_review_request (refund_request_id, created_at)
 ) comment '退款人工审批台账（幂等）' charset = utf8mb4;
 
-create table if not exists order_comment
-(
-    order_id          varchar(32)       not null comment '订单ID' primary key,
-    product_id        varchar(15)       not null comment '商品ID',
-    comment_content   varchar(300)      null comment '评价内容',
-    comment_time      datetime          null comment '评价时间',
-    comment_images    varchar(300)      null comment '评价图片',
-    star              int               null comment '评价星级',
-    comment_biz_reply varchar(255)      null comment '商家回复',
-    recomment_content varchar(300)      null comment '追评',
-    recomment_time    datetime          null comment '追评时间',
-    recomment_images  varchar(300)      null comment '追评图片',
-    user_id           varchar(15)       null comment '用户ID',
-    property_info     varchar(150)      null comment '属性信息',
-    status            tinyint default 0 null comment '0:正常 1:已删除'
-) collate = utf8mb4_general_ci row_format = DYNAMIC;
-
 create table if not exists order_coupon_rel
 (
     id              bigint auto_increment primary key,
@@ -226,21 +160,6 @@ create table if not exists order_request_idempotency
     constraint uk_order_request_idempotency unique (user_id, command_type, idempotency_key),
     key idx_order_request_status (status, update_time)
 ) comment '订单命令幂等记录' collate = utf8mb4_general_ci;
-
-create table if not exists comment_report
-(
-    report_id        int auto_increment comment '举报ID' primary key,
-    order_id         varchar(64)       not null comment '被举报评论所属订单ID',
-    product_id       varchar(64)       null comment '商品ID',
-    reporter_user_id varchar(64)       null comment '举报人用户ID',
-    reason           varchar(50)       not null comment '举报理由',
-    detail           varchar(500)      null comment '补充说明',
-    comment_snapshot varchar(1000)     null comment '举报时评论内容快照',
-    status           tinyint default 0 not null comment '0:待处理 1:已处理 2:已驳回',
-    report_time      datetime          null comment '举报时间',
-    handle_time      datetime          null comment '处理时间',
-    handle_remark    varchar(500)      null comment '处理备注'
-) comment '评论举报';
 
 -- Outbox / 补偿（与订单业务同库）
 create table if not exists local_message_outbox

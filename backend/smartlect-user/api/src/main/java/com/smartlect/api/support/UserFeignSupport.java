@@ -2,17 +2,14 @@ package com.smartlect.api.support;
 
 import com.smartlect.api.UserFeignClient;
 import com.smartlect.api.dto.UserAddressQueryDTO;
-import com.smartlect.api.dto.UserGrowthAddDTO;
 import com.smartlect.api.dto.UserIdsDTO;
 import com.smartlect.api.dto.UserJoinCountDTO;
-import com.smartlect.api.dto.UserNotifyDTO;
 import com.smartlect.api.vo.UserAddressVO;
 import com.smartlect.api.vo.UserBriefVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -33,22 +30,6 @@ public class UserFeignSupport {
         return feignResponseSupport.call(
                 () -> userFeignClient.getAddress(new UserAddressQueryDTO(addressId, userId), userId),
                 "查询收货地址失败");
-    }
-
-    public void addGrowthOnPay(String userId, BigDecimal payAmount) {
-        feignResponseSupport.run(
-                () -> userFeignClient.addGrowthOnPay(new UserGrowthAddDTO(userId, payAmount), userId),
-                "增加成长值失败");
-    }
-
-    public void sendNotifyAsync(String userId, String title, String content, String bizType, String bizId) {
-        try {
-            feignResponseSupport.run(
-                    () -> userFeignClient.sendNotifyAsync(new UserNotifyDTO(userId, title, content, bizType, bizId)),
-                    "发送站内通知失败");
-        } catch (Exception e) {
-            log.warn("发送站内通知降级跳过 userId={}, title={}, err={}", userId, title, e.getMessage());
-        }
     }
 
     public List<String> listAllUserIds() {

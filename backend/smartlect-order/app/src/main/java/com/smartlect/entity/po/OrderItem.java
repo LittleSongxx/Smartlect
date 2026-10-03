@@ -1,12 +1,11 @@
 package com.smartlect.entity.po;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.smartlect.entity.dto.RecommendationAttributionCarrier;
 import java.math.BigDecimal;
 import java.io.Serializable;
 import java.util.Date;
 
-public class OrderItem implements Serializable, RecommendationAttributionCarrier {
+public class OrderItem implements Serializable {
 
 	private String orderItemId;
 
@@ -36,13 +35,9 @@ public class OrderItem implements Serializable, RecommendationAttributionCarrier
 
 	private String refundOrderId;
 
-	private String recommendationRequestId;
 
-	private Integer recommendationPosition;
 
-	private String recommendationSource;
 
-	private Date recommendationAttributedAt;
 
 	public void setOrderItemId(String orderItemId){
 		this.orderItemId = orderItemId;
@@ -152,38 +147,6 @@ public class OrderItem implements Serializable, RecommendationAttributionCarrier
 
 	public String getRefundOrderId(){
 		return this.refundOrderId;
-	}
-
-	public String getRecommendationRequestId() {
-		return recommendationRequestId;
-	}
-
-	public void setRecommendationRequestId(String recommendationRequestId) {
-		this.recommendationRequestId = recommendationRequestId;
-	}
-
-	public Integer getRecommendationPosition() {
-		return recommendationPosition;
-	}
-
-	public void setRecommendationPosition(Integer recommendationPosition) {
-		this.recommendationPosition = recommendationPosition;
-	}
-
-	public String getRecommendationSource() {
-		return recommendationSource;
-	}
-
-	public void setRecommendationSource(String recommendationSource) {
-		this.recommendationSource = recommendationSource;
-	}
-
-	public Date getRecommendationAttributedAt() {
-		return recommendationAttributedAt;
-	}
-
-	public void setRecommendationAttributedAt(Date recommendationAttributedAt) {
-		this.recommendationAttributedAt = recommendationAttributedAt;
 	}
 
 	@Override
