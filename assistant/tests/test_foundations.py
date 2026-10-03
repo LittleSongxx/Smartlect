@@ -17,7 +17,6 @@ import smartlect
 from smartlect.app import health
 from smartlect.config import Settings
 from smartlect.money import to_cents
-from smartlect.recommendation.store import DEFAULT_STRATEGIES, bucket_for, strategy_config
 
 
 class FoundationTests(unittest.TestCase):
@@ -52,7 +51,7 @@ class FoundationTests(unittest.TestCase):
             port = listener.getsockname()[1]
         env = {**os.environ, "SMARTLECT_GROWTH_HOST": "127.0.0.1",
                "SMARTLECT_GROWTH_PORT": str(port), "SMARTLECT_MODEL_MODE": "mock",
-               "SMARTLECT_GROWTH_EVENTS_ENABLED": "false", "SMARTLECT_INTERNAL_TOKEN": "fixture-internal"}
+               "SMARTLECT_INTERNAL_TOKEN": "fixture-internal"}
         with tempfile.TemporaryDirectory() as directory:
             process = subprocess.Popen([sys.executable, "-I", "-m", "smartlect.app"],
                                        cwd=directory, env=env, stdout=subprocess.DEVNULL,
@@ -69,29 +68,16 @@ class FoundationTests(unittest.TestCase):
                             self.fail("assistant health did not become available")
                         time.sleep(0.02)
                 self.assertEqual(result["service"], "smartlect-assistant")
-                self.assertEqual(result["phase"], "P0")
+                self.assertEqual(result["phase"], "F4")
                 with self.assertRaises(HTTPError) as error:
                     urlopen(f"http://127.0.0.1:{port}/recommend", timeout=0.5)
                 self.assertEqual(error.exception.code, 404)
                 with self.assertRaises(HTTPError) as error:
                     urlopen(f"http://127.0.0.1:{port}/internal/ledger/summary", timeout=0.5)
-                self.assertEqual(error.exception.code, 401)
-                with self.assertRaises(HTTPError) as error:
-                    urlopen(Request(f"http://127.0.0.1:{port}/internal/ledger/summary",
-                                    headers={"X-Internal-Token": "wrong-é"}), timeout=0.5)
-                self.assertEqual(error.exception.code, 401)
+                self.assertEqual(error.exception.code, 404)
             finally:
                 process.terminate()
                 process.wait(timeout=5)
-
-    def test_experiment_boundaries_and_config_isolation(self):
-        config = strategy_config(DEFAULT_STRATEGIES['rules-v1'])
-        config['ranking'] = 'mutated'
-        self.assertEqual(strategy_config(DEFAULT_STRATEGIES['rules-v1'])['ranking'], 'rule')
-        self.assertEqual(DEFAULT_STRATEGIES['content-v1']['ranking'], 'content')
-        self.assertNotEqual(bucket_for('s', 'e', 'user-a', 'salt'), bucket_for('s', 'e', 'user-b', 'salt'))
-        self.assertEqual(bucket_for('s', 'e', 'user-a', 'salt'), bucket_for('s', 'e', 'user-a', 'salt'))
-
 
 if __name__ == "__main__":
     unittest.main()

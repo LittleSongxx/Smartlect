@@ -1,5 +1,5 @@
 """Thirty-day text/trace retention without deleting commerce or action audit records."""
-from smartlect.events import connect_from_env
+from smartlect.db import connect_from_env
 
 
 def purge_expired(connect=connect_from_env):

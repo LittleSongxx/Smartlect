@@ -11,8 +11,8 @@ import uuid
 import httpx
 
 from runtime import ROOT, ENV_FILE, parse_env
-from smartlect.attribution import AttributionStore
-from smartlect.events import canonical, connect_from_env
+from smartlect.scenario_scope import ScenarioScopeStore
+from smartlect.db import canonical, connect_from_env
 from smartlect.state import StateError
 
 
@@ -99,7 +99,7 @@ def main(run_id, request_id=None, output=None):
     config=parse_env(ENV_FILE)
     if config.get('SMARTLECT_PAYMENT_MODE')!='mock': raise ValueError('mock_payment_required')
     os.environ.update(config)
-    store=AttributionStore(connect_from_env,secret=config.get('SMARTLECT_ATTRIBUTION_SECRET'))
+    store=ScenarioScopeStore(connect_from_env,secret=config.get('SMARTLECT_ATTRIBUTION_SECRET'))
     key=hashlib.sha256(run_id.encode()).hexdigest()[:32]
     directory=ROOT/'run/reset-demo'
     if directory.is_symlink(): raise ValueError('symlink_state_directory_refused')

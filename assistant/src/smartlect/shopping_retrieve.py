@@ -7,9 +7,21 @@ import uuid
 from smartlect.algo_version import content_hash
 from smartlect.catalog_gate import _fold, eligible_skus, in_scope, scope_filter
 from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.knowledge import tokens
-from smartlect.recommendation.service import MAX_PRODUCTS, MAX_RERANK_SKUS, validate_rerank
+MAX_PRODUCTS = 20
+MAX_RERANK_SKUS = 8
+
+
+def validate_rerank(value, cards):
+    keys = [card['sku_key'] for card in cards]
+    supplied = value.get('sku_keys') if isinstance(value, dict) else value
+    if (not isinstance(supplied, list) or any(not isinstance(key, str) for key in supplied)
+            or len(supplied) != len(keys) or set(supplied) != set(keys)):
+        raise ValueError('rerank_must_permute_same_candidates')
+    if len(set(supplied)) != len(supplied):
+        raise ValueError('invalid_rerank_keys')
+    return supplied
 from smartlect.shopping_mission import (empty_mission, has_hard_constraints, retrieval_variants,
                                         shopping_request, validate_sku_key)
 from smartlect.state import StateError, _actor

@@ -23,7 +23,6 @@ dependencies = [
 
 [project.scripts]
 smartlect-assistant = "smartlect.app:main"
-smartlect-assistant-worker = "smartlect.worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

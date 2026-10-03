@@ -12,14 +12,14 @@ from smartlect.auth import IdentityBridge
 from smartlect.commerce import AsyncCommerceClient
 from smartlect.config import Settings
 from smartlect.state import SessionStore
-import test_ledger_mysql
-from test_ledger_mysql import csrf_headers
+import test_mysql_base
+from test_mysql_base import csrf_headers
 
 
 @unittest.skipUnless(os.getenv("SMARTLECT_RUN_MYSQL_TESTS") == "1", "set SMARTLECT_RUN_MYSQL_TESTS=1 for dedicated MySQL")
 class AppMySQLTests(unittest.TestCase):
-    setUpClass = classmethod(test_ledger_mysql.LedgerMySQLTests.setUpClass.__func__)
-    tearDownClass = classmethod(test_ledger_mysql.LedgerMySQLTests.tearDownClass.__func__)
+    setUpClass = classmethod(test_mysql_base.DisposableMySQLTests.setUpClass.__func__)
+    tearDownClass = classmethod(test_mysql_base.DisposableMySQLTests.tearDownClass.__func__)
 
     def test_confirm_restart_recovers_original_action_and_sse_never_reexecutes(self):
         asyncio.run(self.exercise_http())

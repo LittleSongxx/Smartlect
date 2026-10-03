@@ -3,20 +3,21 @@ from datetime import datetime, timedelta, timezone
 import os
 from types import SimpleNamespace
 import unittest
+
+import test_mysql_base as mysql_base
 import uuid
 
 from smartlect.maintenance import purge_expired
 from smartlect.knowledge import KnowledgeStore
 from smartlect.provider import IndexModelAudit
 from smartlect.state import SessionStore
-from test_events import batch, outcome
-import test_ledger_mysql as ledger_tests
+import test_mysql_base as mysql_base
 
 
 @unittest.skipUnless(os.getenv("SMARTLECT_RUN_MYSQL_TESTS") == "1", "set SMARTLECT_RUN_MYSQL_TESTS=1 for dedicated MySQL")
 class MaintenanceMySQLTests(unittest.TestCase):
-    setUpClass = classmethod(ledger_tests.LedgerMySQLTests.setUpClass.__func__)
-    tearDownClass = classmethod(ledger_tests.LedgerMySQLTests.tearDownClass.__func__)
+    setUpClass = classmethod(mysql_base.DisposableMySQLTests.setUpClass.__func__)
+    tearDownClass = classmethod(mysql_base.DisposableMySQLTests.tearDownClass.__func__)
 
     def test_expired_text_and_trace_are_removed_but_audit_recent_and_active_runs_survive(self):
         state = SessionStore(self.connect)
@@ -50,9 +51,6 @@ class MaintenanceMySQLTests(unittest.TestCase):
         state.save_context(active_lease, {"text": "ACTIVE_LEASE_CONTEXT"})
         state.append_event(active_lease, "message_delta", {"text": "ACTIVE_LEASE_TRACE"})
 
-        pay_id, item_id = uuid.uuid4().hex, uuid.uuid4().hex
-        paid = outcome("PAYMENT", pay_id, item_id)
-        self.ledger.ingest(batch(paid))
         admin = SimpleNamespace(subject_type="merchant", actor_id="index-admin", execution_scope_id="retention-test",
                                 permissions=("admin:legacy",))
         knowledge = KnowledgeStore(self.connect)
@@ -91,8 +89,6 @@ class MaintenanceMySQLTests(unittest.TestCase):
             cursor.execute("UPDATE proposal SET created_at=UTC_TIMESTAMP(6)-INTERVAL 31 DAY,updated_at=UTC_TIMESTAMP(6)-INTERVAL 31 DAY WHERE proposal_id=%s", (proposal["proposal_id"],))
             cursor.execute("SELECT * FROM proposal WHERE proposal_id=%s", (proposal["proposal_id"],))
             original_proposal = cursor.fetchone()
-            cursor.execute("SELECT * FROM commerce_event WHERE event_id=%s", (paid["eventId"],))
-            original_ledger = cursor.fetchone()
             connection.commit()
 
         counts = purge_expired(self.connect)
@@ -116,8 +112,6 @@ class MaintenanceMySQLTests(unittest.TestCase):
             self.assertEqual(cursor.fetchall(), [{'call_id': interrupted.call_id, 'status': 'started'}])
             cursor.execute("SELECT * FROM proposal WHERE proposal_id=%s", (proposal["proposal_id"],))
             self.assertEqual(cursor.fetchone(), original_proposal)
-            cursor.execute("SELECT * FROM commerce_event WHERE event_id=%s", (paid["eventId"],))
-            self.assertEqual(cursor.fetchone(), original_ledger)
             cursor.execute("SELECT summary_json FROM conversation_memory WHERE conversation_id=%s", (conversation_id,))
             self.assertIsNone(cursor.fetchone()["summary_json"])
         repeated = purge_expired(self.connect)

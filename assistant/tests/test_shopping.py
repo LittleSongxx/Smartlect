@@ -5,7 +5,7 @@ from smartlect.agents.shopping import (PROMPT_VERSION, SCHEMA_VERSION, PROPOSAL_
                                        constraint_echo, knowledge_observation, product_observation,
                                        proposal_intent_note, sku_observation, BudgetExceeded)
 from smartlect.business_skills import load_skill
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.privacy import redact_text
 from smartlect.tools import tool_schema, SearchArgs, CreateOrderArgs, PreferenceArgs
 

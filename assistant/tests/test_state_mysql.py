@@ -5,18 +5,19 @@ from datetime import datetime, timedelta, timezone
 import os
 from types import SimpleNamespace
 import unittest
+
+import test_mysql_base as mysql_base
 import uuid
 
 from smartlect.state import SessionStore, StateError
-from test_events import batch, outcome
-import test_ledger_mysql as ledger_tests
+import test_mysql_base as mysql_base
 
 
 @unittest.skipUnless(os.getenv("SMARTLECT_RUN_MYSQL_TESTS") == "1", "set SMARTLECT_RUN_MYSQL_TESTS=1 for dedicated MySQL")
 class StateMySQLTests(unittest.TestCase):
     # Reuse the existing, ownership-checked disposable container setup without inheriting its tests.
-    setUpClass = classmethod(ledger_tests.LedgerMySQLTests.setUpClass.__func__)
-    tearDownClass = classmethod(ledger_tests.LedgerMySQLTests.tearDownClass.__func__)
+    setUpClass = classmethod(mysql_base.DisposableMySQLTests.setUpClass.__func__)
+    tearDownClass = classmethod(mysql_base.DisposableMySQLTests.tearDownClass.__func__)
 
     def setUp(self):
         self.store = SessionStore(self.connect)
@@ -136,31 +137,6 @@ class StateMySQLTests(unittest.TestCase):
         with self.assertRaisesRegex(StateError, "tool_call_already_terminal"):
             self.store.finish_tool_call(lease, "call", outcome="unknown", receipt={})
 
-    def test_legacy_ledger_adoption_preserves_raw_facts_and_checksum_guard(self):
-        pay, item = uuid.uuid4().hex, uuid.uuid4().hex
-        event = outcome("PAYMENT", pay, item)
-        self.ledger.ingest(batch(event))
-        with self.connect() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT raw_json,fingerprint FROM commerce_event WHERE event_id=%s", (event["eventId"],))
-            original = cursor.fetchone()
-            cursor.execute("DELETE FROM schema_migration")
-            connection.commit()
-        self.store.initialize()
-        self.assertEqual(self.ledger.summary(pay)["paidCents"], 9000)
-        with self.connect() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT raw_json,fingerprint FROM commerce_event WHERE event_id=%s", (event["eventId"],))
-            self.assertEqual(cursor.fetchone(), original)
-            cursor.execute("SELECT checksum FROM schema_migration WHERE name='0001_ledger.sql'")
-            checksum = cursor.fetchone()["checksum"]
-            cursor.execute("UPDATE schema_migration SET checksum=%s WHERE name='0001_ledger.sql'", ("0" * 64,))
-            connection.commit()
-        try:
-            with self.assertRaisesRegex(RuntimeError, "checksum"):
-                self.store.initialize()
-        finally:
-            with self.connect() as connection, connection.cursor() as cursor:
-                cursor.execute("UPDATE schema_migration SET checksum=%s WHERE name='0001_ledger.sql'", (checksum,))
-                connection.commit()
 
     def test_trial_chat_budget_is_persisted_and_caps_without_consuming_overflow(self):
         actor_id = self.actor.actor_id

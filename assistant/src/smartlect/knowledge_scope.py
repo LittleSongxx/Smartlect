@@ -1,6 +1,6 @@
 """Knowledge retrieval planes. Empty product_ids can only be store policy."""
 
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.state import _text
 
 STORE = "STORE"

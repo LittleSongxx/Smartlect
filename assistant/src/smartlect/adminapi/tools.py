@@ -10,12 +10,14 @@ browser with the same receipts and idempotency as an agent call — there is no 
 weaker path into the tools.
 """
 import asyncio
+
+from smartlect.catalog_scope import product_scope
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.tools import REGISTRY, invoke, tool_schema
 
 # Read tools whose execution writes nothing beyond the debug run itself.
@@ -55,7 +57,7 @@ def catalog():
     return {"tools": items}
 
 
-def build_router(*, actor_for, store, commerce, knowledge, shopping_retrieve, attribution, provider, config, settings):
+def build_router(*, actor_for, store, commerce, knowledge, shopping_retrieve, provider, config, settings):
     router = APIRouter()
 
     @router.get("/admin-api/assistant/tools/catalog")
@@ -90,10 +92,10 @@ def build_router(*, actor_for, store, commerce, knowledge, shopping_retrieve, at
                                         owner="admin-debug", ttl_seconds=60)
         try:
             if name == "catalog_search":
-                scope = await asyncio.to_thread(attribution.product_scope, actor)
+                scope = await asyncio.to_thread(product_scope, store.connect, actor)
                 receipt = {"data": await shopping_retrieve.recommend(actor, arguments, product_scope=scope)}
             elif name in DEBUG_TOOLS:
-                scope = await asyncio.to_thread(attribution.product_scope, actor)
+                scope = await asyncio.to_thread(product_scope, store.connect, actor)
                 receipt = await invoke(name, arguments, actor=actor, commerce=commerce, store=store, lease=lease,
                                        knowledge=knowledge, embed_query=embed_query, allowed=DEBUG_TOOLS,
                                        product_scope=scope)

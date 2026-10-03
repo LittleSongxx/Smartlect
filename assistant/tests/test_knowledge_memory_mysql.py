@@ -9,13 +9,13 @@ import uuid
 from smartlect.knowledge import KnowledgeStore
 from smartlect.memory import MemoryStore
 from smartlect.state import SessionStore, StateError
-import test_ledger_mysql as ledger_tests
+import test_mysql_base as ledger_tests
 
 
 @unittest.skipUnless(os.getenv('SMARTLECT_RUN_MYSQL_TESTS') == '1', 'set SMARTLECT_RUN_MYSQL_TESTS=1 for dedicated MySQL')
 class KnowledgeMemoryMySQLTests(unittest.TestCase):
-    setUpClass = classmethod(ledger_tests.LedgerMySQLTests.setUpClass.__func__)
-    tearDownClass = classmethod(ledger_tests.LedgerMySQLTests.tearDownClass.__func__)
+    setUpClass = classmethod(ledger_tests.DisposableMySQLTests.setUpClass.__func__)
+    tearDownClass = classmethod(ledger_tests.DisposableMySQLTests.tearDownClass.__func__)
 
     def setUp(self):
         self.scope = 'f2-' + uuid.uuid4().hex

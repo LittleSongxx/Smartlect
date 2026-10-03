@@ -15,7 +15,7 @@ import asyncio
 import uuid
 
 from smartlect.auth import ActorContext
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.provider import IndexModelAudit, ProviderError
 from smartlect.state import SessionStore, StateError, _actor, _integer, _public, _text
 

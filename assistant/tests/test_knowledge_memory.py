@@ -7,7 +7,7 @@ from smartlect.knowledge import (CHUNK_WINDOW, KnowledgeStore, _merchant, _vecto
                                 covering_span, evidence_result, rank_chunks, rrf_merge,
                                 split_document, tokens)
 from smartlect.agents.shopping import knowledge_observation
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.memory import MemoryStore, _preference, estimate_text_tokens, working_context
 from smartlect.state import StateError
 from smartlect.tokenizer import count_tokens

@@ -6,7 +6,7 @@ from hashlib import sha256
 import json
 import uuid
 
-from smartlect.events import canonical, connect_from_env
+from smartlect.db import canonical, connect_from_env
 from smartlect.migrate import migrate
 from smartlect.privacy import redact_text
 

@@ -12,16 +12,16 @@ from smartlect.auth import ActorContext, IdentityBridge
 from smartlect.commerce import AsyncCommerceClient
 from smartlect.config import Settings
 from smartlect.provider import Provider
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.state import SessionStore
-import test_ledger_mysql
-from test_ledger_mysql import csrf_headers
+import test_mysql_base
+from test_mysql_base import csrf_headers
 
 
 @unittest.skipUnless(os.getenv("SMARTLECT_RUN_MYSQL_TESTS") == "1", "set SMARTLECT_RUN_MYSQL_TESTS=1 for dedicated MySQL")
 class AdminApiMySQLTests(unittest.TestCase):
-    setUpClass = classmethod(test_ledger_mysql.LedgerMySQLTests.setUpClass.__func__)
-    tearDownClass = classmethod(test_ledger_mysql.LedgerMySQLTests.tearDownClass.__func__)
+    setUpClass = classmethod(test_mysql_base.DisposableMySQLTests.setUpClass.__func__)
+    tearDownClass = classmethod(test_mysql_base.DisposableMySQLTests.tearDownClass.__func__)
 
     def test_runs_browser_lists_scope_runs_and_debug_invoke_is_audited(self):
         asyncio.run(self.exercise())
@@ -29,65 +29,8 @@ class AdminApiMySQLTests(unittest.TestCase):
     def test_publish_runs_async_index_job_to_published(self):
         asyncio.run(self.exercise_indexing())
 
-    def test_product_knowledge_import_creates_auto_draft_and_publishes(self):
-        asyncio.run(self.exercise_import())
-
     def test_prompt_templates_seed_edit_activate_and_resolve(self):
         asyncio.run(self.exercise_prompts())
-
-    async def exercise_import(self):
-        suffix = uuid.uuid4().hex
-        origin = "http://smartlect.test"
-        config = {"SMARTLECT_USER_PORT": "18105", "SMARTLECT_ORDER_PORT": "18104",
-                  "SMARTLECT_PRODUCT_PORT": "18102", "SMARTLECT_STOCK_PORT": "18103",
-                  "SMARTLECT_INTERNAL_TOKEN": "synthetic", "SMARTLECT_VISITOR_SECRET": "s" * 48,
-                  "SMARTLECT_ALLOWED_ORIGINS": origin}
-
-        def java(request):
-            path = request.url.path
-            if path == "/internal/identity/introspect":
-                data = {"subjectType": "merchant", "actorId": "boss-" + suffix, "sessionId": "boss-session",
-                        "permissions": ["admin:legacy", "shopping:read"]}
-            elif path == "/internal/product/commerce/batchDetail":
-                self.assertEqual(json.loads(request.content), {"productIds": ["p-imp-" + suffix]})
-                data = [{"productId": "p-imp-" + suffix, "productName": "导入测试商品", "status": 1,
-                         "minPrice": "10.00", "maxPrice": "20.00", "totalStock": 3, "inStock": True,
-                         "description": "导入的商品描述，用于知识生成。",
-                         "propertyValues": [{"propertyName": "品牌", "propertyValue": "Smartlect"}]}]
-            else:
-                raise AssertionError(path)
-            return httpx.Response(200, json={"status": "success", "data": data})
-
-        transport = httpx.MockTransport(java)
-
-        def app():
-            return create_app(Settings(), config=config, store=SessionStore(self.connect),
-                              identity=IdentityBridge(config, transport=transport),
-                              commerce=AsyncCommerceClient(config, transport=transport))
-
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
-            client.cookies.set("adminToken", "boss-" + suffix)
-            headers = await csrf_headers(client, origin)
-
-            imported = await client.post("/admin-api/assistant/knowledgeImport/products", headers=headers,
-                                         json={"productIds": ["p-imp-" + suffix]})
-            self.assertEqual(imported.status_code, 200, imported.text)
-            summary = imported.json()
-            if summary["imported"] != ["p-imp-" + suffix]: self.fail(repr(summary))
-
-            documents = (await client.get("/admin-api/assistant/knowledge")).json()
-            row = next(item for item in documents if item["doc_id"] == "product-p-imp-" + suffix)
-            self.assertEqual(row["status"], "PUBLISHED")
-            self.assertEqual(row["source_type"], "PRODUCT_AUTO")
-
-            again = await client.post("/admin-api/assistant/knowledgeImport/products",
-                                      headers=await csrf_headers(client, origin),
-                                      json={"productIds": ["p-imp-" + suffix]})
-            self.assertEqual(again.json()["imported"], ["p-imp-" + suffix])
-            documents = (await client.get("/admin-api/assistant/knowledge")).json()
-            versions = [item for item in documents if item["doc_id"] == "product-p-imp-" + suffix]
-            published = [item for item in versions if item["status"] == "PUBLISHED"]
-            self.assertEqual(len(published), 1)
 
     async def exercise_indexing(self):
         suffix = uuid.uuid4().hex

@@ -111,7 +111,7 @@ def _reason(error):
 
 
 def _text(receipt):
-    from smartlect.events import canonical
+    from smartlect.db import canonical
     return canonical(receipt.get("data") if isinstance(receipt, dict) and "data" in receipt else receipt)
 
 

@@ -19,7 +19,7 @@ import jieba
 from smartlect.algo_version import content_hash
 from smartlect.observability import gen_ai_span, prometheus_counter
 from smartlect.cache import TtlCache
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.knowledge_scope import parse_product_ids, search_document_clause
 from smartlect.state import SessionStore, StateError, _actor, _expiry, _integer, _json, _public, _text
 from smartlect.tokenizer import encoding

@@ -12,7 +12,7 @@ from smartlect.app import create_app
 from smartlect.auth import ActorContext
 from smartlect.cache import TtlCache
 from smartlect.config import Settings
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.knowledge import KnowledgeStore
 
 
@@ -74,8 +74,7 @@ def message_app(actors, *, per_actor, total):
     return create_app(Settings(model_mode="mock"),
                       config={"SMARTLECT_GROWTH_RUNS_PER_ACTOR": str(per_actor),
                               "SMARTLECT_GROWTH_RUNS_GLOBAL": str(total)},
-                      store=store, memory=memory, identity=Identity(actors), provider=MagicMock(),
-                      attribution=SimpleNamespaceProxy())
+                      store=store, memory=memory, identity=Identity(actors), provider=MagicMock())
 
 
 class SimpleNamespaceProxy(MagicMock):
@@ -92,7 +91,7 @@ async def hold_run(**kwargs):
 
 class ConnectionReuseTests(unittest.TestCase):
     def test_thread_local_reuse_and_dead_connection_fallback(self):
-        import smartlect.events as events
+        import smartlect.db as events
 
         class FakeConn:
             def __init__(self):

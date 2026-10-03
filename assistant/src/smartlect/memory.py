@@ -10,7 +10,7 @@ import math
 import re
 import uuid
 
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.knowledge import KnowledgeStore, _merchant
 from smartlect.shopping_mission import empty_mission, normalize_mission
 from smartlect.state import SessionStore, StateError, _actor, _expiry, _integer, _json, _public, _text

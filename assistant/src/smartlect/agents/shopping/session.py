@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from smartlect.answer_guards import unsupported_state_claims
 from smartlect.business_skills import USER_SKILLS, catalog
 from smartlect.commerce import CommerceError
-from smartlect.events import canonical
+from smartlect.db import canonical
 from smartlect.provider import ProviderError
 from smartlect.privacy import redact_text
 from smartlect.memory import estimate_text_tokens

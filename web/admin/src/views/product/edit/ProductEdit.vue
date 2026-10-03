@@ -1,13 +1,5 @@
 <template>
   <div class="form-style">
-    <div v-if="route.params.productId" class="ai-status-bar" :class="aiStatus">
-      <span class="ai-label">导购可见性</span>
-      <strong>{{ aiStatusText }}</strong>
-      <span v-if="aiDetail" class="ai-detail">{{ aiDetail }}</span>
-      <el-button v-if="aiStatus === 'failed'" size="small" type="primary" :loading="aiBusy" @click="retryProjection">
-        重新投影
-      </el-button>
-    </div>
     <el-tabs v-model="activeName" @tab-click="tabClick">
       <el-tab-pane label="基础信息" name="base">
         <ProductBase :productInfo="productInfo"></ProductBase>
@@ -31,7 +23,6 @@ import ProductSkuList from './ProductSkuList.vue'
 import ProductSkuProperty from './ProductSkuProperty.vue'
 import ProductBase from './ProductBase.vue'
 import { ref, getCurrentInstance, computed, onMounted, onUnmounted, watch } from 'vue'
-import { aiGet, aiWrite } from '@/api/client'
 const { proxy } = getCurrentInstance()
 import { useRouter, useRoute } from 'vue-router'
 const router = useRouter()
@@ -65,17 +56,6 @@ const emptyProduct = () => ({
 })
 
 const productInfo = ref(emptyProduct())
-const aiStatus = ref('idle')
-const aiDetail = ref('')
-const aiBusy = ref(false)
-let aiTimer
-
-const aiStatusText = computed(() => ({
-  visible: 'AI 已可见',
-  indexing: '索引中',
-  failed: '投影失败',
-  idle: '尚未投影',
-}[aiStatus.value] || '尚未投影'))
 
 const applyContent = (info) => {
   let parsed
@@ -107,43 +87,6 @@ const buildContentJson = (info) => {
   return JSON.stringify(content)
 }
 
-const loadAiStatus = async () => {
-  const productId = route.params.productId
-  if (!productId) return
-  if (aiTimer) {
-    window.clearTimeout(aiTimer)
-    aiTimer = undefined
-  }
-  try {
-    const data = await aiGet(`/productProjection/${encodeURIComponent(productId)}`)
-    aiStatus.value = data.ai_status || 'idle'
-    const job = data.job || {}
-    const indexJob = data.index_job || {}
-    aiDetail.value = job.message || indexJob.state || ''
-    if (aiStatus.value === 'indexing') {
-      aiTimer = window.setTimeout(loadAiStatus, 4000)
-    }
-  } catch {
-    aiStatus.value = 'idle'
-    aiDetail.value = ''
-  }
-}
-
-const retryProjection = async () => {
-  const productId = route.params.productId
-  if (!productId) return
-  aiBusy.value = true
-  try {
-    await aiWrite(`/productProjection/${encodeURIComponent(productId)}/retry`, {})
-    aiStatus.value = 'indexing'
-    await loadAiStatus()
-  } catch (error) {
-    proxy.Message.error(error.message || '重投影失败')
-  } finally {
-    aiBusy.value = false
-  }
-}
-
 const getProductInfo = async () => {
   if (!route.params.productId) {
     return
@@ -162,7 +105,6 @@ const getProductInfo = async () => {
     ...result.data.productInfo,
     cover: (result.data.productInfo.cover || '').split(',').filter(Boolean),
   })
-  loadAiStatus()
   productEditStore.productPropertyList = normalizeValueGalleries(
     result.data.productPropertyList, proxy.productMainImageCount)
   productEditStore.skuData = new Map(
@@ -280,22 +222,17 @@ const submitProduct = async (sensitiveConfirmPwd) => {
     if (!result) {
       return
     }
-    proxy.Message.success('保存成功，正在投影给导购')
+    proxy.Message.success('保存成功')
     const savedId = result.data || route.params.productId || productInfoResultData.productId
     if (savedId && !route.params.productId) {
       await router.replace({ name: 'updateProduct', params: { productId: savedId } })
-    }
-    if (savedId) {
-      aiStatus.value = 'indexing'
-      await loadAiStatus()
-      return
     }
     router.push(productListPath())
   }
 
   if (route.params.productId && !confirmPwd) {
     proxy.ConfirmSensitive({
-      message: '保存将更新价格、库存，并投影给导购知识库。是否继续？',
+      message: '保存将更新价格与库存。是否继续？',
       okfun: doSave,
     })
     return
@@ -320,9 +257,7 @@ watch(() => route.params.productId, (id, prev) => {
   }
 })
 
-onUnmounted(() => {
-  if (aiTimer) window.clearTimeout(aiTimer)
-})
+onUnmounted(() => {})
 </script>
 
 <style lang="scss" scoped>

@@ -88,20 +88,16 @@ class ScopeResetHttpTests(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200,json={'status':'success','data':{'subjectType':'merchant' if merchant else 'user',
                 'actorId':'owner' if merchant else 'user','sessionId':'session','permissions':['admin:legacy'] if merchant else ['shopping:read']}})
         bridge=IdentityBridge(config,transport=httpx.MockTransport(identity))
-        attribution=SimpleNamespace(resolve_actor=lambda actor:actor.model_copy(update={'execution_scope_id':'retired'}),
-            assert_scope_writable=Mock(side_effect=StateError('execution_scope_retired',410)))
         def select(actor,scope):selected[0]=scope;return actor.model_copy(update={'execution_scope_id':scope})
         adminscope=SimpleNamespace(selected_actor=lambda actor:actor.model_copy(update={'execution_scope_id':selected[0]}),select_scope=Mock(side_effect=select))
-        recommendations=SimpleNamespace(recommend=AsyncMock())
         app=create_app(Settings(),config=config,store=SimpleNamespace(connect=lambda:None),identity=bridge,
-                       attribution=attribution,adminscope=adminscope,recommendations=recommendations)
+                       adminscope=adminscope)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app),base_url=origin) as client:
             client.cookies.set('adminToken','synthetic-admin');client.cookies.set('token','synthetic-user')
             session=(await client.get('/admin-api/assistant/session')).json()
             headers={'Origin':origin,'X-CSRF-Token':session['csrf_token']}
             self.assertEqual((await client.post('/admin-api/assistant/merchant/runs',json={},headers=headers)).status_code,404)
-            self.assertEqual((await client.get('/api/assistant/recommendations')).status_code,410)
-            recommendations.recommend.assert_not_awaited()
+            self.assertEqual((await client.get('/api/assistant/recommendations')).status_code,404)
             self.assertEqual((await client.post('/admin-api/assistant/scopes/select',json={'execution_scope_id':'store'})).status_code,403)
             adminscope.select_scope.assert_not_called()
             fresh=(await client.get('/admin-api/assistant/session')).json()

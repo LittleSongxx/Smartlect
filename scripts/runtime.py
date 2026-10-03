@@ -24,7 +24,7 @@ ENV_FILE = ROOT / "run/runtime.env"
 PROCESS_FILE = ROOT / "run/processes.json"
 PROCESS_LOCK = ROOT / "run/processes.lock"
 DATABASES = ("admin", "user", "product", "stock", "cart", "order", "pay", "coupon")
-APPS = ("assistant-worker", "assistant", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
+APPS = ("assistant", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
 PORTS = {"MYSQL": 13306, "POSTGRES": 15432, "REDIS": 16379, "RABBIT": 15672,
          "RABBIT_MANAGEMENT": 15674, "NACOS": 18848,
          "GATEWAY": 18080, "GROWTH": 18000, "DASHBOARD": 18501,
@@ -62,7 +62,7 @@ def model_env(path=None):
 def service_env(service, env):
     """Assistant processes must receive model.env; app_launch used to merge it locally
     and then throw the copy away, so live mode started with no keys."""
-    if service in {"assistant", "assistant-worker"}:
+    if service == "assistant":
         return {**env, **model_env()}
     return dict(env)
 
@@ -374,9 +374,6 @@ def app_health(service, record):
         return False
     path = '/admin/' if service == 'web-admin' else '/' if service == 'web-user' else "/health" if service == "assistant" else "/actuator/health"
     try:
-        if service == "assistant-worker":
-            health = json.loads((ROOT / "run/worker-status.json").read_text())
-            return health.get("pid") == record["pid"] and health.get("connected") and 0 <= time.time() - health["observed_at"] < 5
         with urllib.request.urlopen(f"http://127.0.0.1:{record['port']}{path}", timeout=2) as response:
             if service in {'web-user', 'web-admin'}:
                 return response.status == 200 and b'Smartlect' in response.read(8192)
@@ -482,7 +479,6 @@ def launch_env_for(service, env):
     for variable in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "PYTHONPATH"):
         launch_env.pop(variable, None)
     launch_env["SMARTLECT_PROJECT_FOLDER"] = str(ROOT / "run/uploads") + "/"
-    launch_env["SMARTLECT_WORKER_STATUS_FILE"] = str(ROOT / "run/worker-status.json")
     launch_env['LANGSMITH_TRACING'] = 'false'
     launch_env['LANGCHAIN_TRACING_V2'] = 'false'
     if service in {'web-user', 'web-admin'}:
@@ -500,7 +496,7 @@ def smoke_apps(env, timeout=180):
     """
     failures = []
     for service in APPS:
-        if service in {"assistant", "assistant-worker", "web-user", "web-admin"}:
+        if service in {"assistant", "web-user", "web-admin"}:
             continue
         executable, command, _, _, _ = app_launch(service, env)
         if not executable.exists():
@@ -567,9 +563,9 @@ def app_launch(service, env):
     start_app 里少绑定一个产物路径，重启直接失败导致整站不可用——把"能不能拼出
     启动计划"变成可独立验证的一步，才能在下线重启前发现。
     """
-    if service in {"assistant", "assistant-worker"}:
+    if service == "assistant":
         executable = ROOT / "assistant/.venv/bin/python"
-        command = [str(executable), "-I", "-m", "smartlect.worker" if service == "assistant-worker" else "smartlect.app"]
+        command = [str(executable), "-I", "-m", "smartlect.app"]
         artifact = Path(run(str(executable), "-I", "-c",
                             "import importlib.util; print(next(iter(importlib.util.find_spec('smartlect').submodule_search_locations)))",
                             capture=True).strip())
@@ -610,7 +606,7 @@ def start_app(service, env, records):
         stop_process(records[service])
     # env 前缀沿用历史 growth 命名（线上 .env/数据库不随服务改名），这里显式映射。
     port_env = {"assistant": "SMARTLECT_GROWTH_PORT"}.get(service, f"SMARTLECT_{service.upper().replace('-', '_')}_PORT")
-    port = None if service == "assistant-worker" else int(env[port_env])
+    port = int(env[port_env])
     if port is not None:
         with socket.socket() as probe:
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -665,11 +661,7 @@ def apps_up(env):
     infra_check(env)
     with ledger_lock():
         records = load_processes()
-        # assistant-worker passively declares queues Java owns, and the assistant app's
-        # health requires a connected worker — so both start after the Java services
-        # have redeclared their queues (a volume reset otherwise leaves the worker
-        # in a 404 retry loop that fails the whole `up` batch).
-        for services in (APPS[2:9], ('assistant-worker', 'assistant'), ('admin', 'gateway'), ('web-user', 'web-admin')):
+        for services in (APPS[1:8], ('assistant',), ('admin', 'gateway'), ('web-user', 'web-admin')):
             for service in services:
                 start_app(service, env, records)
                 # Warm one JVM at a time on the shared WSL host.
@@ -677,7 +669,7 @@ def apps_up(env):
                 if service == "stock":
                     install_catalog(env)
         apps_check(env)
-        print("Smartlect application startup smoke passed: nine Java services, AI API, Growth worker and both UI health.")
+        print("Smartlect application startup smoke passed: nine Java services, AI API and both UI health.")
 
 
 def apps_check(env):
@@ -687,7 +679,7 @@ def apps_check(env):
     wait_apps(APPS, records)
     token = nacos_request(env, "/nacos/v1/auth/login", {
         "username": env["SMARTLECT_NACOS_USERNAME"], "password": env["SMARTLECT_NACOS_PASSWORD"]})["accessToken"]
-    pending = set(APPS) - {"assistant", "assistant-worker", "web-user", "web-admin"}
+    pending = set(APPS) - {"assistant", "web-user", "web-admin"}
     deadline = time.monotonic() + 30
     while pending and time.monotonic() < deadline:
         for service in tuple(pending):
@@ -853,9 +845,9 @@ def self_test():
                     wait_apps=lambda names, records: calls.append(('healthy', tuple(names)))):
         apps_up({})
     assert calls[:2] == [('start', 'user'), ('healthy', ('user',))]
-    assert ('start', 'assistant-worker') in calls and calls.index(('start', 'assistant-worker')) > calls.index(('healthy', ('stock',)))
+    assert ('start', 'assistant') in calls and calls.index(('start', 'assistant')) > calls.index(('healthy', ('stock',)))
     assert ('catalog',) in calls and calls.index(('catalog',)) > calls.index(('healthy', ('stock',)))
-    print('Java producers redeclare queues before the assistant consumer starts.')
+    print('Assistant starts after Java services have declared their queues.')
 
 
 def main():

@@ -222,23 +222,5 @@ class AuthToolTests(unittest.IsolatedAsyncioTestCase):
         result = await invoke('list_my_coupons', {}, actor=actor, commerce=commerce, store=store, lease={})
         self.assertEqual(result['data'], [{'userCouponId': 'u1', 'status': 0}])
 
-    async def test_order_attribution_failure_is_visible_and_does_not_block(self):
-        actor = ActorContext(subject_type='user', actor_id='alice', session_id='proof', permissions=('orders:write',))
-        config = {'SMARTLECT_INTERNAL_TOKEN': 'synthetic', 'SMARTLECT_ORDER_PORT': '18104'}
-        commerce = AsyncCommerceClient(config, transport=httpx.MockTransport(lambda request: httpx.Response(
-            200, json={'status': 'success', 'data': {'commandStatus': 'business_completed', 'orderId': 'o1'}})))
-
-        class BrokenAttribution:
-            def freeze_context(self, _actor, _action_id):
-                raise RuntimeError('freeze failed')
-
-        receipt = await execute_proposal({
-            'action_type': 'order', 'parameters': {'addressId': 'a1'}, 'recover_only': False,
-            'idempotency_key': 'k1', 'quote_id': 'q1', 'quote_total_cents': 100, 'action_id': 'act1',
-        }, actor, commerce, BrokenAttribution())
-        self.assertEqual(receipt['attribution_attached'], False)
-        self.assertEqual(receipt['commandStatus'], 'business_completed')
-
-
 if __name__ == '__main__':
     unittest.main()

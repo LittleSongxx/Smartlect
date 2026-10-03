@@ -5,7 +5,7 @@ value; callers persist whatever the current spec hashes to.
 """
 from hashlib import sha256
 
-from smartlect.events import canonical
+from smartlect.db import canonical
 
 
 def content_hash(payload):

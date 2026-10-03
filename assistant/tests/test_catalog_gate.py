@@ -5,17 +5,7 @@ import unittest
 from smartlect import catalog_gate
 from smartlect.catalog_gate import (
     RecommendationRequest, constraints, eligible_skus, in_scope, is_isolated_product_id, scope_filter)
-from smartlect.recommendation import service
-
-
 class CatalogGateTests(unittest.TestCase):
-    def test_homepage_reexports_the_same_gate(self):
-        self.assertIs(service.RecommendationRequest, catalog_gate.RecommendationRequest)
-        self.assertIs(service.constraints, catalog_gate.constraints)
-        self.assertIs(service.eligible_skus, catalog_gate.eligible_skus)
-        self.assertIs(service.scope_filter, catalog_gate.scope_filter)
-        self.assertIs(service.in_scope, catalog_gate.in_scope)
-
     def test_eligible_skus_still_rejects_term_and_stock_without_product_totals(self):
         snapshot = {
             'products': [dict(productId='p', productName='红键盘', categoryId='desk', status=1)],

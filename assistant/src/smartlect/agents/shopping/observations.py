@@ -1,6 +1,6 @@
 """Tool-result projections: what the model is allowed to observe from each receipt."""
 from smartlect.catalog_gate import _fold
-from smartlect.events import canonical
+from smartlect.db import canonical
 
 def knowledge_observation(data):
     observation = {'evidence_status': {'answered':'retrieved','insufficient':'none',
