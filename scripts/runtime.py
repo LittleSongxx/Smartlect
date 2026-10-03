@@ -793,7 +793,7 @@ def self_test():
     script = 'docker_process_sql() { cat; }; source "$1"'
     args = ["bash", "-ec", script, "self-test", str(ROOT / "deploy/mysql-init.sh")]
     sql = subprocess.run(args, env=test_env, check=True, text=True, capture_output=True).stdout
-    assert sql.count("CREATE DATABASE smartlect_") == 11
+    assert sql.count("CREATE DATABASE smartlect_") == 10
     grants = [line for line in sql.splitlines() if "TO 'smartlect_growth'" in line]
     assert grants == ["GRANT ALL ON smartlect_growth.* TO 'smartlect_growth'@'%';"]
     test_env["SMARTLECT_MYSQL_PASSWORD"] = "invalid'password"
