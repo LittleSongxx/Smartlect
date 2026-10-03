@@ -90,3 +90,55 @@ services:
       retries: 40
       start_period: 30s
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "127.0.0.1:${SMARTLECT_ES_PORT:-9200}:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9200/_cluster/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.1
+    ports:
+      - "127.0.0.1:${SMARTLECT_QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    ports: ["127.0.0.1:${SMARTLECT_POSTGRES_PORT:-15432}:5432"]
+    environment:
+      POSTGRES_USER: ${SMARTLECT_POSTGRES_USER:-smartlect}
+      POSTGRES_PASSWORD: ${SMARTLECT_POSTGRES_PASSWORD:-smartlect}
+      POSTGRES_DB: ${SMARTLECT_POSTGRES_DATABASE:-smartlect_growth}
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  es-data:
+  qdrant-data:
+  postgres:

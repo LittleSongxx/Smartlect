@@ -26,7 +26,7 @@ PROCESS_LOCK = ROOT / "run/processes.lock"
 DATABASES = ("admin", "user", "product", "stock", "cart", "order", "pay", "coupon")
 APPS = ("assistant", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
 PORTS = {"MYSQL": 13306, "POSTGRES": 15432, "REDIS": 16379, "RABBIT": 15672,
-         "RABBIT_MANAGEMENT": 15674, "NACOS": 18848,
+         "RABBIT_MANAGEMENT": 15674, "NACOS": 18848, "ES": 9200, "QDRANT": 6333, "POSTGRES": 15432,
          "GATEWAY": 18080, "GROWTH": 18000, "DASHBOARD": 18501,
          "ADMIN": 18101, "USER": 18105, "PRODUCT": 18106, "STOCK": 18108,
          "CART": 18102, "ORDER": 18104, "PAY": 18103, "COUPON": 18107, "WEB_USER": 18180, "WEB_ADMIN": 18181}
@@ -140,6 +140,8 @@ def bootstrap():
         "SMARTLECT_RABBIT_USER": "smartlect", "SMARTLECT_RABBIT_VHOST": "smartlect",
         "SMARTLECT_NACOS_USERNAME": "nacos", "SMARTLECT_NACOS_NAMESPACE": "",
         "SMARTLECT_NACOS_GROUP": "SMARTLECT_GROUP",
+        "SMARTLECT_ES_URL": "http://127.0.0.1:9200",
+        "SMARTLECT_QDRANT_URL": "http://127.0.0.1:6333",
         "SMARTLECT_GROWTH_MYSQL_USER": "smartlect_growth",
         "SMARTLECT_GROWTH_MYSQL_DATABASE": "smartlect_growth",
         "SMARTLECT_POSTGRES_HOST": "127.0.0.1",
@@ -217,7 +219,7 @@ def nacos_request(env, path, data):
 
 def infra_up(env):
     verify_project()
-    compose("up", "-d", "--wait", "--wait-timeout", "240", "mysql", "redis", "rabbitmq", "nacos")
+    compose("up", "-d", "--wait", "--wait-timeout", "240", "mysql", "redis", "rabbitmq", "nacos", "elasticsearch", "qdrant")
     try:
         nacos_request(env, "/nacos/v1/auth/users/admin", {"password": env["SMARTLECT_NACOS_PASSWORD"]})
     except urllib.error.HTTPError as error:
@@ -241,7 +243,7 @@ def infra_check(env):
         endpoints = [ep for ep in (env.get("SPRING_RABBITMQ_ADDRESSES") or "").split(",") if ep]
         if not endpoints or not any(amqp_port_open(ep) for ep in endpoints):
             raise RuntimeError("No RabbitMQ cluster endpoint reachable")
-    elif not {"mysql", "redis", "rabbitmq", "nacos"} <= healthy:
+    elif not {"mysql", "redis", "rabbitmq", "nacos", "elasticsearch", "qdrant"} <= healthy:
         raise RuntimeError("Middleware health check incomplete; run infra-up first")
     token = nacos_request(env, "/nacos/v1/auth/login", {
         "username": env["SMARTLECT_NACOS_USERNAME"], "password": env["SMARTLECT_NACOS_PASSWORD"]})["accessToken"]
