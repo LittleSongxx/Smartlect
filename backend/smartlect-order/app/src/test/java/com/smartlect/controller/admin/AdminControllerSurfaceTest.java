@@ -26,9 +26,6 @@ class AdminControllerSurfaceTest {
                 "/add", "/addBatch", "/addOrUpdateBatch",
                 "/updateOrderLogisticsInfoRecordByRecordId",
                 "/deleteOrderLogisticsInfoRecordByRecordId");
-        assertRoutesAbsent(OrderCommentController.class,
-                "/add", "/addBatch", "/addOrUpdateBatch",
-                "/updateOrderCommentByOrderId", "/deleteOrderCommentByOrderId");
     }
 
     private static void assertRoutesAbsent(Class<?> controller, String... forbidden) {

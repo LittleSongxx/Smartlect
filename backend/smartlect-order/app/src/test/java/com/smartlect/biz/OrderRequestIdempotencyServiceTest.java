@@ -45,16 +45,12 @@ class OrderRequestIdempotencyServiceTest {
     private OrderRequestIdempotencyService service;
 
     @Test
-    void checkoutReplayIgnoresOptionalAttributionButRejectsChangedQuantity() {
+    void checkoutReplayIsIdempotentButRejectsChangedQuantity() {
         PostOrderDTO request = new PostOrderDTO();
         ProductItem item = new ProductItem();
         item.setProductId("p1");
         item.setPropertyValueIds("v1");
         item.setBuyCount(1);
-        item.setRecommendationRequestId("recommendation-1");
-        item.setRecommendationPosition(1);
-        item.setRecommendationSource("content");
-        item.setRecommendationAttributedAt(new Date(1000));
         request.setOrderList(List.of(item));
         OrderRequestIdempotency stored = new OrderRequestIdempotency();
         stored.setStatus("COMPLETED");
@@ -72,10 +68,6 @@ class OrderRequestIdempotencyServiceTest {
                 .thenReturn(stored);
         service.execute("u1", OrderRequestIdempotencyService.COMMAND_POST_ORDER, KEY, request,
                 PayInfoDTO.class, OrderRequestIdempotencyServiceTest::payInfo);
-        item.setRecommendationAttributedAt(new Date(2000));
-        assertTrue(service.execute("u1", OrderRequestIdempotencyService.COMMAND_POST_ORDER, KEY, request,
-                PayInfoDTO.class, () -> { throw new AssertionError("must replay"); }).getIdempotencyReplayed());
-        item.clearRecommendationAttribution();
         assertTrue(service.execute("u1", OrderRequestIdempotencyService.COMMAND_POST_ORDER, KEY, request,
                 PayInfoDTO.class, () -> { throw new AssertionError("must replay"); }).getIdempotencyReplayed());
         item.setBuyCount(2);

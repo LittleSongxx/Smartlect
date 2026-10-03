@@ -31,8 +31,6 @@ class CommerceActionStatusServiceTest {
     @Mock
     private OrderItemService orderItemService;
     @Mock
-    private OrderCommentService orderCommentService;
-    @Mock
     private RefundSagaTransactionService refundSagaTransactionService;
 
     @Mock

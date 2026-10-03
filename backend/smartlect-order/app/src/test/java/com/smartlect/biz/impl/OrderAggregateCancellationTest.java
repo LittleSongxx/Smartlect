@@ -15,7 +15,6 @@ import com.smartlect.entity.query.OrderCouponRelQuery;
 import com.smartlect.entity.query.OrderInfoQuery;
 import com.smartlect.entity.query.OrderItemQuery;
 import com.smartlect.exception.BusinessException;
-import com.smartlect.integration.CommerceOutcomeClient;
 import com.smartlect.mappers.OrderCouponRelMapper;
 import com.smartlect.mappers.OrderInfoMapper;
 import com.smartlect.mappers.OrderItemMapper;
@@ -60,8 +59,6 @@ class OrderAggregateCancellationTest {
     private CouponFeignSupport couponFeignSupport;
     @Mock
     private RemoteCompensateRecorder remoteCompensateRecorder;
-    @Mock
-    private CommerceOutcomeClient commerceOutcomeClient;
     @InjectMocks
     private OrderInfoServiceImpl service;
 

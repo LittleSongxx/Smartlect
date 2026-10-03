@@ -40,13 +40,13 @@ class MqListenerHelperTest {
         when(idempotencyHelper.resolveIdempotencyKey(source)).thenReturn("message-1");
 
         helper.nackWithRetryOrDlq(
-                channel, 17L, source, RabbitMQConfig.USER_MEMBER_QUEUE,
+                channel, 17L, source, RabbitMQConfig.REFUND_STOCK_QUEUE,
                 "payload", new IllegalStateException("temporary"));
 
         ArgumentCaptor<Message> retry = ArgumentCaptor.forClass(Message.class);
         verify(publisherConfirmHelper).sendRawAndAwaitConfirm(
                 eq(RabbitMQConfig.MQ_RETRY_EXCHANGE),
-                eq(RabbitMQConfig.retryRoutingKey(RabbitMQConfig.USER_MEMBER_QUEUE, 1)),
+                eq(RabbitMQConfig.retryRoutingKey(RabbitMQConfig.REFUND_STOCK_QUEUE, 1)),
                 retry.capture(),
                 anyString());
         assertEquals(1, ((Number) retry.getValue().getMessageProperties()
@@ -84,10 +84,10 @@ class MqListenerHelperTest {
         RuntimeException failure = new RuntimeException("invalid message");
 
         helper.nackWithRetryOrDlq(
-                channel, 19L, source, RabbitMQConfig.NOTIFY_QUEUE,
+                channel, 19L, source, RabbitMQConfig.REFUND_RESULT_QUEUE,
                 "payload", failure);
 
-        verify(failureRecorder).record(RabbitMQConfig.NOTIFY_QUEUE, source, "payload", failure);
+        verify(failureRecorder).record(RabbitMQConfig.REFUND_RESULT_QUEUE, source, "payload", failure);
         verify(publisherConfirmHelper).sendRawAndAwaitConfirm(
                 eq(RabbitMQConfig.MQ_FAILURE_EXCHANGE),
                 eq(RabbitMQConfig.MQ_FAILURE_KEY),
@@ -104,12 +104,12 @@ class MqListenerHelperTest {
         when(idempotencyHelper.resolveIdempotencyKey(source)).thenReturn("message-3");
 
         helper.ackCompletedOrDeferBusy(
-                channel, 20L, source, RabbitMQConfig.USER_MEMBER_QUEUE);
+                channel, 20L, source, RabbitMQConfig.REFUND_STOCK_QUEUE);
 
         ArgumentCaptor<Message> deferred = ArgumentCaptor.forClass(Message.class);
         verify(publisherConfirmHelper).sendRawAndAwaitConfirm(
                 eq(RabbitMQConfig.MQ_RETRY_EXCHANGE),
-                eq(RabbitMQConfig.retryRoutingKey(RabbitMQConfig.USER_MEMBER_QUEUE, 2)),
+                eq(RabbitMQConfig.retryRoutingKey(RabbitMQConfig.REFUND_STOCK_QUEUE, 2)),
                 deferred.capture(),
                 anyString());
         assertEquals(1, ((Number) deferred.getValue().getMessageProperties()
@@ -128,7 +128,7 @@ class MqListenerHelperTest {
                 .thenReturn(MqConsumerIdempotencyHelper.ClaimResult.COMPLETED);
 
         helper.ackCompletedOrDeferBusy(
-                channel, 21L, source, RabbitMQConfig.NOTIFY_QUEUE);
+                channel, 21L, source, RabbitMQConfig.REFUND_RESULT_QUEUE);
 
         verify(channel).basicAck(21L, false);
         verify(publisherConfirmHelper, never()).sendRawAndAwaitConfirm(

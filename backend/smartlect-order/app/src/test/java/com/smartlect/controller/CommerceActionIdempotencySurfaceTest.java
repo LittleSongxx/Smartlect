@@ -21,21 +21,6 @@ class CommerceActionIdempotencySurfaceTest {
         assertIdempotencyHeader(
                 OrderController.class.getDeclaredMethod(
                         "refundOrder", String.class, String.class));
-        assertIdempotencyHeader(
-                OrderCommentController.class.getDeclaredMethod(
-                        "postComment",
-                        String.class,
-                        String.class,
-                        String.class,
-                        Integer.class,
-                        String.class));
-        assertIdempotencyHeader(
-                OrderCommentController.class.getDeclaredMethod(
-                        "postReComment",
-                        String.class,
-                        String.class,
-                        String.class,
-                        String.class));
     }
 
     private static void assertIdempotencyHeader(Method method) {

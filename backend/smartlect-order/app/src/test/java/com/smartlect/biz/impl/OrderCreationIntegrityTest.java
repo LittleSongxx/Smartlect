@@ -75,8 +75,6 @@ class OrderCreationIntegrityTest {
     @Mock
     private com.smartlect.biz.OrderQuoteService orderQuoteService;
     @Mock
-    private com.smartlect.biz.OrderAttributionService orderAttributionService;
-    @Mock
     private com.smartlect.api.support.CouponFeignSupport couponFeignSupport;
     @Mock
     private com.smartlect.mappers.OrderCouponRelMapper<com.smartlect.entity.po.OrderCouponRel,
@@ -129,7 +127,6 @@ class OrderCreationIntegrityTest {
         verify(orderLogisticsInfoMapper).insertBatch(logisticsCaptor.capture());
 
         List<OrderInfo> orders = orderCaptor.getValue();
-        verify(orderAttributionService).freeze("user-1", orders, null);
         List<OrderLogisticsInfo> logistics = logisticsCaptor.getValue();
         assertEquals(2, orders.size());
         assertEquals(2, logistics.size());

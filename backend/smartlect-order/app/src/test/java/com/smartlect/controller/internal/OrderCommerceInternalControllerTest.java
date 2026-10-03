@@ -1,6 +1,5 @@
 package com.smartlect.controller.internal;
 
-import com.smartlect.api.enums.OrderCommentStatusEnum;
 import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderItemService;
 import com.smartlect.biz.RefundSagaTransactionService;
@@ -272,58 +271,6 @@ class OrderCommerceInternalControllerTest {
         assertEquals("DENIED", response.getData().get("decision"));
         assertEquals("ORDER_STATUS_NOT_CANCELLABLE",
                 response.getData().get("reasonCode"));
-    }
-
-    @Test
-    void actionCapabilityAllowsFirstReviewOnlyBeforeEvaluation() {
-        delegateAs("u1");
-        OrderInfo order = new OrderInfo();
-        order.setOrderId("SM202608050001");
-        order.setUserId("u1");
-        order.setCommentStatus(OrderCommentStatusEnum.NOT_EVALUATED.getStatus());
-        when(orderInfoService.getOrderInfoByOrderId("SM202608050001"))
-                .thenReturn(order);
-
-        ResponseVO<Map<String, Object>> allowed = controller.actionCapability(Map.of(
-                "action", "PRODUCT_REVIEW",
-                "orderId", "SM202608050001"
-        ));
-        order.setCommentStatus(OrderCommentStatusEnum.EVALUATED.getStatus());
-        ResponseVO<Map<String, Object>> denied = controller.actionCapability(Map.of(
-                "action", "PRODUCT_REVIEW",
-                "orderId", "SM202608050001"
-        ));
-
-        assertEquals("ALLOWED", allowed.getData().get("decision"));
-        assertEquals("DENIED", denied.getData().get("decision"));
-        assertEquals("COMMENT_ALREADY_EVALUATED",
-                denied.getData().get("reasonCode"));
-    }
-
-    @Test
-    void actionCapabilityAllowsRecommentOnlyAfterFirstEvaluation() {
-        delegateAs("u1");
-        OrderInfo order = new OrderInfo();
-        order.setOrderId("SM202608050001");
-        order.setUserId("u1");
-        order.setCommentStatus(OrderCommentStatusEnum.NOT_EVALUATED.getStatus());
-        when(orderInfoService.getOrderInfoByOrderId("SM202608050001"))
-                .thenReturn(order);
-
-        ResponseVO<Map<String, Object>> denied = controller.actionCapability(Map.of(
-                "action", "RECOMMENT",
-                "orderId", "SM202608050001"
-        ));
-        order.setCommentStatus(OrderCommentStatusEnum.EVALUATED.getStatus());
-        ResponseVO<Map<String, Object>> allowed = controller.actionCapability(Map.of(
-                "action", "RECOMMENT",
-                "orderId", "SM202608050001"
-        ));
-
-        assertEquals("DENIED", denied.getData().get("decision"));
-        assertEquals("COMMENT_NOT_RECOMMENTABLE",
-                denied.getData().get("reasonCode"));
-        assertEquals("ALLOWED", allowed.getData().get("decision"));
     }
 
     @Test

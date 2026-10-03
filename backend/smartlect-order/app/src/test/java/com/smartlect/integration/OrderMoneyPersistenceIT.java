@@ -167,56 +167,6 @@ class OrderMoneyPersistenceIT {
                 () -> transaction.execute(status -> restarted.lock("another-user", quoteId)));
     }
 
-    @Test
-    void attributionFreezesWithOrderTransactionAndCannotBeReplacedAfterCommit() throws Exception {
-        var source = sessions.getConfiguration().getEnvironment().getDataSource();
-        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(source);
-        var transaction = new org.springframework.transaction.support.TransactionTemplate(
-                new org.springframework.jdbc.datasource.DataSourceTransactionManager(source));
-        String secret = "synthetic-attribution-secret-only-for-test";
-        var service = new com.smartlect.biz.OrderAttributionService(jdbc, secret);
-        var now = java.time.Instant.parse("2026-09-09T01:00:00Z");
-        OrderInfo order = new OrderInfo();
-        order.setOrderId("f3-attribution-order"); order.setUserId("attrib-user");
-        order.setOrderTime(java.util.Date.from(now));
-        String token = attributionToken(secret, now, "a".repeat(32));
-        assertThrows(IllegalStateException.class, () -> transaction.executeWithoutResult(status -> {
-            jdbc.update("INSERT INTO order_info(order_id,user_id,order_time) VALUES(?,?,?)", order.getOrderId(),
-                    order.getUserId(), java.sql.Timestamp.from(now));
-            service.freeze(order.getUserId(), List.of(order), token);
-            throw new IllegalStateException("synthetic failure after context freeze");
-        }));
-        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM order_attribution_context WHERE order_id=?",
-                Integer.class, order.getOrderId()));
-        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM order_info WHERE order_id=?", Integer.class, order.getOrderId()));
-        transaction.executeWithoutResult(status -> {
-            jdbc.update("INSERT INTO order_info(order_id,user_id,order_time) VALUES(?,?,?)", order.getOrderId(),
-                    order.getUserId(), java.sql.Timestamp.from(now));
-            service.freeze(order.getUserId(), List.of(order), token);
-        });
-        var reconstructed = new com.smartlect.biz.OrderAttributionService(jdbc, secret);
-        var frozen = reconstructed.eventAttribution(order.getOrderId());
-        assertEquals("VERIFIED", frozen.get("contextStatus"));
-        assertEquals("a".repeat(32), frozen.get("contextId"));
-        assertEquals(now.toString(), frozen.get("orderCreatedAt"));
-        assertEquals("UNKNOWN_CONTEXT", reconstructed.verify(token, order.getUserId(), now.plusSeconds(301)).status());
-        String different = attributionToken(secret, now, "c".repeat(32));
-        assertThrows(org.springframework.dao.DuplicateKeyException.class, () -> transaction.executeWithoutResult(status ->
-                reconstructed.freeze(order.getUserId(), List.of(order), different)));
-        assertEquals(frozen, reconstructed.eventAttribution(order.getOrderId()));
-    }
-
-    private static String attributionToken(String secret, java.time.Instant now, String contextId) throws Exception {
-        String json = com.smartlect.utils.JsonUtils.toJson(java.util.Map.of("v", 1, "context_id", contextId,
-                "snapshot_version", 1, "snapshot_hash", "b".repeat(64), "user_id", "attrib-user",
-                "execution_scope_id", "f3-test", "issued_at", now.getEpochSecond(), "expires_at", now.getEpochSecond() + 300));
-        String encoded = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        var mac = javax.crypto.Mac.getInstance("HmacSHA256");
-        mac.init(new javax.crypto.spec.SecretKeySpec(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
-        return encoded + "." + java.util.HexFormat.of().formatHex(mac.doFinal(
-                ("smartlect-attribution-v1:" + encoded).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-    }
-
     private static OrderInfo seed(SqlSession session, String id, String paid) {
         OrderInfo order = new OrderInfo();
         order.setOrderId(id);
@@ -243,8 +193,6 @@ class OrderMoneyPersistenceIT {
     private static void allocate(SqlSession session, OrderInfo order) {
         var service = new OrderInfoServiceImpl();
         ReflectionTestUtils.setField(service, "orderItemMapper", session.getMapper(OrderItemMapper.class));
-        ReflectionTestUtils.setField(service, "commerceOutcomeClient", mock(CommerceOutcomeClient.class));
-        ReflectionTestUtils.setField(service, "orderAttributionService", mock(com.smartlect.biz.OrderAttributionService.class));
         ReflectionTestUtils.invokeMethod(service, "recordPaymentOutcomes", List.of(order), order.getPayOrderId());
     }
 

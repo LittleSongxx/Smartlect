@@ -8,7 +8,6 @@ import com.smartlect.entity.po.OrderItem;
 import com.smartlect.entity.po.RefundRequest;
 import com.smartlect.entity.query.OrderInfoQuery;
 import com.smartlect.entity.query.OrderItemQuery;
-import com.smartlect.integration.CommerceOutcomeClient;
 import com.smartlect.mappers.OrderInfoMapper;
 import com.smartlect.mappers.OrderItemMapper;
 import com.smartlect.mappers.RefundRequestMapper;
@@ -34,19 +33,15 @@ class ShopMoneyContractProbeTest {
     void equalPriceSkuLinesReceiveEqualPaidAmounts() {
         var service = new OrderInfoServiceImpl();
         OrderItemMapper<OrderItem, OrderItemQuery> items = mock(OrderItemMapper.class);
-        var outcomes = mock(CommerceOutcomeClient.class);
         ReflectionTestUtils.setField(service, "orderItemMapper", items);
-        ReflectionTestUtils.setField(service, "commerceOutcomeClient", outcomes);
-        ReflectionTestUtils.setField(service, "orderAttributionService", mock(com.smartlect.biz.OrderAttributionService.class));
         when(items.selectList(any(OrderItemQuery.class))).thenReturn(List.of(item("1"), item("2"), item("3")));
         when(items.recordPaidAmount(anyString(), any())).thenReturn(1);
 
         ReflectionTestUtils.invokeMethod(service, "recordPaymentOutcomes", List.of(order("300.00")), "pay-1");
 
-        var emitted = ArgumentCaptor.forClass(CommerceOutcomeClient.OutcomeEvent.class);
-        verify(outcomes, times(3)).recordV2AfterCommit(emitted.capture());
-        List<Object> amounts = emitted.getAllValues().stream().map(e -> e.payload().get("paidAmount")).toList();
-        assertEquals(List.of(new BigDecimal("100.00"), new BigDecimal("100.00"), new BigDecimal("100.00")), amounts);
+        var paid = ArgumentCaptor.forClass(java.math.BigDecimal.class);
+        verify(items, times(3)).recordPaidAmount(anyString(), paid.capture());
+        assertEquals(List.of(new BigDecimal("100.00"), new BigDecimal("100.00"), new BigDecimal("100.00")), paid.getAllValues());
     }
 
     @Test
@@ -80,10 +75,7 @@ class ShopMoneyContractProbeTest {
     void manyTinyLinesAndZeroPriceLinesStayBoundedAndConserveEveryCent() {
         var service = new OrderInfoServiceImpl();
         OrderItemMapper<OrderItem, OrderItemQuery> items = mock(OrderItemMapper.class);
-        var outcomes = mock(CommerceOutcomeClient.class);
         ReflectionTestUtils.setField(service, "orderItemMapper", items);
-        ReflectionTestUtils.setField(service, "commerceOutcomeClient", outcomes);
-        ReflectionTestUtils.setField(service, "orderAttributionService", mock(com.smartlect.biz.OrderAttributionService.class));
         List<OrderItem> lines = new ArrayList<>();
         for (int index = 0; index < 100; index++) {
             OrderItem line = item(String.format("%03d", index));

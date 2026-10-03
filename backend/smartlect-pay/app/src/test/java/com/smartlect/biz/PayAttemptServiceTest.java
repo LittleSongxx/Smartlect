@@ -5,7 +5,6 @@ import com.smartlect.biz.impl.PayChannel4Mock;
 import com.smartlect.controller.AGlobalExceptionHandlerController;
 import com.smartlect.controller.internal.MockPaymentController;
 import com.smartlect.exception.HttpBusinessException;
-import com.smartlect.integration.CommerceOutcomeClient;
 import com.smartlect.web.InternalApiAuthFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -69,8 +68,7 @@ class PayAttemptServiceTest {
     @Test
     void nonpending_wrongOwner_and_realChannel_do_not_create_attempts_or_events() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        CommerceOutcomeClient outcomes = mock(CommerceOutcomeClient.class);
-        var service = new PayAttemptService(jdbc, outcomes);
+                var service = new PayAttemptService(jdbc);
         var request = new PayAttemptService.Request("attempt-1", "pay-1");
         when(jdbc.queryForList(startsWith("SELECT user_id"), anyString())).thenReturn(List.of());
         for (int state : List.of(1, 2, 3)) {
@@ -85,7 +83,6 @@ class PayAttemptServiceTest {
         assertEquals(403, assertThrows(HttpBusinessException.class,
                 () -> service.decline("owner-1", request)).getHttpStatus());
         verify(jdbc, never()).update(anyString(), any(Object[].class));
-        verifyNoInteractions(outcomes);
     }
 
     private static Map<String, Object> intent(String owner, String channel, int state) {

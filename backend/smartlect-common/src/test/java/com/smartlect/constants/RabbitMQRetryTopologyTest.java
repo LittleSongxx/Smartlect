@@ -34,7 +34,7 @@ class RabbitMQRetryTopologyTest {
         assertRetryQueues(queueNames, RabbitMQConfig.RUSHING_ORDER_QUEUE);
         assertRetryQueues(queueNames, RabbitMQConfig.REFUND_STOCK_QUEUE);
         assertRetryQueues(queueNames, RabbitMQConfig.REFUND_RESULT_QUEUE);
-        assertRetryQueues(queueNames, RabbitMQConfig.USER_MEMBER_QUEUE);
+        assertRetryQueues(queueNames, RabbitMQConfig.REFUND_STOCK_QUEUE);
         assertRetryQueues(queueNames, RabbitMQConfig.USER_TEMP_BAN_DEAD_QUEUE);
     }
 
@@ -49,17 +49,6 @@ class RabbitMQRetryTopologyTest {
                 config.rabbitListenerContainerFactory(connectionFactory, configurer);
 
         verify(configurer).configure(factory, connectionFactory);
-    }
-
-    @Test
-    void durableNotificationQueueDoesNotSilentlyExpireMessages() {
-        RabbitMQConfig config = new RabbitMQConfig();
-        ReflectionTestUtils.setField(config, "queueType", "quorum");
-
-        Queue queue = config.notifyQueue();
-
-        assertTrue(queue.isDurable());
-        assertFalse(queue.getArguments().containsKey("x-message-ttl"));
     }
 
     private static void assertRetryQueues(Set<String> queueNames, String queueName) {

@@ -52,7 +52,7 @@ class OrderCommerceV2ControllerTest {
         String key = "confirmed-order-key-001";
         var body = JsonUtils.mapper().readTree("{\"quoteId\":\"" + quoteId
                 + "\",\"confirmedAmountCents\":1000,\"order\":" + ORDER + "}");
-        when(orders.createConfirmed(eq("trusted-user"), any(), eq(quoteId), eq(1000L), eq(key), isNull()))
+        when(orders.createConfirmed(eq("trusted-user"), any(), eq(quoteId), eq(1000L), eq(key)))
                 .thenReturn(new PayInfoDTO(null, "pay1", new BigDecimal("10.00")));
         var response = controller.createConfirmed(body, key);
         assertEquals("business_completed", response.getData().get("commandStatus"));
@@ -63,14 +63,14 @@ class OrderCommerceV2ControllerTest {
     @Test
     void optionalContextIsOutsidePurchaseAndMalformedContextDoesNotCoerceMoney() throws Exception {
         bindUser();
-        when(orders.createConfirmed(eq("trusted-user"), any(), eq("q"), eq(1000L), eq("original-key"), nullable(String.class)))
+        when(orders.createConfirmed(eq("trusted-user"), any(), eq("q"), eq(1000L), eq("original-key")))
                 .thenReturn(new PayInfoDTO(null, "pay1", new BigDecimal("10.00")));
         for (String token : new String[]{"123", "{}", "null", "\"signed-context\""}) {
             var body = JsonUtils.mapper().readTree("{\"quoteId\":\"q\",\"confirmedAmountCents\":1000,\"order\":" + ORDER
                     + ",\"attributionContextToken\":" + token + "}");
             assertEquals("business_completed", controller.createConfirmed(body, "original-key").getData().get("commandStatus"));
         }
-        verify(orders).createConfirmed(eq("trusted-user"), any(), eq("q"), eq(1000L), eq("original-key"), eq("signed-context"));
+        verify(orders, org.mockito.Mockito.times(4)).createConfirmed(eq("trusted-user"), any(), eq("q"), eq(1000L), eq("original-key"));
         var badAmount = JsonUtils.mapper().readTree("{\"quoteId\":\"q\",\"confirmedAmountCents\":\"1000\",\"order\":" + ORDER + "}");
         assertThrows(HttpBusinessException.class, () -> controller.createConfirmed(badAmount, "original-key"));
     }
