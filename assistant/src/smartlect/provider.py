@@ -12,7 +12,7 @@ import time
 import uuid
 from urllib.parse import urlsplit
 
-import httpx
+import openai
 
 from smartlect.cache import TtlCache
 from smartlect.observability import prometheus_counter
@@ -24,6 +24,14 @@ EMBEDDING_CACHE_REQUESTS = prometheus_counter("growth_embedding_cache_requests_t
                                               "Query-embedding cache outcomes", ["outcome"])
 
 
+def _httpx_client(transport):
+    """测试注入 mock transport；生产 None 交给 SDK 默认连接池。"""
+    if transport is None:
+        return None
+    import httpx
+    return httpx.AsyncClient(transport=transport, timeout=25, trust_env=False, follow_redirects=False)
+
+
 class ProviderError(RuntimeError):
     def __init__(self, code, *, retryable=False, http_status=None, attempts=None):
         super().__init__(code)
@@ -31,49 +39,6 @@ class ProviderError(RuntimeError):
         self.retryable = retryable
         self.http_status = http_status
         self.attempts = attempts or []
-
-
-def bounded(raw, default, low, high):
-    """Env knobs are strings; clamp to a sane range and fall back on garbage."""
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return default
-    return low if value < low else high if value > high else value
-
-
-class _Breaker:
-    """Consecutive-failure circuit. While open, every call fails fast with
-    model_circuit_open. After cooldown, exactly one probe is admitted (half-open);
-    other callers stay rejected until that probe succeeds (close) or fails (re-open)."""
-
-    def __init__(self, failures, cooldown_s, endpoint):
-        self.failures, self.cooldown_s = failures, cooldown_s
-        self.endpoint = endpoint
-        self._consecutive, self._opened_until = 0, 0.0
-        self._half_open_inflight = False
-        self._lock = threading.Lock()
-
-    def check(self):
-        with self._lock:
-            if self._consecutive < self.failures:
-                return
-            if time.monotonic() < self._opened_until or self._half_open_inflight:
-                MODEL_BREAKER_REJECTIONS.labels(self.endpoint).inc()
-                raise ProviderError("model_circuit_open", retryable=False)
-            self._half_open_inflight = True
-
-    def record(self, succeeded):
-        with self._lock:
-            if succeeded:
-                self._consecutive = 0
-                self._opened_until = 0.0
-                self._half_open_inflight = False
-                return
-            self._consecutive += 1
-            self._half_open_inflight = False
-            if self._consecutive >= self.failures:
-                self._opened_until = time.monotonic() + self.cooldown_s
 
 
 async def _callback(callback, *args):
@@ -109,6 +74,15 @@ def index_trace(record):
     safe["request_parameters"]["response_format_type"] = format_type if (
         isinstance(format_type, str) and format_type in {"json_object", "json_schema"}) else None
     return safe
+
+
+def bounded(raw, default, low, high):
+    """Env knobs are strings; clamp to a sane range and fall back on garbage."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return low if value < low else high if value > high else value
 
 
 class IndexModelAudit(SessionStore):
@@ -215,10 +189,6 @@ class Provider:
         # in front of the provider instead of multiplying paid model calls.
         self._slots = asyncio.Semaphore(bounded(config.get("SMARTLECT_MODEL_CONCURRENCY"), 2, 1, 8))
         self._client = None  # shared per process; created lazily inside the running loop
-        self._breakers = {prefix: _Breaker(bounded(config.get("SMARTLECT_MODEL_BREAKER_FAILURES"), 4, 2, 50),
-                                           bounded(config.get("SMARTLECT_MODEL_BREAKER_COOLDOWN_S"), 30, 1, 600),
-                                           prefix.lower())
-                          for prefix in ("MODEL", "EMBEDDING")}
         self._embedding_cache = TtlCache(512, 1800)
 
     def _endpoint(self, prefix):
@@ -385,7 +355,6 @@ class Provider:
         if type(max_attempts) is not int or not 1 <= max_attempts <= 2:
             raise ValueError("model_attempt_limit_must_be_1_or_2")
         base, key, region = self._endpoint(prefix)
-        self._breakers[prefix].check()
         attempts = []
         overall_start = time.monotonic()
         for attempt in range(1, max_attempts + 1):
@@ -419,60 +388,74 @@ class Provider:
                     # asyncio enforces a total attempt deadline, including a slowly arriving stream.
                     async with asyncio.timeout(25):
                         if self._client is None:
-                            self._client = httpx.AsyncClient(transport=self._transport, timeout=25,
-                                                             trust_env=False, follow_redirects=False)
-                        async with self._client.stream("POST", base + path, json=body,
-                                                       headers={"Authorization": "Bearer " + key}) as response:
-                            trace["http_status"] = response.status_code
-                            if response.status_code != 200:
-                                raise ProviderError("model_http_error", http_status=response.status_code,
-                                                    retryable=response.status_code == 429 or response.status_code >= 500)
+                            base, key, _ = self._endpoint(prefix)
+                            self._client = openai.AsyncOpenAI(
+                                api_key=key, base_url=base, timeout=25, max_retries=0,
+                                http_client=_httpx_client(self._transport))
+                        sdk_params = {k: v for k, v in body.items()
+                                      if k not in ("enable_thinking", "enable_search", "stream_options", "stream")}
+                        extra_body = {k: body[k] for k in ("enable_thinking", "enable_search") if k in body}
+                        if prefix == "MODEL":
+                            completion = await self._client.chat.completions.create(
+                                stream=stream, stream_options=body.get("stream_options"),
+                                extra_body=extra_body or None, **sdk_params)
                             if stream:
-                                result = await self._stream(response, delta)
+                                result = await self._consume_stream(completion, delta)
                             else:
-                                result = json.loads(await response.aread())
-                            if not isinstance(result, dict):
-                                raise ProviderError("model_invalid_response")
-                            trace["usage"] = _usage(result.get("usage"))
-                            returned_model = result.get("model")
-                            allowed_returned = ({self.model_id, "qwen3.7-plus", "qwen3.7-plus-2026-05-26"}
-                                                if prefix == "MODEL" else {body["model"]})
-                            if returned_model is not None and returned_model not in allowed_returned:
-                                raise ProviderError("model_response_id_mismatch")
-                            trace["returned_model"] = returned_model
-                            if prefix == "MODEL":
-                                if returned_model == "qwen3.7-plus-2026-05-26":
-                                    trace["resolved_snapshot"] = returned_model
-                                self._price(trace)
-                                choices = result.get("choices")
-                                if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+                                if not hasattr(completion, "model_dump"):
                                     raise ProviderError("model_invalid_response")
-                                finish_reason = choices[0].get("finish_reason")
-                                if finish_reason == "length":
-                                    raise ProviderError("model_output_truncated", retryable=True)
-                                if finish_reason not in {"stop", "tool_calls"}:
-                                    raise ProviderError("model_incomplete_response")
-                                output = {"message": _message(choices[0].get("message"))}
-                            else:
-                                data = result.get("data")
-                                if not isinstance(data, list) or len(data) != len(body["input"]):
-                                    raise ProviderError("embedding_invalid_response")
-                                if any(not isinstance(item, dict) or type(item.get("index")) is not int for item in data):
-                                    raise ProviderError("embedding_invalid_response")
-                                data = sorted(data, key=lambda item: item["index"])
-                                vectors = [item.get("embedding") for item in data]
-                                if ([item["index"] for item in data] != list(range(len(data)))
-                                        or any(not isinstance(v, list) or len(v) != body["dimensions"]
-                                               or any(type(x) not in {int, float} or not math.isfinite(x) for x in v)
-                                               or not any(v) for v in vectors)):
-                                    raise ProviderError("embedding_invalid_response")
-                                output = {"embeddings": vectors}
-                            trace["status"] = "succeeded"
+                                result = completion.model_dump(exclude_none=True)
+                        else:
+                            result = (await self._client.embeddings.create(**sdk_params)).model_dump(exclude_none=True)
+                        if not isinstance(result, dict):
+                            raise ProviderError("model_invalid_response")
+                        trace["http_status"] = 200
+                        trace["usage"] = _usage(result.get("usage"))
+                        returned_model = result.get("model")
+                        allowed_returned = ({self.model_id, "qwen3.7-plus", "qwen3.7-plus-2026-05-26"}
+                                            if prefix == "MODEL" else {body["model"]})
+                        if returned_model is not None and returned_model not in allowed_returned:
+                            raise ProviderError("model_response_id_mismatch")
+                        trace["returned_model"] = returned_model
+                        if prefix == "MODEL":
+                            if returned_model == "qwen3.7-plus-2026-05-26":
+                                trace["resolved_snapshot"] = returned_model
+                            self._price(trace)
+                            choices = result.get("choices")
+                            if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+                                raise ProviderError("model_invalid_response")
+                            finish_reason = choices[0].get("finish_reason")
+                            if finish_reason == "length":
+                                raise ProviderError("model_output_truncated", retryable=True)
+                            if finish_reason not in {"stop", "tool_calls"}:
+                                raise ProviderError("model_incomplete_response")
+                            output = {"message": _message(choices[0].get("message"))}
+                        else:
+                            data = result.get("data")
+                            if not isinstance(data, list) or len(data) != len(body["input"]):
+                                raise ProviderError("embedding_invalid_response")
+                            if any(not isinstance(item, dict) or type(item.get("index")) is not int for item in data):
+                                raise ProviderError("embedding_invalid_response")
+                            data = sorted(data, key=lambda item: item["index"])
+                            vectors = [item.get("embedding") for item in data]
+                            if ([item["index"] for item in data] != list(range(len(data)))
+                                    or any(not isinstance(v, list) or len(v) != body["dimensions"]
+                                           or any(type(x) not in {int, float} or not math.isfinite(x) for x in v)
+                                           or not any(v) for v in vectors)):
+                                raise ProviderError("embedding_invalid_response")
+                            output = {"embeddings": vectors}
+                        trace["status"] = "succeeded"
                 except ProviderError as exc:
                     error = exc
-                except (httpx.TimeoutException, TimeoutError):
+                except (openai.APITimeoutError, TimeoutError):
                     error = ProviderError("model_timeout", retryable=True)
-                except httpx.HTTPError:
+                except openai.APIConnectionError:
+                    error = ProviderError("model_transport_error", retryable=True)
+                except openai.APIStatusError as exc:
+                    status = exc.status_code
+                    error = ProviderError("model_http_error", http_status=status,
+                                          retryable=status == 429 or status >= 500)
+                except openai.APIError:
                     error = ProviderError("model_transport_error", retryable=True)
                 except (ValueError, TypeError, KeyError, IndexError):
                     error = ProviderError("model_invalid_response")
@@ -488,14 +471,12 @@ class Provider:
             if error:
                 error.attempts = attempts
                 if not error.retryable or emitted or attempt == max_attempts:
-                    self._breakers[prefix].record(False)
                     raise error from None
                 if error.code == "model_output_truncated":
                     key = "max_completion_tokens" if "max_completion_tokens" in body else "max_tokens"
                     body[key] = min(4096, max(int(body.get(key) or 1024) * 2, 1))
                 await asyncio.sleep(min(0.2 * (2 ** (attempt - 1)), 2.0) + random.uniform(0, 0.1))
                 continue
-            self._breakers[prefix].record(True)
             metadata = {**trace, "attempts": len(attempts),
                         "latency_ms": round((time.monotonic() - overall_start) * 1000, 2)}
             if prefix == "EMBEDDING":
@@ -522,6 +503,56 @@ class Provider:
         # List-price estimate excludes account discounts and cache discounts; never an invoice.
         trace["cost_estimate_cny"] = round((usage["input_tokens"] * input_price + usage["output_tokens"] * output_price) / 1000000, 8)
         trace["price_version"] = "aliyun-qwen3.7-plus-cn-beijing-2026-09-09-no-discounts"
+
+    @staticmethod
+    async def _consume_stream(stream, on_delta):
+        """SDK chunk 迭代器聚合成与原 SSE 重组一致的 dict。"""
+        result = {"choices": [{"message": {"role": "assistant", "content": ""}, "finish_reason": None}]}
+        calls = {}
+        usage = None
+        returned_model = None
+        async for chunk in stream:
+            if isinstance(chunk, str) or not hasattr(chunk, "model_dump"):
+                raise ProviderError("model_stream_error")
+            data = chunk.model_dump(exclude_none=True)
+            if not isinstance(data, dict) or data.get("error"):
+                raise ProviderError("model_stream_error")
+            if data.get("usage"):
+                usage = data["usage"]
+            if data.get("model"):
+                returned_model = data["model"]
+            choices = data.get("choices") or []
+            if not choices:
+                continue
+            choice = choices[0]
+            current = result["choices"][0]
+            if choice.get("finish_reason"):
+                current["finish_reason"] = choice["finish_reason"]
+            delta = choice.get("delta") or {}
+            content = delta.get("content")
+            if content:
+                current["message"]["content"] += content
+                await _callback(on_delta, content)
+            for fragment in delta.get("tool_calls") or []:
+                if not isinstance(fragment, dict) or not isinstance(fragment.get("function") or {}, dict):
+                    raise ProviderError("model_invalid_tool_calls")
+                index = fragment.get("index")
+                if type(index) is not int or not 0 <= index < 10:
+                    raise ProviderError("model_invalid_tool_calls")
+                call = calls.setdefault(index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                if fragment.get("id"):
+                    call["id"] += fragment["id"]
+                if fragment.get("type") not in {None, "function"}:
+                    raise ProviderError("model_invalid_tool_calls")
+                for field in ("name", "arguments"):
+                    call["function"][field] += (fragment.get("function") or {}).get(field) or ""
+        if usage:
+            result["usage"] = usage
+        if returned_model:
+            result["model"] = returned_model
+        if calls:
+            result["choices"][0]["message"]["tool_calls"] = [calls[i] for i in sorted(calls)]
+        return result
 
     @staticmethod
     async def _stream(response, on_delta):

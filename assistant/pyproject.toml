@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Smartlect AI assistant service: bounded shopping agent, knowledge, recommendations, ledger"
 requires-python = ">=3.11"
 dependencies = [
-    "pika==1.4.1", "PyMySQL[rsa]==1.2.0", "cryptography==50.0.1",
+    "openai==3.14.1", "PyMySQL[rsa]==1.2.0", "cryptography==50.0.1",
     "cffi==2.1.1", "pycparser==3.0",
     "fastapi==0.141.1", "pydantic==2.13.4", "uvicorn==0.32.1",
     "langgraph==1.0.10", "httpx==0.28.1", "python-dotenv==1.2.2", "pypdf==6.18.0",
