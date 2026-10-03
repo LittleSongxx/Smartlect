@@ -109,14 +109,14 @@ class OrderAggregateCancellationTest {
 	@Test
 	void unconfiguredAlipayDoesNotBlockCancellationOfAnUnpaidOrder() {
 		OrderInfo order = order("order-1", "pay-1", OrderStatusEnum.WAIT_PAYMENT);
-		order.setPayChannel("alipay_wap");
+		order.setPayChannel("mock");
 		when(orderInfoMapper.selectByOrderId("order-1")).thenReturn(order);
 		when(orderInfoMapper.selectList(any(OrderInfoQuery.class))).thenReturn(List.of(order));
 		when(orderInfoMapper.updateByParam(any(OrderInfo.class), any(OrderInfoQuery.class))).thenReturn(1);
 		when(orderItemMapper.selectList(any(OrderItemQuery.class))).thenReturn(List.of(item("order-1", "p1")));
 		when(orderCouponRelMapper.selectList(any(OrderCouponRelQuery.class))).thenReturn(List.of());
 		doThrow(new BusinessException("支付宝支付未配置"))
-				.when(payFeignSupport).closeOrder("pay-1", "alipay_wap");
+				.when(payFeignSupport).closeOrder("pay-1", "mock");
 
 		service.cancelOrder("user-1", "order-1", OrderStatusEnum.WAIT_PAYMENT);
 
@@ -126,12 +126,12 @@ class OrderAggregateCancellationTest {
 	@Test
 	void otherChannelCloseFailuresStillFailCancellation() {
 		OrderInfo order = order("order-1", "pay-1", OrderStatusEnum.WAIT_PAYMENT);
-		order.setPayChannel("alipay_wap");
+		order.setPayChannel("mock");
 		when(orderInfoMapper.selectByOrderId("order-1")).thenReturn(order);
 		when(orderInfoMapper.selectList(any(OrderInfoQuery.class))).thenReturn(List.of(order));
 		when(orderInfoMapper.updateByParam(any(OrderInfo.class), any(OrderInfoQuery.class))).thenReturn(1);
 		doThrow(new BusinessException("渠道关单超时"))
-				.when(payFeignSupport).closeOrder("pay-1", "alipay_wap");
+				.when(payFeignSupport).closeOrder("pay-1", "mock");
 
 		assertThrows(BusinessException.class,
 				() -> service.cancelOrder("user-1", "order-1", OrderStatusEnum.WAIT_PAYMENT));

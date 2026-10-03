@@ -35,11 +35,11 @@ class OrderInfoInitialPaymentTest {
     void successfulPaymentFormIsReturnedUnchanged() {
         BigDecimal amount = new BigDecimal("19.90");
         PayInfoDTO expected = new PayInfoDTO("<form>pay</form>", "pay-1", amount);
-        when(payFeignSupport.getPayUrl("alipay_wap", "pay-1", "subject", amount))
+        when(payFeignSupport.getPayUrl("mock", "pay-1", "subject", amount))
                 .thenReturn(expected);
 
         PayInfoDTO actual = service.requestInitialPayInfoBestEffort(
-                "alipay_wap", "pay-1", "subject", amount);
+                "mock", "pay-1", "subject", amount);
 
         assertSame(expected, actual);
     }
@@ -47,11 +47,11 @@ class OrderInfoInitialPaymentTest {
     @Test
     void unavailablePaymentFormKeepsPayableOrderIdentity() {
         BigDecimal amount = new BigDecimal("19.90");
-        when(payFeignSupport.getPayUrl("alipay_wap", "pay-2", "subject", amount))
+        when(payFeignSupport.getPayUrl("mock", "pay-2", "subject", amount))
                 .thenThrow(new BusinessException("provider unavailable"));
 
         PayInfoDTO actual = service.requestInitialPayInfoBestEffort(
-                "alipay_wap", "pay-2", "subject", amount);
+                "mock", "pay-2", "subject", amount);
 
         assertNull(actual.getPayInfo());
         assertEquals("pay-2", actual.getPayOrderId());
@@ -61,7 +61,7 @@ class OrderInfoInitialPaymentTest {
     @Test
     void zeroAmountSkipsChannelAndStaysFree() {
         PayInfoDTO actual = service.requestInitialPayInfoBestEffort(
-                "alipay_wap", "pay-free", "subject", BigDecimal.ZERO);
+                "mock", "pay-free", "subject", BigDecimal.ZERO);
 
         assertEquals("FREE", actual.getPayInfo());
         assertEquals("pay-free", actual.getPayOrderId());

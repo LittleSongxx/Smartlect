@@ -48,8 +48,6 @@ public interface StockFeignClient {
     @PostMapping("/refund/applied")
     ResponseVO<Boolean> isRefundStockApplied(@RequestBody RefundStockRestoreDTO dto);
 
-    @PostMapping("/lockAndVerify")
-    ResponseVO<Void> lockAndVerify(@RequestBody SkuStockBatchChangeDTO dto);
 
     @PostMapping("/set")
     ResponseVO<Void> setStock(@RequestBody SkuStockSetDTO dto);

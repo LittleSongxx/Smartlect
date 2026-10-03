@@ -112,25 +112,3 @@ smartlect:
   security:
     admin-interceptor: true
 
-seata:
-  enabled: true
-  application-id: ${spring.application.name}
-  tx-service-group: smartlect_tx_group
-  enable-auto-data-source-proxy: true
-  data-source-proxy-mode: AT
-  service:
-    vgroup-mapping:
-      smartlect_tx_group: default
-      default_tx_group: default
-  registry:
-    type: nacos
-    nacos:
-      server-addr: ${SMARTLECT_NACOS_ADDR:127.0.0.1:18848}
-      username: ${SMARTLECT_NACOS_USERNAME:nacos}
-      password: ${SMARTLECT_NACOS_PASSWORD:}
-      namespace: ${SMARTLECT_NACOS_NAMESPACE:}
-      group: SMARTLECT_SEATA_GROUP
-      application: smartlect-seata
-      cluster: default
-  config:
-    type: file

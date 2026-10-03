@@ -209,7 +209,6 @@ smartlect:
         - /api/discountCoupon/getDiscountCouponDetail
         - /api/discountCoupon/loadDiscountCoupon
         - /api/file/getResource
-        - /api/notify/alipayNotify
       admin-exclude-paths:
         - /admin-api/account/checkCode
         - /admin-api/account/login

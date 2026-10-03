@@ -1,11 +1,14 @@
 package com.smartlect.biz.impl;
 
+import com.smartlect.api.dto.PayOrderNotifyDTO;
 import com.smartlect.api.dto.PayUrlRequestDTO;
 import com.smartlect.api.enums.PayChannelEnum;
-import com.smartlect.api.support.OrderFeignSupport;
 import com.smartlect.biz.PayInternalService;
 import com.smartlect.biz.PayTradeRecordService;
+import com.smartlect.constants.RabbitMQConfig;
+import com.smartlect.constants.TransactionalMqSender;
 import com.smartlect.controller.internal.MockPaymentController;
+import com.smartlect.entity.enums.MessageReliabilityLevelEnum;
 import com.smartlect.entity.po.PayTradeRecord;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.web.InternalApiAuthFilter;
@@ -31,13 +34,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(MockitoExtension.class)
 class PayChannel4MockTest {
     @Mock PayTradeRecordService trades;
-    @Mock OrderFeignSupport orders;
+    @Mock TransactionalMqSender transactionalMqSender;
     @Mock JdbcTemplate jdbc;
     PayChannel4Mock channel;
 
     @BeforeEach
     void setUp() {
-        channel = new PayChannel4Mock(trades, orders, jdbc);
+        channel = new PayChannel4Mock(trades, transactionalMqSender, jdbc);
     }
 
     @Test
@@ -47,11 +50,11 @@ class PayChannel4MockTest {
         assertEquals(new BigDecimal("90.00"), result.getAmount());
         assertEquals("order-1", result.getOrderId());
         assertEquals("smartlect-mock:pay-1", result.getPayInfo());
-        verifyNoInteractions(orders);
+        verifyNoInteractions(transactionalMqSender);
     }
 
     @Test
-    void successfulChargeUsesStableIdAndReplaysOnlyNotification() {
+    void successfulChargeEmitsOutboxEventAndReplayEmitsAgainForRecovery() {
         PayTradeRecord record = trade(0);
         when(trades.findByPayOrderId("pay-1")).thenReturn(record);
         doAnswer(call -> {
@@ -65,38 +68,35 @@ class PayChannel4MockTest {
         assertEquals("owner-1", first.userId());
         assertEquals(new BigDecimal("90.00"), first.amount());
         verify(trades, times(1)).markSuccess(anyString(), anyString());
-        verify(orders, times(2)).paySuccess(argThat(dto ->
-                "pay-1".equals(dto.getPayOrderId()) && "smartlect-mock-pay-1".equals(dto.getChannelOrderId())));
+        // 事件取代同步回调：每次 complete 都发（幂等键=payOrderId，order 侧 CAS 去重）。
+        verify(transactionalMqSender, times(2)).sendAfterCommit(
+                eq(RabbitMQConfig.PAY_EXCHANGE),
+                eq(RabbitMQConfig.PAY_SUCCESS_KEY),
+                argThat((PayOrderNotifyDTO dto) -> "pay-1".equals(dto.getPayOrderId())
+                        && "smartlect-mock-pay-1".equals(dto.getChannelOrderId())),
+                eq("pay-success:pay-1"),
+                eq(MessageReliabilityLevelEnum.HIGH));
     }
 
     @Test
-    void lostOrderNotificationCanBeReplayedWithoutAnotherCharge() {
-        when(trades.findByPayOrderId("pay-1")).thenReturn(trade(1));
-        doThrow(new BusinessException("temporary order failure")).doNothing().when(orders).paySuccess(any());
-        assertThrows(BusinessException.class, () -> channel.completePayment("pay-1"));
-        assertEquals(1, channel.completePayment("pay-1").tradeStatus());
-        verify(trades, never()).markSuccess(anyString(), anyString());
-    }
-
-    @Test
-    void closedAndRealChannelIntentsCannotBeChargedByMock() {
+    void closedAndNonMockIntentsCannotBeChargedByMock() {
         PayTradeRecord real = trade(0);
-        real.setPayChannel("alipay_pc");
+        real.setPayChannel("retired_channel");
         when(trades.findByPayOrderId("pay-1")).thenReturn(trade(2), real, null);
         for (int i = 0; i < 3; i++) {
             assertThrows(BusinessException.class, () -> channel.completePayment("pay-1"));
         }
         verify(trades, never()).markSuccess(anyString(), anyString());
-        verifyNoInteractions(orders);
+        verifyNoInteractions(transactionalMqSender);
         assertThrows(BusinessException.class, () -> channel.payNotify(Map.of("amount", "1"), null));
     }
 
     @Test
-    void refundedPaymentDoesNotReopenOrderAndPendingQueryDoesNotClaimPayment() {
+    void refundedPaymentDoesNotEmitOrderEventAndPendingQueryDoesNotClaimPayment() {
         when(trades.findByPayOrderId("pay-1")).thenReturn(trade(3), trade(0));
         assertEquals(3, channel.completePayment("pay-1").tradeStatus());
         assertNull(channel.queryOrder("pay-1"));
-        verifyNoInteractions(orders);
+        verifyNoInteractions(transactionalMqSender);
     }
 
     @Test
@@ -110,7 +110,7 @@ class PayChannel4MockTest {
         mvc.perform(post("/internal/pay/mock/complete").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"payOrderId\":\"pay-1\"}"))
                 .andExpect(status().isUnauthorized());
-        verifyNoInteractions(trades, orders);
+        verifyNoInteractions(trades, transactionalMqSender);
         when(trades.findByPayOrderId("pay-1")).thenReturn(trade(1));
         mvc.perform(post("/internal/pay/mock/complete").header("X-Internal-Token", "smartlect-test-internal")
                         .header("X-Smartlect-User-Id", "attacker")
@@ -131,11 +131,11 @@ class PayChannel4MockTest {
     }
 
     @Test
-    void mockModeRejectsLiveProviderBeforeBeanOrNetworkAccess() {
+    void mockModeRejectsRetiredProviderBeforeBeanOrNetworkAccess() {
         PayInternalService service = new PayInternalService();
         ReflectionTestUtils.setField(service, "paymentMode", "mock");
         assertThrows(BusinessException.class, () -> service.getPayUrl(
-                new PayUrlRequestDTO("alipay_pc", "pay-1", "subject", BigDecimal.ONE)));
+                new PayUrlRequestDTO("retired_channel", "pay-1", "subject", BigDecimal.ONE)));
     }
 
     static PayTradeRecord trade(int status) {

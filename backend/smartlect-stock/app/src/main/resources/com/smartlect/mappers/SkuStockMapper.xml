@@ -15,15 +15,6 @@
         WHERE product_id = #{productId}
           AND property_value_id_hash = #{propertyValueIdHash}
     </select>
-
-    <select id="selectByKeyForUpdate" resultMap="BaseResultMap">
-        SELECT product_id, property_value_id_hash, stock
-        FROM sku_stock
-        WHERE product_id = #{productId}
-          AND property_value_id_hash = #{propertyValueIdHash}
-        FOR UPDATE
-    </select>
-
     <select id="selectByKeys" resultMap="BaseResultMap">
         SELECT product_id, property_value_id_hash, stock
         FROM sku_stock

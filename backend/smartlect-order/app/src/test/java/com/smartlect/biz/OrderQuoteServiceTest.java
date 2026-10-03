@@ -52,7 +52,7 @@ class OrderQuoteServiceTest {
         assertThrows(HttpBusinessException.class, () -> OrderQuoteService.normalize(new OrderQuoteService.Input(
                 "mock", "a1", 0, null, List.of(new OrderQuoteService.Line("p1", "v1", Integer.MAX_VALUE, null)))));
         assertThrows(HttpBusinessException.class, () -> OrderQuoteService.normalize(new OrderQuoteService.Input(
-                "alipay_pc", "a1", 0, null, List.of(line))));
+                "retired_channel", "a1", 0, null, List.of(line))));
         assertThrows(HttpBusinessException.class, () -> OrderQuoteService.normalize(new OrderQuoteService.Input(
                 "mock", "a1", 2, null, List.of(line))));
     }

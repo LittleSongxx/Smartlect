@@ -76,11 +76,6 @@ public class StockInternalController extends ABaseController {
                 && skuStockService.isRefundStockApplied(dto.getBusinessKey()));
     }
 
-    @PostMapping("/lockAndVerify")
-    public ResponseVO<Void> lockAndVerify(@Valid @RequestBody SkuStockBatchChangeDTO dto) {
-        skuStockService.lockAndVerify(dto);
-        return getSuccessResponseVO(null);
-    }
 
     @PostMapping("/set")
     public ResponseVO<Void> setStock(@Valid @RequestBody SkuStockSetDTO dto) {

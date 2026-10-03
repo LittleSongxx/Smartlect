@@ -74,6 +74,7 @@ public class RabbitMQConfig {
     // 自动确认收货延时队列
     public static final String PAY_CONFIRM_DELAY_QUEUE = "smartlect.pay.confirm.delay.queue";
     // 自动确认收货队列（死信）
+    public static final String PAY_SUCCESS_QUEUE = "smartlect.pay.success.queue";
     public static final String PAY_CONFIRM_DEAD_QUEUE = "smartlect.pay.confirm.dead.queue";
 
     // 路由键
@@ -85,6 +86,7 @@ public class RabbitMQConfig {
     public static final String PAY_LOGISTICS_DELAY_KEY = "smartlect.pay.logistics.delay";
     public static final String PAY_LOGISTICS_DEAD_KEY = "smartlect.pay.logistics.dead";
     public static final String PAY_CONFIRM_DELAY_KEY = "smartlect.pay.confirm.delay";
+    public static final String PAY_SUCCESS_KEY = "smartlect.pay.success";
     public static final String PAY_CONFIRM_DEAD_KEY = "smartlect.pay.confirm.dead";
     public static final String REFUND_STOCK_KEY = "smartlect.refund.stock";
     public static final String REFUND_STOCK_DEAD_KEY = "smartlect.refund.stock.dead";
@@ -108,6 +110,7 @@ public class RabbitMQConfig {
     private static final List<String> RETRYABLE_QUEUES = List.of(
             RUSHING_ORDER_QUEUE,
             RUSHING_DEAD_QUEUE,
+            PAY_SUCCESS_QUEUE,
             PAY_TIMEOUT_DEAD_QUEUE,
             PAY_LOGISTICS_DEAD_QUEUE,
             PAY_CONFIRM_DEAD_QUEUE,
@@ -264,6 +267,20 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(payConfirmDeadQueue())
                 .to(payExchange())
                 .with(PAY_CONFIRM_DEAD_KEY);
+    }
+
+    // 支付成功事件（pay -> order），取代原 pay->order 的同步 Feign 回调，
+    // 断掉两服务的运行时调用环；消费幂等由 order 侧 paySuccess 的 CAS 保证。
+    @Bean
+    public Queue paySuccessQueue() {
+        return durableQueue(PAY_SUCCESS_QUEUE).build();
+    }
+
+    @Bean
+    public Binding paySuccessBinding() {
+        return BindingBuilder.bind(paySuccessQueue())
+                .to(payExchange())
+                .with(PAY_SUCCESS_KEY);
     }
     @Bean
     public DirectExchange refundExchange() {

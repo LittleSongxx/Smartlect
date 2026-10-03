@@ -256,31 +256,6 @@ public class SkuStockService {
         return businessKey != null && stockChangeRecordMapper.exists(businessKey) > 0;
     }
 
-    @Transactional(rollbackFor = Exception.class)
-    public void lockAndVerify(SkuStockBatchChangeDTO batch) {
-        if (batch == null || CollectionUtils.isEmpty(batch.getItems())) {
-            throw new BusinessException("库存校验列表为空");
-        }
-        Map<String, Integer> needBySku = new TreeMap<>();
-        Map<String, SkuStockChangeDTO> sample = new HashMap<>();
-        for (SkuStockChangeDTO item : batch.getItems()) {
-            int need = item.getChangeAmount() == null ? 0 : Math.abs(item.getChangeAmount());
-            String key = item.getProductId() + "\0" + item.getPropertyValueIdHash();
-            needBySku.merge(key, need, Integer::sum);
-            sample.putIfAbsent(key, item);
-        }
-        for (Map.Entry<String, Integer> entry : needBySku.entrySet()) {
-            SkuStockChangeDTO s = sample.get(entry.getKey());
-            SkuStock locked = skuStockMapper.selectByKeyForUpdate(s.getProductId(), s.getPropertyValueIdHash());
-            if (locked == null) {
-                throw new BusinessException("商品sku不存在");
-            }
-            if (locked.getStock() < entry.getValue()) {
-                throw new BusinessException("库存不足");
-            }
-        }
-    }
-
     private Map<String, Integer> mergeBySku(List<SkuStockChangeDTO> items) {
         Map<String, Integer> merged = new HashMap<>();
         items.stream()

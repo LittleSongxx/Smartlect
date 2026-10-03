@@ -26,7 +26,7 @@ PROCESS_LOCK = ROOT / "run/processes.lock"
 DATABASES = ("admin", "user", "product", "stock", "cart", "order", "pay", "coupon")
 APPS = ("assistant-worker", "assistant", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
 PORTS = {"MYSQL": 13306, "POSTGRES": 15432, "REDIS": 16379, "RABBIT": 15672,
-         "RABBIT_MANAGEMENT": 15674, "NACOS": 18848, "SEATA": 18092,
+         "RABBIT_MANAGEMENT": 15674, "NACOS": 18848,
          "GATEWAY": 18080, "GROWTH": 18000, "DASHBOARD": 18501,
          "ADMIN": 18101, "USER": 18105, "PRODUCT": 18106, "STOCK": 18108,
          "CART": 18102, "ORDER": 18104, "PAY": 18103, "COUPON": 18107, "WEB_USER": 18180, "WEB_ADMIN": 18181}
@@ -139,9 +139,7 @@ def bootstrap():
         "SMARTLECT_REDIS_DB": "0", "SMARTLECT_RABBIT_HOST": "127.0.0.1",
         "SMARTLECT_RABBIT_USER": "smartlect", "SMARTLECT_RABBIT_VHOST": "smartlect",
         "SMARTLECT_NACOS_USERNAME": "nacos", "SMARTLECT_NACOS_NAMESPACE": "",
-        "SMARTLECT_NACOS_GROUP": "SMARTLECT_GROUP", "SMARTLECT_SEATA_IP": local_ip(),
-        "SMARTLECT_SEATA_GROUP": "SMARTLECT_SEATA_GROUP",
-        "SMARTLECT_SEATA_TX_GROUP": "smartlect_tx_group",
+        "SMARTLECT_NACOS_GROUP": "SMARTLECT_GROUP",
         "SMARTLECT_GROWTH_MYSQL_USER": "smartlect_growth",
         "SMARTLECT_GROWTH_MYSQL_DATABASE": "smartlect_growth",
         "SMARTLECT_POSTGRES_HOST": "127.0.0.1",
@@ -153,8 +151,8 @@ def bootstrap():
     }
     for key in ("MYSQL_ROOT_PASSWORD", "MYSQL_PASSWORD", "FLYWAY_PASSWORD",
                 "REDIS_PASSWORD", "RABBIT_PASSWORD", "NACOS_PASSWORD",
-                "NACOS_MYSQL_PASSWORD", "NACOS_IDENTITY", "SEATA_MYSQL_PASSWORD",
-                "SEATA_SECRET", "INTERNAL_TOKEN", "INTERNAL_OPS_TOKEN",
+                "NACOS_MYSQL_PASSWORD", "NACOS_IDENTITY",
+                "INTERNAL_TOKEN", "INTERNAL_OPS_TOKEN",
                 "GROWTH_MYSQL_PASSWORD", "POSTGRES_PASSWORD",
                 "ADMIN_PASSWORD", "DEMO_PASSWORD", "VISITOR_SECRET", "ATTRIBUTION_SECRET"):
         env[f"SMARTLECT_{key}"] = secrets.token_hex(24)
@@ -162,7 +160,7 @@ def bootstrap():
     occupied = set()
     for name, default in PORTS.items():
         offsets = (0, 1000) if name == "NACOS" else (0,)
-        host = env["SMARTLECT_SEATA_IP"] if name == "SEATA" else "127.0.0.1"
+        host = "127.0.0.1"
         port = free_ports(default, offsets, occupied, host)
         env[f"SMARTLECT_{name}_PORT"] = str(port)
         occupied.update(port + offset for offset in offsets)
@@ -194,7 +192,7 @@ def verify_project():
 
 def cluster_form(env):
     # SMARTLECT_CLUSTER_FORM=cluster：RabbitMQ/Nacos 由 /opt/cluster 下的多机编排提供，
-    # 本机 compose 只保留 mysql/redis/seata（见 run/cloud/cluster/）。
+    # 本机 compose 只保留 mysql/redis（见 run/cloud/cluster/）。
     return env.get("SMARTLECT_CLUSTER_FORM") == "cluster"
 
 
@@ -229,7 +227,6 @@ def infra_up(env):
                            {"username": env["SMARTLECT_NACOS_USERNAME"], "password": env["SMARTLECT_NACOS_PASSWORD"]})
     if not result.get("accessToken"):
         raise RuntimeError("Smartlect Nacos login failed")
-    compose("up", "-d", "--build", "--wait", "--wait-timeout", "180", "seata")
     print("Smartlect middleware is healthy; commerce/assistant application readiness is a separate gate.")
 
 
@@ -238,24 +235,16 @@ def infra_check(env):
     states = compose("ps", "--all", "--format", "{{.Service}} {{.Health}} {{.State}}", capture=True)
     healthy = {line.split()[0] for line in states.splitlines() if line.endswith("healthy running")}
     if cluster_form(env):
-        if not {"mysql", "redis", "seata"} <= healthy:
+        if not {"mysql", "redis"} <= healthy:
             raise RuntimeError("Middleware health check incomplete; run infra-up first")
         # RabbitMQ 3 节点 quorum：任一 AMQP 端点可连即通过（节点级故障由演练覆盖）
         endpoints = [ep for ep in (env.get("SPRING_RABBITMQ_ADDRESSES") or "").split(",") if ep]
         if not endpoints or not any(amqp_port_open(ep) for ep in endpoints):
             raise RuntimeError("No RabbitMQ cluster endpoint reachable")
-    elif not {"mysql", "redis", "rabbitmq", "nacos", "seata"} <= healthy:
+    elif not {"mysql", "redis", "rabbitmq", "nacos"} <= healthy:
         raise RuntimeError("Middleware health check incomplete; run infra-up first")
     token = nacos_request(env, "/nacos/v1/auth/login", {
         "username": env["SMARTLECT_NACOS_USERNAME"], "password": env["SMARTLECT_NACOS_PASSWORD"]})["accessToken"]
-    query = urllib.parse.urlencode({"accessToken": token, "serviceName": "smartlect-seata",
-                                   "groupName": "SMARTLECT_SEATA_GROUP", "healthyOnly": "true"})
-    with urllib.request.urlopen("http://" + nacos_addr(env) +
-                                "/nacos/v1/ns/instance/list?" + query, timeout=10) as response:
-        hosts = json.load(response)["hosts"]
-    if not any(host["healthy"] and host["ip"] == env["SMARTLECT_SEATA_IP"]
-               and host["port"] == int(env["SMARTLECT_SEATA_PORT"]) for host in hosts):
-        raise RuntimeError("Seata registration missing")
     sql = ("SELECT GRANTEE,TABLE_SCHEMA,PRIVILEGE_TYPE FROM information_schema.SCHEMA_PRIVILEGES "
            "UNION SELECT GRANTEE,'*',PRIVILEGE_TYPE FROM information_schema.USER_PRIVILEGES "
            "WHERE PRIVILEGE_TYPE <> 'USAGE';")
@@ -674,9 +663,6 @@ def install_catalog(env):
 
 def apps_up(env):
     infra_check(env)
-    compose("exec", "-T", "mysql", "sh", "-ec",
-            'MYSQL_PWD="$SMARTLECT_FLYWAY_PASSWORD" mysql -usmartlect_flyway -e "$1"',
-            "seata-schema", (ROOT / "deploy/sql/16-seata-undo.sql").read_text())
     with ledger_lock():
         records = load_processes()
         # assistant-worker passively declares queues Java owns, and the assistant app's
@@ -717,13 +703,7 @@ def apps_check(env):
             time.sleep(1)
     if pending:
         raise RuntimeError(f"Missing application discovery registrations: {', '.join(sorted(pending))}")
-    schemas = compose("exec", "-T", "mysql", "sh", "-ec",
-                      'MYSQL_PWD="$SMARTLECT_FLYWAY_PASSWORD" mysql -N -usmartlect_flyway -e "$1"',
-                      "seata-check", "SELECT table_schema FROM information_schema.tables WHERE table_name='undo_log';",
-                      capture=True).splitlines()
-    if set(schemas) != {"smartlect_" + domain for domain in DATABASES}:
-        raise RuntimeError("Seata undo_log metadata is missing from a business schema")
-    print("Application checks passed: thirteen owned healthy processes, nine Nacos registrations, eight Seata undo tables.")
+    print("Application checks passed: twelve owned healthy processes, nine Nacos registrations.")
 
 
 def apps_status():
@@ -815,7 +795,7 @@ def self_test():
         assert package_fingerprint(package)[0] != with_sql
     test_env = {**os.environ, **{f"SMARTLECT_{key}": "a" * 48 for key in
                 ("MYSQL_PASSWORD", "FLYWAY_PASSWORD", "NACOS_MYSQL_PASSWORD",
-                 "SEATA_MYSQL_PASSWORD", "GROWTH_MYSQL_PASSWORD")}}
+                 "GROWTH_MYSQL_PASSWORD")}}
     script = 'docker_process_sql() { cat; }; source "$1"'
     args = ["bash", "-ec", script, "self-test", str(ROOT / "deploy/mysql-init.sh")]
     sql = subprocess.run(args, env=test_env, check=True, text=True, capture_output=True).stdout

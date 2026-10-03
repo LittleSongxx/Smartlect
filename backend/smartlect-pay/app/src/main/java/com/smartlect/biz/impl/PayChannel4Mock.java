@@ -3,9 +3,12 @@ package com.smartlect.biz.impl;
 import com.smartlect.api.dto.PayInfoDTO;
 import com.smartlect.api.dto.PayOrderNotifyDTO;
 import com.smartlect.api.enums.PayChannelEnum;
-import com.smartlect.api.support.OrderFeignSupport;
 import com.smartlect.biz.PayChannel;
 import com.smartlect.biz.PayTradeRecordService;
+import com.smartlect.constants.RabbitMQConfig;
+import com.smartlect.constants.TransactionalMqSender;
+import com.smartlect.entity.enums.MessageReliabilityLevelEnum;
+import com.smartlect.support.MqIdempotencyKeys;
 import com.smartlect.entity.po.PayTradeRecord;
 import com.smartlect.exception.BusinessException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,12 +25,13 @@ import java.util.Objects;
 @ConditionalOnProperty(name = "smartlect.payment.mode", havingValue = "mock", matchIfMissing = false)
 public class PayChannel4Mock implements PayChannel {
     private final PayTradeRecordService trades;
-    private final OrderFeignSupport orders;
+    private final TransactionalMqSender transactionalMqSender;
     private final JdbcTemplate jdbc;
 
-    public PayChannel4Mock(PayTradeRecordService trades, OrderFeignSupport orders, JdbcTemplate jdbc) {
+    public PayChannel4Mock(PayTradeRecordService trades, TransactionalMqSender transactionalMqSender,
+                           JdbcTemplate jdbc) {
         this.trades = trades;
-        this.orders = orders;
+        this.transactionalMqSender = transactionalMqSender;
         this.jdbc = jdbc;
     }
 
@@ -71,8 +75,14 @@ public class PayChannel4Mock implements PayChannel {
             throw new BusinessException("支付状态发生变化，请重新查询");
         }
         if (Objects.equals(record.getTradeStatus(), 1)) {
-            // This existing order path owns payment events and is idempotent by payOrderId.
-            orders.paySuccess(new PayOrderNotifyDTO(record.getPayOrderId(), record.getChannelOrderId()));
+            // 支付成功经 Outbox 事件通知 order（幂等键=payOrderId），取代同步 Feign 回调，
+            // 断开 pay→order 运行时调用环；order 侧消费与重放都由同一幂等键去重。
+            transactionalMqSender.sendAfterCommit(
+                    RabbitMQConfig.PAY_EXCHANGE,
+                    RabbitMQConfig.PAY_SUCCESS_KEY,
+                    new PayOrderNotifyDTO(record.getPayOrderId(), record.getChannelOrderId()),
+                    MqIdempotencyKeys.paySuccess(record.getPayOrderId()),
+                    MessageReliabilityLevelEnum.HIGH);
         }
         return new PaymentResult(record.getUserId(), record.getPayOrderId(), record.getPayAmount(),
                 record.getChannelOrderId(), record.getTradeStatus());

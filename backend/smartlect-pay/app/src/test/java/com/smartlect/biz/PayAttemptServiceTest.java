@@ -77,7 +77,7 @@ class PayAttemptServiceTest {
             assertThrows(HttpBusinessException.class, () -> service.decline("owner-1", request));
         }
         when(jdbc.queryForList(startsWith("SELECT pay_order_id"), anyString()))
-                .thenReturn(List.of(intent("owner-1", "alipay_pc", 0)), List.of(intent("other", "mock", 0)));
+                .thenReturn(List.of(intent("owner-1", "retired_channel", 0)), List.of(intent("other", "mock", 0)));
         assertEquals(403, assertThrows(HttpBusinessException.class,
                 () -> service.decline("owner-1", request)).getHttpStatus());
         assertEquals(403, assertThrows(HttpBusinessException.class,

@@ -25,7 +25,6 @@ public class FeignSentinelRulesConfig {
                 "StockFeignClient#getStock(SkuStockQueryDTO)",
                 "StockFeignClient#changeStock(SkuStockChangeDTO)",
                 "StockFeignClient#changeStockBatch(SkuStockBatchChangeDTO)",
-                "StockFeignClient#lockAndVerify(SkuStockBatchChangeDTO)",
                 "StockFeignClient#setStock(SkuStockSetDTO)",
                 "StockFeignClient#totalByProduct(ProductIdDTO)",
                 "CouponFeignClient#validateAndLock(CouponValidateAndLockDTO,String)",

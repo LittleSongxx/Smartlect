@@ -9,7 +9,6 @@ services:
       SMARTLECT_MYSQL_PASSWORD: ${SMARTLECT_MYSQL_PASSWORD:?run bootstrap}
       SMARTLECT_FLYWAY_PASSWORD: ${SMARTLECT_FLYWAY_PASSWORD:?run bootstrap}
       SMARTLECT_NACOS_MYSQL_PASSWORD: ${SMARTLECT_NACOS_MYSQL_PASSWORD:?run bootstrap}
-      SMARTLECT_SEATA_MYSQL_PASSWORD: ${SMARTLECT_SEATA_MYSQL_PASSWORD:?run bootstrap}
       SMARTLECT_GROWTH_MYSQL_PASSWORD: ${SMARTLECT_GROWTH_MYSQL_PASSWORD:?run bootstrap}
       TZ: Asia/Shanghai
     command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_general_ci, --innodb_buffer_pool_size=512M, --max_connections=200]
@@ -17,8 +16,6 @@ services:
       - mysql:/var/lib/mysql
       - ./mysql-init.sh:/docker-entrypoint-initdb.d/00-smartlect.sh:ro
       - ./sql/14-nacos.sql:/docker-entrypoint-initdb.d/14-nacos.sql:ro
-      - ./sql/15-seata.sql:/docker-entrypoint-initdb.d/15-seata.sql:ro
-      - ./sql/16-seata-undo.sql:/docker-entrypoint-initdb.d/16-seata-undo.sql:ro
     # 8c32g 后余量充足：512M buffer pool + 2g 上限（1g 时常驻 748MB 已逼近）；
     # max_connections 160→200 给 assistant 线程本地复用与未来多副本留余量
     mem_limit: 2g
@@ -93,52 +90,3 @@ services:
       retries: 40
       start_period: 30s
 
-  seata:
-    image: smartlect-seata:2.5.0
-    build: ./seata
-    ports: ["${SMARTLECT_SEATA_IP:?run bootstrap}:${SMARTLECT_SEATA_PORT:?run bootstrap}:${SMARTLECT_SEATA_PORT:?run bootstrap}"]
-    depends_on:
-      mysql: {condition: service_healthy}
-      nacos: {condition: service_healthy}
-    environment:
-      SEATA_IP: ${SMARTLECT_SEATA_IP:?run bootstrap}
-      SEATA_PORT: ${SMARTLECT_SEATA_PORT:?run bootstrap}
-      SMARTLECT_NACOS_USERNAME: ${SMARTLECT_NACOS_USERNAME:?run bootstrap}
-      SMARTLECT_NACOS_PASSWORD: ${SMARTLECT_NACOS_PASSWORD:?run bootstrap}
-      SMARTLECT_SEATA_MYSQL_PASSWORD: ${SMARTLECT_SEATA_MYSQL_PASSWORD:?run bootstrap}
-      SMARTLECT_SEATA_SECRET: ${SMARTLECT_SEATA_SECRET:?run bootstrap}
-      JVM_XMS: 128m
-      JVM_XMX: 256m
-      JVM_MaxDirectMemorySize: 128m
-    volumes: ["./seata/application.yml:/seata-server/resources/application.yml:ro"]
-    mem_limit: 640m
-    healthcheck:
-      test: [CMD-SHELL, 'bash -ec "exec 3<>/dev/tcp/127.0.0.1/$$SEATA_PORT"']
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  postgres:
-    profiles: ["pgvector"]
-    image: pgvector/pgvector:pg16
-    ports: ["127.0.0.1:${SMARTLECT_POSTGRES_PORT:-15432}:5432"]
-    environment:
-      POSTGRES_USER: ${SMARTLECT_POSTGRES_USER:-smartlect}
-      POSTGRES_PASSWORD: ${SMARTLECT_POSTGRES_PASSWORD:-smartlect}
-      POSTGRES_DB: ${SMARTLECT_POSTGRES_DATABASE:-smartlect_growth}
-      TZ: Asia/Shanghai
-    volumes:
-      - postgres:/var/lib/postgresql/data
-      - ./postgres-init.sql:/docker-entrypoint-initdb.d/00-smartlect.sql:ro
-    mem_limit: 512m
-    healthcheck:
-      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-volumes:
-  mysql:
-  redis:
-  rabbit:
-  postgres:

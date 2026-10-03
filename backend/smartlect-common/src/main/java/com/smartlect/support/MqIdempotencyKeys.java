@@ -7,6 +7,10 @@ public final class MqIdempotencyKeys {
     private MqIdempotencyKeys() {
     }
 
+    public static String paySuccess(String payOrderId) {
+        return "pay-success:" + payOrderId;
+    }
+
     public static String payTimeout(String orderId) {
         return "pay:timeout:" + require(orderId);
     }

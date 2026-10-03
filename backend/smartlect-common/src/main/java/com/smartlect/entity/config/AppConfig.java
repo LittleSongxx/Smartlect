@@ -61,34 +61,6 @@ public class AppConfig {
     @Value("${admin.emails:}")
     private String adminEmails;
 
-    //支付宝应用私钥
-    @Value("${alipay.appPrivateKey:}")
-    private String alipayAppPrivateKey;
-
-    @Value("${alipay.appid:}")
-    private String alipayAppid;
-
-    @Value("${alipay.sellerId:}")
-    private String alipaySellerId;
-
-    @Value("${alipay.appCertPath:}")
-    private String alipayAppCertPath;
-
-    @Value("${alipay.alipayPublicCertPath:}")
-    private String alipayPublicCertPath;
-
-    @Value("${alipay.alipayRootCertPath:}")
-    private String alipayRootCertPath;
-
-    @Value("${alipay.serverUrl:}")
-    private String alipayServerUrl;
-
-    @Value("${alipay.connectTimeoutMs:3000}")
-    private Integer alipayConnectTimeoutMs;
-
-    @Value("${alipay.readTimeoutMs:8000}")
-    private Integer alipayReadTimeoutMs;
-
     //订单超时（默认 15 分钟，对齐原 EShop）
     @Value("${order.expire.minute:15}")
     private Integer orderExpireMinute;
@@ -159,55 +131,8 @@ public class AppConfig {
         return projectDomain;
     }
 
-    public String getAlipayAppCertPath() {
-        return alipayAppCertPath;
-    }
-
-    public String getAlipayPublicCertPath() {
-        return alipayPublicCertPath;
-    }
-
-    public String getAlipayRootCertPath() {
-        return alipayRootCertPath;
-    }
-
     public Boolean getAutoCheckpay() {
         return autoCheckpay;
-    }
-
-    public String getAlipayAppPrivateKey() {
-        return alipayAppPrivateKey;
-    }
-
-    public String getAlipayAppid() {
-        return alipayAppid;
-    }
-
-    public String getAlipaySellerId() {
-        return alipaySellerId;
-    }
-
-    public String getAlipayServerUrl() {
-        return alipayServerUrl;
-    }
-
-    public Integer getAlipayConnectTimeoutMs() {
-        return alipayConnectTimeoutMs;
-    }
-
-    public Integer getAlipayReadTimeoutMs() {
-        return alipayReadTimeoutMs;
-    }
-
-    public boolean isAlipayConfigured() {
-        return !StringTools.isEmpty(projectDomain)
-                && !StringTools.isEmpty(alipayAppid)
-                && !StringTools.isEmpty(alipaySellerId)
-                && !StringTools.isEmpty(alipayAppPrivateKey)
-                && !StringTools.isEmpty(alipayAppCertPath)
-                && !StringTools.isEmpty(alipayPublicCertPath)
-                && !StringTools.isEmpty(alipayRootCertPath)
-                && !StringTools.isEmpty(alipayServerUrl);
     }
 
     public Integer getOrderConfirmMinute() {

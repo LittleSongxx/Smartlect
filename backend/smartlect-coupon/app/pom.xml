@@ -16,11 +16,7 @@
       <groupId>com.smartlect</groupId>
       <artifactId>smartlect-common</artifactId>
     </dependency>
-    <dependency>
-      <groupId>com.alibaba.cloud</groupId>
-      <artifactId>spring-cloud-starter-alibaba-seata</artifactId>
-    </dependency>
-    <dependency>
+        <dependency>
       <groupId>com.smartlect</groupId>
       <artifactId>smartlect-user-api</artifactId>
     </dependency>

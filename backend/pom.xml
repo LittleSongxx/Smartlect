@@ -92,21 +92,7 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
-      <dependency>
-        <groupId>com.alibaba.cloud</groupId>
-        <artifactId>spring-cloud-starter-alibaba-seata</artifactId>
-        <version>${spring-cloud-alibaba.version}</version>
-        <exclusions>
-          <!-- This project uses OpenFeign, not Dubbo. Keep the unused RPC
-               adapter and its additional deserialization surface off the
-               runtime classpath. -->
-          <exclusion>
-            <groupId>org.apache.dubbo.extensions</groupId>
-            <artifactId>dubbo-filter-seata</artifactId>
-          </exclusion>
-        </exclusions>
-      </dependency>
-
+      
       <dependency>
         <groupId>com.smartlect</groupId>
         <artifactId>smartlect-common</artifactId>

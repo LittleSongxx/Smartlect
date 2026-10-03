@@ -132,7 +132,7 @@ class ShopMoneyContractProbeTest {
         order.setPayOrderId("pay-1");
         order.setUserId("user-1");
         order.setOrderStatus(OrderStatusEnum.PAID.getStatus());
-        order.setPayChannel("alipay_pc");
+        order.setPayChannel("mock");
         order.setAmount(new BigDecimal(paidAmount));
         return order;
     }

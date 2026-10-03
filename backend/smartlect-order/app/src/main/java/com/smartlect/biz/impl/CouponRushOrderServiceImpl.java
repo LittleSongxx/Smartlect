@@ -35,7 +35,6 @@ import com.smartlect.mappers.OrderItemMapper;
 import com.smartlect.support.MqIdempotencyKeys;
 import com.smartlect.utils.OrderPayAmountUtil;
 import com.smartlect.utils.StringTools;
-import io.seata.spring.annotation.GlobalTransactional;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -83,7 +82,6 @@ private CouponRushRedisComponent couponRushRedisComponent;
 	private OrderRequestIdempotencyService orderRequestIdempotencyService;
 
 	@Override
-	@GlobalTransactional(name = "smartlect-coupon-rush-prepare", rollbackFor = Exception.class)
 	@Transactional(rollbackFor = Exception.class)
 	public CouponRushPrepareDTO prepareCouponRush(String userId, String couponId, String idempotencyKey) {
 		return orderRequestIdempotencyService.execute(
@@ -96,7 +94,6 @@ private CouponRushRedisComponent couponRushRedisComponent;
 	}
 
 	@Override
-	@GlobalTransactional(name = "smartlect-coupon-rush-pay", rollbackFor = Exception.class)
 	@Transactional(rollbackFor = Exception.class)
 	public PayInfoDTO postCouponRushOrder(String userId, String couponId, String payMethod, String idempotencyKey) {
 		return orderRequestIdempotencyService.execute(
@@ -271,7 +268,7 @@ private CouponRushRedisComponent couponRushRedisComponent;
 		orderInfo.setOrderTime(now);
 		orderInfo.setOrderStatus(OrderStatusEnum.WAIT_PAYMENT.getStatus());
 		orderInfo.setPayScene(String.valueOf(OrderFromTypeEnum.COUPON.getType()));
-		orderInfo.setPayChannel(PayChannelEnum.ALIPAY_PC.getPayScene());
+		orderInfo.setPayChannel(PayChannelEnum.MOCK.getPayScene());
 		orderInfo.setPayOrderId(payOrderId);
 		orderInfo.setSubject(buildCouponRushOrderSubject(discountCoupon.getCouponName()));
 		orderInfoMapper.insert(orderInfo);

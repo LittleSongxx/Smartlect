@@ -4,8 +4,6 @@ import java.util.Arrays;
 import java.util.Optional;
 
 public enum PayChannelEnum {
-    ALIPAY_PC("alipay", "alipay_pc", "payChannel4Alipay", "支付宝电脑网站支付"),
-    ALIPAY_WAP("alipay", "alipay_wap", "payChannel4Alipay", "支付宝手机网站支付"),
     MOCK("mock", "mock", "payChannel4Mock", "Smartlect 模拟支付");
 
     private String payChannel;

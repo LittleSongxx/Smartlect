@@ -114,8 +114,6 @@ class OrderCreationIntegrityTest {
         assertEquals("trusted-hash-2", second.getPropertyValueIdHash());
 
         ArgumentCaptor<List<ProductItem>> stockCaptor = listCaptor();
-        verify(stockFeignSupport).lockAndVerify(stockCaptor.capture());
-        assertEquals(Set.of("trusted-hash-1", "trusted-hash-2"), hashes(stockCaptor.getValue()));
         verify(stockFeignSupport).changeStockBatch(stockCaptor.capture(), org.mockito.ArgumentMatchers.anyString());
         assertEquals(Set.of("trusted-hash-1", "trusted-hash-2"), hashes(stockCaptor.getValue()));
 
@@ -195,7 +193,6 @@ class OrderCreationIntegrityTest {
         var error = org.junit.jupiter.api.Assertions.assertThrows(com.smartlect.exception.HttpBusinessException.class,
                 () -> ReflectionTestUtils.invokeMethod(service, "createOrder", "user-1", request, quote, 1000L));
         assertEquals("RECONFIRM_REQUIRED", error.getMessage());
-        verify(stockFeignSupport).lockAndVerify(org.mockito.ArgumentMatchers.anyList());
         verify(orderInfoMapper, never()).insertBatch(org.mockito.ArgumentMatchers.anyList());
         verify(orderItemMapper, never()).insertBatch(org.mockito.ArgumentMatchers.anyList());
         verify(stockFeignSupport, never()).changeStockBatch(
@@ -231,7 +228,6 @@ class OrderCreationIntegrityTest {
                 () -> ReflectionTestUtils.invokeMethod(service, "createOrder", "user-1", request, quote, 800L));
         org.mockito.InOrder sequence = org.mockito.Mockito.inOrder(couponFeignSupport, stockFeignSupport, orderQuoteService);
         sequence.verify(couponFeignSupport).validateAndLock("user-1", "uc1", new BigDecimal("10.00"));
-        sequence.verify(stockFeignSupport).lockAndVerify(org.mockito.ArgumentMatchers.anyList());
         sequence.verify(orderQuoteService).validate(org.mockito.ArgumentMatchers.eq(quote),
                 org.mockito.ArgumentMatchers.eq("user-1"), org.mockito.ArgumentMatchers.eq(request),
                 org.mockito.ArgumentMatchers.eq(800L), org.mockito.ArgumentMatchers.any(),
@@ -248,7 +244,7 @@ class OrderCreationIntegrityTest {
     }
 
     @Test
-    void lockThenDeductFailureRecordsExplicitOutboxWithoutRestore() {
+    void conditionalDeductFailureLeavesNoStockMutationAndUnlocksCoupon() {
         ProductItem line = item("p1", "v1", "ignored");
         PostOrderDTO request = request(List.of(line));
         ProductSnapshotBatchVO snapshot = new ProductSnapshotBatchVO();
@@ -267,13 +263,10 @@ class OrderCreationIntegrityTest {
         assertThrows(RuntimeException.class,
                 () -> ReflectionTestUtils.invokeMethod(service, "createOrder", "user-1", request));
 
-        verify(stockFeignSupport).lockAndVerify(org.mockito.ArgumentMatchers.anyList());
+        // 库存一步化：扣减是条件更新本身，失败（库存不足）即上抛，无"先锁后扣"中间态，
+        // 也不再有 deduct 之外的库存写需要回补。
         verify(stockFeignSupport).changeStockBatch(
                 org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyString());
-        verify(remoteCompensateRecorder).recordStockChangeBatch(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyList(),
-                org.mockito.ArgumentMatchers.any(Exception.class));
         verify(stockFeignSupport, org.mockito.Mockito.times(1))
                 .changeStockBatch(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyString());
         verify(stockFeignSupport, never()).restoreOrderStock(
@@ -282,7 +275,7 @@ class OrderCreationIntegrityTest {
 
     private static PostOrderDTO request(List<ProductItem> items) {
         PostOrderDTO request = new PostOrderDTO();
-        request.setPayMethod("alipay_wap");
+        request.setPayMethod("mock");
         request.setAddressId("address-1");
         request.setOrderFrom(OrderFromTypeEnum.PRODUCT.getType());
         request.setOrderList(items);

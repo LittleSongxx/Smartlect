@@ -36,7 +36,6 @@ import com.smartlect.support.MqIdempotencyKeys;
 import com.smartlect.utils.OrderListPayAmountHelper;
 import com.smartlect.utils.OrderPayAmountUtil;
 import com.smartlect.utils.StringTools;
-import io.seata.spring.annotation.GlobalTransactional;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -186,7 +185,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 	}
 
 	@Override
-	@GlobalTransactional(name = "smartlect-post-order", rollbackFor = Exception.class)
 	@Transactional(rollbackFor = Exception.class)
 	public PayInfoDTO postOrder(String userId, PostOrderDTO postOrderDTO, String idempotencyKey) {
 		return orderRequestIdempotencyService.execute(
@@ -215,7 +213,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 	}
 
 	@Override
-	@GlobalTransactional(name = "smartlect-confirmed-order", rollbackFor = Exception.class)
 	@Transactional(rollbackFor = Exception.class)
 	public PayInfoDTO createConfirmed(String userId, PostOrderDTO request, String quoteId,
 			Long confirmedAmountCents, String idempotencyKey) {
@@ -480,11 +477,8 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 			throw new BusinessException("请选择商品");
 		}
 		boolean stockDeducted = false;
-		boolean stockLocked = false;
 		List<ProductItem> deductList = copyItemsWithSignedBuyCount(newList, true);
 		try {
-			stockFeignSupport.lockAndVerify(newList);
-			stockLocked = true;
 			// Compare the exact final amount and resolved SKU/address after coupon/stock locks,
 			// before any order, coupon relation or payment-intent persistence.
 			if (quote != null) {
@@ -533,11 +527,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 					remoteCompensateRecorder.recordStockChangeBatch(
 							unifiedPayOrderId, copyItemsWithSignedBuyCount(newList, false), compensateEx);
 				}
-			} else if (stockLocked) {
-				// lockAndVerify succeeded but deduct was not confirmed. Persist an explicit
-				// outbox of the intended deduct so ops can reconcile; do not invent a restore.
-				log.error("先锁后扣中间失败, payOrderId={}", unifiedPayOrderId, ex);
-				remoteCompensateRecorder.recordStockChangeBatch(unifiedPayOrderId, deductList, ex);
 			}
 			if (couponLocked) {
 				try {
@@ -635,7 +624,6 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		String payOrderId = orderInfo.getPayOrderId();
 
 		PayInfoDTO payInfoDTO = payFeignSupport.getPayUrl(payChannelEnum.getPayScene(), payOrderId, subject, amount);
-		// Alipay regenerates a channel trade here; mock uses one durable intent and must stay PENDING.
 		if (payChannelEnum != PayChannelEnum.MOCK) {
 			cancelOrder4Channel(orderInfo);
 		}
@@ -929,7 +917,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		if (payChannelEnum != null) {
 			return payChannelEnum;
 		}
-		payChannelEnum = PayChannelEnum.ALIPAY_PC;
+		payChannelEnum = PayChannelEnum.MOCK;
 		OrderInfo patch = new OrderInfo();
 		patch.setPayChannel(payChannelEnum.getPayScene());
 		OrderInfoQuery patchQuery = new OrderInfoQuery();

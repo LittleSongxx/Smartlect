@@ -1,6 +1,5 @@
 package com.smartlect.biz.impl;
 
-import com.smartlect.api.support.OrderFeignSupport;
 import com.smartlect.biz.PayTradeRecordService;
 import com.smartlect.entity.po.PayTradeRecord;
 import com.smartlect.exception.BusinessException;
@@ -57,7 +56,7 @@ class PayChannel4MockIT {
                 }, call.getArgument(0, String.class)));
         doAnswer(call -> jdbc.update("UPDATE pay_trade_record SET trade_status = 3 WHERE pay_order_id = ?",
                 call.getArgument(0, String.class))).when(trades).markRefunded(anyString());
-        ProxyFactory proxy = new ProxyFactory(new PayChannel4Mock(trades, mock(OrderFeignSupport.class), jdbc));
+        ProxyFactory proxy = new ProxyFactory(new PayChannel4Mock(trades, mock(com.smartlect.constants.TransactionalMqSender.class), jdbc));
         proxy.setProxyTargetClass(true);
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(datasource),
                 new AnnotationTransactionAttributeSource()));

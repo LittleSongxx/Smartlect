@@ -9,7 +9,6 @@ import {
   isPaySuccessMarked,
   markPaySuccess
 } from '@/utils/paySuccessSession';
-import { openAlipayPagePay } from '@/utils/alipayPagePay';
 import { toast } from '@/utils/toast';
 
 export type PaymentPageMode = 'mobile' | 'desktop';
@@ -74,19 +73,21 @@ export function usePaymentPage(_mode: PaymentPageMode = 'mobile') {
     if (!Number.isInteger(expected) || expected <= 0) {
       throw new Error('无法核对应付金额，请刷新后重试');
     }
-    const confirmed = await aiWrite<{ proposal?: { receipt?: { payInfo?: string } } }>(
+    await aiWrite<{ proposal?: { receipt?: { payInfo?: string } } }>(
       `/payments/${encodeURIComponent(payOrderId())}/complete`, { expected_amount_cents: expected });
-    // 实渠道：回执携带支付宝表单，浏览器新开页提交拉起支付；本地不再代替用户完成付款。
-    const payInfo = confirmed?.proposal?.receipt?.payInfo;
-    if (typeof payInfo === 'string' && openAlipayPagePay(payInfo)) {
-      return true;
+    // 支付成功经 MQ 事件推进订单（2026-10 解环改造），状态到达是最终一致的：
+    // 轮询订单状态最多 ~10s，超时按「处理中」引导用户去订单列表查看。
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const info = await orderApi.getOrderInfo(payOrderId());
+      if (info && isPaidStatus(info.orderStatus)) {
+        showPaidSuccess(info);
+        toast.success('支付成功');
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 800));
     }
-    const info = await orderApi.getOrderInfo(payOrderId());
-    if (info && isPaidStatus(info.orderStatus)) {
-      showPaidSuccess(info);
-      toast.success('支付成功');
-      return true;
-    }
+    toast.info('支付处理中，请稍后在订单列表查看结果');
     return false;
   };
 

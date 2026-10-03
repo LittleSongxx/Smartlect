@@ -94,33 +94,6 @@ smartlect:
   sentinel:
     feign-rules-enabled: ${SMARTLECT_SENTINEL_FEIGN_RULES:true}
 
-seata:
-  enabled: ${SMARTLECT_SEATA_ENABLED:true}
-  application-id: ${spring.application.name:smartlect}
-  tx-service-group: ${SMARTLECT_SEATA_TX_GROUP:smartlect_tx_group}
-  enable-auto-data-source-proxy: true
-  data-source-proxy-mode: AT
-  service:
-    vgroup-mapping:
-      smartlect_tx_group: default
-      default_tx_group: default
-  # Seata Server 向 Nacos 注册（SEATA_GROUP），客户端通过 Nacos 发现，
-  # 无需硬编码地址，扩缩容时自动感知。
-  registry:
-    type: nacos
-    nacos:
-      server-addr: ${SMARTLECT_NACOS_ADDR:127.0.0.1:18848}
-      username: ${SMARTLECT_NACOS_USERNAME:nacos}
-      password: ${SMARTLECT_NACOS_PASSWORD:}
-      # Keep the empty namespace explicit for the bundled Nacos 2.5.x
-      # compatibility bridge: Nacos 3.x clients otherwise default to "public".
-      namespace: ${SMARTLECT_NACOS_NAMESPACE:}
-      group: SMARTLECT_SEATA_GROUP
-      application: smartlect-seata
-      cluster: default
-  config:
-    type: file
-
 # /actuator/prometheus 无鉴权，会暴露 URI 模板、SQL、线程池等内部细节。
 # 这里沿用既有做法：actuator 留在业务端口，由 Nginx / 网关不对外反代 /actuator 来隔离
 # （见 deploy/nginx.smartlect.conf.example、deploy/上线检查清单.md），Prometheus 只从内网抓。

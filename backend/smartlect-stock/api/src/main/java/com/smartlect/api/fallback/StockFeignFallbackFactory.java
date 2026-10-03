@@ -70,11 +70,6 @@ public class StockFeignFallbackFactory implements FallbackFactory<StockFeignClie
             }
 
             @Override
-            public ResponseVO<Void> lockAndVerify(SkuStockBatchChangeDTO dto) {
-                return FeignFallbackResponses.unavailable("库存服务");
-            }
-
-            @Override
             public ResponseVO<Void> setStock(SkuStockSetDTO dto) {
                 return FeignFallbackResponses.unavailable("库存服务");
             }

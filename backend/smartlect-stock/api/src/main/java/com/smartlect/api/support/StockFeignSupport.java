@@ -64,10 +64,6 @@ public class StockFeignSupport implements StockBatchCompensatePort {
         return result;
     }
 
-    public void lockAndVerify(List<ProductItem> items) {
-        feignResponseSupport.run(() -> stockFeignClient.lockAndVerify(toBatch(items, true)), "库存校验失败");
-    }
-
     @Override
     public int changeStockBatch(List<ProductItem> items) {
         return changeStockBatch(items, null);

@@ -60,12 +60,7 @@
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-starter-loadbalancer</artifactId>
     </dependency>
-    <!-- Seata AT：仅下单链路服务引入 -->
-    <dependency>
-      <groupId>com.alibaba.cloud</groupId>
-      <artifactId>spring-cloud-starter-alibaba-seata</artifactId>
-    </dependency>
-  </dependencies>
+      </dependencies>
   <build>
     <plugins>
       <plugin>
