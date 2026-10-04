@@ -1,6 +1,5 @@
 package com.smartlect.controller;
 
-import com.smartlect.annotation.GlobalInterceptor;
 import com.smartlect.component.RedisComponent;
 import com.smartlect.entity.po.UserAddress;
 import com.smartlect.entity.query.UserAddressQuery;
@@ -17,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 
 @RequestMapping("/userAddress")
 @RestController
@@ -32,7 +32,7 @@ public class UserAddressController extends ABaseController{
     // 获取用户地址
     @GetMapping("/loadDataList")
     // AOP实现登录校验
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO loadDataList(){
         String userId = getTokenUserInfo().getUserId();
         // 根据userId查询地址
@@ -47,7 +47,7 @@ public class UserAddressController extends ABaseController{
 
     // 添加用户地址
     @PostMapping("/addAddress")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO addAddress(@Validated(Create.class) UserAddress userAddress){
         userAddress.setUserId(getTokenUserInfo().getUserId());
         userAddressService.saveAddress(userAddress);
@@ -56,7 +56,7 @@ public class UserAddressController extends ABaseController{
 
     // 修改用户地址
     @PostMapping("/updateAddress")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO updateAddress(@Validated(Update.class) UserAddress userAddress){
         userAddress.setUserId(getTokenUserInfo().getUserId());
         userAddressService.saveAddress(userAddress);
@@ -65,7 +65,7 @@ public class UserAddressController extends ABaseController{
 
     // 设置地址为默认
     @PostMapping("/updateDefault")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO updateDefault(@NotEmpty String addressId){
         String userId = getTokenUserInfo().getUserId();
         userAddressService.updateDefault(userId,addressId);
@@ -74,7 +74,7 @@ public class UserAddressController extends ABaseController{
 
     // 删除用户地址
     @PostMapping("/delAddress")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO delAddress(@NotEmpty String addressId){
         String userId = getTokenUserInfo().getUserId();
         userAddressService.deleteUserAddress(userId,addressId);

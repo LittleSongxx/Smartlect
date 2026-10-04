@@ -1,6 +1,5 @@
 package com.smartlect.controller;
 
-import com.smartlect.annotation.GlobalInterceptor;
 import com.smartlect.entity.dto.TokenUserInfoDTO;
 import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.po.ProductCart;
@@ -21,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 
 @RequestMapping("/productCart")
 @RestController
@@ -31,7 +31,7 @@ public class ProductCartController extends ABaseController{
 
     // 加入购物车
     @PostMapping("/add2Cart")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     @Transactional(rollbackFor = Exception.class)
     public ResponseVO add2Cart(ProductCart productCart){
         TokenUserInfoDTO tokenUserInfo = getTokenUserInfo();
@@ -46,7 +46,7 @@ public class ProductCartController extends ABaseController{
 
     // 获取购物车列表
     @PostMapping("/loadProductCart")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO loadProductCart(@NotNull Integer pageNo){
         TokenUserInfoDTO tokenUserInfo = getTokenUserInfo();
         if (tokenUserInfo == null || StringTools.isEmpty(tokenUserInfo.getUserId())) {
@@ -64,7 +64,7 @@ public class ProductCartController extends ABaseController{
 
     // 移除购物车
     @PostMapping("/deleteCart")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO deleteCart(@NotEmpty String cartId){
         TokenUserInfoDTO tokenUserInfo = getTokenUserInfo();
         if (tokenUserInfo == null || StringTools.isEmpty(tokenUserInfo.getUserId())) {

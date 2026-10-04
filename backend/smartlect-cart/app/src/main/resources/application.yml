@@ -107,5 +107,4 @@ smartlect:
     attribution-connect-timeout-ms: ${SMARTLECT_GROWTH_ATTRIBUTION_CONNECT_TIMEOUT_MS:200}
     attribution-read-timeout-ms: ${SMARTLECT_GROWTH_ATTRIBUTION_READ_TIMEOUT_MS:500}
   security:
-    admin-interceptor: true
 

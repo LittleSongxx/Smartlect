@@ -33,19 +33,14 @@ public class ABaseController {
         return responseVO;
     }
 
-    // 从请求头中获取TokenUserInfoDTO
+    // Sa-Token 会话获取 TokenUserInfoDTO（登录时由 AccountController 存入 session）
     public TokenUserInfoDTO getTokenUserInfo() {
-        // 获取请求头中的token
-        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attributes == null) {
+        try {
+            Object session = cn.dev33.satoken.stp.StpUtil.getSession().get("userInfo");
+            return session instanceof TokenUserInfoDTO dto ? dto : null;
+        } catch (Exception e) {
             return null;
         }
-        HttpServletRequest request = attributes.getRequest();
-        String token = authCookieHelper.resolveWebToken(request);
-        if (StringTools.isEmpty(token)) {
-            return null;
-        }
-        return redisComponent.getTokenUserInfo(token);
     }
     protected <T> ResponseVO getBusinessErrorResponseVO(BusinessException e, T t) {
         ResponseVO vo = new ResponseVO();

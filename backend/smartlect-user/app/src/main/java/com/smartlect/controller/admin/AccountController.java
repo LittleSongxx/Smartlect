@@ -10,8 +10,8 @@ import com.smartlect.entity.vo.CheckCodeVO;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.security.AdminSecurityContext;
-import com.smartlect.security.StpAdminUtil;
-import com.smartlect.security.RequireAdminPermission;
+import com.smartlect.security.StpAdminLogic;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.smartlect.security.TrialReadable;
 import com.smartlect.utils.AuthCookieHelper;
 import com.smartlect.utils.CheckCodeGenerator;
@@ -71,10 +71,10 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
             }
             AdminPrincipalDTO principal = adminIdentityService.authenticate(account, password);
             adminLoginLockService.clearFailures(ip);
-            StpAdminUtil.stpLogic.login(principal.getAdminId());
-            StpAdminUtil.stpLogic.getSession().set("adminPrincipal", principal);
+            StpAdminLogic.LOGIC.login(principal.getAdminId());
+            StpAdminLogic.LOGIC.getSession().set("adminPrincipal", principal);
             HttpServletResponse response = currentResponse();
-            authCookieHelper.writeAdminTokenCookie(request, response, StpAdminUtil.stpLogic.getTokenValue());
+            authCookieHelper.writeAdminTokenCookie(request, response, StpAdminLogic.LOGIC.getTokenValue());
             return getSuccessResponseVO(null);
         } catch (BusinessException e) {
             adminLoginLockService.recordFailure(ip);
@@ -93,7 +93,7 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
         HttpServletResponse response = currentResponse();
         String token = authCookieHelper.resolveAdminToken(request);
         if (!StringTools.isEmpty(token)) {
-            StpAdminUtil.stpLogic.logoutByTokenValue(token);
+            StpAdminLogic.LOGIC.logoutByTokenValue(token);
         }
         authCookieHelper.clearAdminTokenCookie(request, response);
         return getSuccessResponseVO(null);
@@ -106,19 +106,19 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
     }
 
     @GetMapping("/roles")
-    @RequireAdminPermission(AdminPermissions.ADMIN_MANAGE)
+    @SaCheckPermission(value = AdminPermissions.ADMIN_MANAGE, orRole = "SUPER_ADMIN", type = "admin")
     public ResponseVO roles() {
         return getSuccessResponseVO(adminIdentityService.listRoles());
     }
 
     @GetMapping("/administrators")
-    @RequireAdminPermission(AdminPermissions.ADMIN_MANAGE)
+    @SaCheckPermission(value = AdminPermissions.ADMIN_MANAGE, orRole = "SUPER_ADMIN", type = "admin")
     public ResponseVO administrators() {
         return getSuccessResponseVO(adminIdentityService.listAdministrators());
     }
 
     @PostMapping("/administrators")
-    @RequireAdminPermission(AdminPermissions.ADMIN_MANAGE)
+    @SaCheckPermission(value = AdminPermissions.ADMIN_MANAGE, orRole = "SUPER_ADMIN", type = "admin")
     public ResponseVO createAdministrator(@RequestBody Map<String, Object> body) {
         AdminPrincipalDTO actor = AdminSecurityContext.requirePrincipal();
         return getSuccessResponseVO(adminIdentityService.createAdministrator(
@@ -130,7 +130,7 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
     }
 
     @PutMapping("/administrators/{adminId}/roles")
-    @RequireAdminPermission(AdminPermissions.ADMIN_MANAGE)
+    @SaCheckPermission(value = AdminPermissions.ADMIN_MANAGE, orRole = "SUPER_ADMIN", type = "admin")
     public ResponseVO updateRoles(
             @PathVariable long adminId, @RequestBody Map<String, Object> body) {
         AdminPrincipalDTO actor = AdminSecurityContext.requirePrincipal();
@@ -139,7 +139,7 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
     }
 
     @PutMapping("/administrators/{adminId}/status")
-    @RequireAdminPermission(AdminPermissions.ADMIN_MANAGE)
+    @SaCheckPermission(value = AdminPermissions.ADMIN_MANAGE, orRole = "SUPER_ADMIN", type = "admin")
     public ResponseVO updateStatus(
             @PathVariable long adminId, @RequestBody Map<String, Object> body) {
         Object enabled = body.get("enabled");

@@ -1,6 +1,5 @@
 package com.smartlect.controller;
 
-import com.smartlect.annotation.GlobalInterceptor;
 import com.smartlect.api.dto.ImageUploadResultDTO;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.biz.ImageModerationService;
@@ -22,6 +21,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 
 @RestController("fileController")
 @RequestMapping("/file")
@@ -35,7 +35,7 @@ public class FileController extends ABaseController{
     @Resource
     private FileUtils fileUtils;
 
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     @PostMapping("/uploadImage")
     public ResponseVO uploadImage(@NotNull MultipartFile file, Boolean createThumbnail, String scene,
                                   String orderId, HttpServletRequest request) {

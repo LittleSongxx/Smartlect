@@ -5,7 +5,6 @@ import java.util.Date;
 import java.util.List;
 
 import com.smartlect.annotation.CouponRushRateLimit;
-import com.smartlect.annotation.GlobalInterceptor;
 import com.smartlect.api.dto.PayInfoDTO;
 import com.smartlect.entity.dto.TokenUserInfoDTO;
 import com.smartlect.entity.po.DiscountCoupon;
@@ -26,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 
 @RestController("discountCouponController")
 @RequestMapping("/discountCoupon")
@@ -57,7 +57,7 @@ public class DiscountCouponController extends ABaseController{
 
     // 抢购：预占 + 扣库存 + 创建待支付订单，前端跳转确认订单页倒计时支付
     @PostMapping("/rushCoupon")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     @CouponRushRateLimit
     public ResponseVO rushCoupon(
             @NotEmpty String couponId,
@@ -73,7 +73,7 @@ public class DiscountCouponController extends ABaseController{
 
     // 确认订单页：为已创建的秒杀订单发起支付
     @PostMapping("/buyDiscountCoupon")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO buyDiscountCoupon(
             @NotEmpty String couponId,
             @NotEmpty String payMethod,
@@ -90,7 +90,7 @@ public class DiscountCouponController extends ABaseController{
 
     // 我的优惠券
     @PostMapping("/loadUserCoupon")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO loadUserCoupon(@NotNull Integer pageNo, Integer status) {
         String userId = getTokenUserInfo().getUserId();
         orderFeignSupport.syncPaidCouponRushUserCoupons(userId);

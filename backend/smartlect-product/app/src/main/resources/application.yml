@@ -107,4 +107,3 @@ smartlect:
     connect-timeout-ms: 3000
     read-timeout-ms: 10000
   security:
-    admin-interceptor: true

@@ -91,7 +91,6 @@ management:
 
 smartlect:
   security:
-    admin-interceptor: true
   internal:
     token: ${SMARTLECT_INTERNAL_TOKEN:}
     auth-enabled: true

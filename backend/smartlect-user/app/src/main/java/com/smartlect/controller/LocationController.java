@@ -1,6 +1,5 @@
 package com.smartlect.controller;
 
-import com.smartlect.annotation.GlobalInterceptor;
 import com.smartlect.annotation.RateLimit;
 import com.smartlect.entity.vo.LocationWeatherVO;
 import com.smartlect.entity.vo.ResponseVO;
@@ -9,6 +8,7 @@ import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 
 @RequestMapping("/location")
 @RestController
@@ -18,13 +18,13 @@ public class LocationController extends ABaseController {
     private LocationWeatherService locationWeatherService;
 
     @GetMapping("/resolve")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO resolve(Double latitude, Double longitude) {
         return getSuccessResponseVO(locationWeatherService.resolve(latitude, longitude));
     }
 
     @GetMapping("/sync")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     @RateLimit(limitType = RateLimit.LimitType.USER, windowSeconds = 10, maxCount = 1, message = "获取位置过于频繁，请稍后再试")
     public ResponseVO sync(Double latitude, Double longitude) {
         String userId = getTokenUserInfo().getUserId();

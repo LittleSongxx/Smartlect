@@ -1,6 +1,5 @@
 package com.smartlect.controller;
 
-import com.smartlect.annotation.GlobalInterceptor;
 import com.smartlect.annotation.RateLimit;
 import com.smartlect.component.RedisComponent;
 import com.smartlect.component.UserTempBanService;
@@ -45,6 +44,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 
 @RequestMapping("/account")
 @RestController
@@ -220,7 +220,7 @@ public class AccountController extends ABaseController{
 
     // 获取个人信息
     @GetMapping("/getUserInfo")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO getUserInfo(){
         String userId = getTokenUserInfo().getUserId();
         UserInfo userInfo = userInfoService.getUserInfoByUserId(userId);
@@ -232,7 +232,7 @@ public class AccountController extends ABaseController{
 
     // 修改个人信息
     @PostMapping("/updateUserInfo")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO updateUserInfo(String avatar,@NotEmpty String nickName,@NotNull Integer sex){
         String userId = getTokenUserInfo().getUserId();
         userInfoService.updateUserInfo(userId, avatar, nickName, sex);
@@ -241,7 +241,7 @@ public class AccountController extends ABaseController{
 
     // 修改密码
     @PostMapping("/updatePassword")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO updatePassword(@NotEmpty String oldPassword,@NotEmpty String password){
         String userId = getTokenUserInfo().getUserId();
         userInfoService.updatePassword(userId, oldPassword, password);

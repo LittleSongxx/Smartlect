@@ -1,6 +1,5 @@
 package com.smartlect.controller;
 
-import com.smartlect.annotation.GlobalInterceptor;
 import com.smartlect.component.RedisComponent;
 import com.smartlect.constants.Constants;
 import com.smartlect.api.dto.PayInfoDTO;
@@ -44,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
+import cn.dev33.satoken.annotation.SaCheckLogin;
 
 @RequestMapping("/order")
 @RestController
@@ -66,7 +66,7 @@ public class OrderController extends ABaseController{
 
     // 提交订单
     @PostMapping("/postOrder")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO postOrder(
             @Valid @RequestBody PostOrderDTO postOrderDTO,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
@@ -83,7 +83,7 @@ public class OrderController extends ABaseController{
 
     // 获取支付信息
     @PostMapping("/getPayInfo")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO getPayInfo(@NotEmpty String orderId){
         PayInfoDTO payInfoDTO = orderInfoService.getPayInfo(getTokenUserInfo().getUserId(),orderId);
         return getSuccessResponseVO(payInfoDTO);
@@ -91,7 +91,7 @@ public class OrderController extends ABaseController{
 
     // 查询订单信息
     @PostMapping("/getOrderInfo")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO getOrderInfo(@NotEmpty String payOrderId){
         TokenUserInfoDTO tokenUserInfo = getTokenUserInfo();
         if (tokenUserInfo == null || StringTools.isEmpty(tokenUserInfo.getUserId())) {
@@ -119,7 +119,7 @@ public class OrderController extends ABaseController{
 
     // 查询我的订单
     @PostMapping("/loadMyOrder")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO loadMyOrder(@NotNull Integer pageNo, Integer status){
         // 返回PaginationResultVO<OrderInfo> 分页对象，包含订单列表和分页信息
         // 不查询OrderStatus为-1，即已删除的订单
@@ -148,7 +148,7 @@ public class OrderController extends ABaseController{
 
     // 取消订单
     @PostMapping("/cancelOrder")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO cancelOrder(
             @NotEmpty String orderId,
             @RequestHeader(value = "Idempotency-Key", required = false)
@@ -176,7 +176,7 @@ public class OrderController extends ABaseController{
 
     // 删除订单（更新数据库的orderStatus，逻辑删除）
     @PostMapping("/deleteOrder")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO deleteOrder(@NotEmpty String orderId){
         // 获得当前用户的userId
         String userId = getTokenUserInfo().getUserId();
@@ -204,7 +204,7 @@ public class OrderController extends ABaseController{
 
     // 确认订单
     @PostMapping("/confirmOrder")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO confirmOrder(
             @NotEmpty String orderId,
             @RequestHeader(value = "Idempotency-Key", required = false)
@@ -239,7 +239,7 @@ public class OrderController extends ABaseController{
 
     // 退款
     @PostMapping("/refundOrder")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO refundOrder(
             @NotEmpty String orderItemId,
             @RequestHeader(value = "Idempotency-Key", required = false)
@@ -268,7 +268,7 @@ public class OrderController extends ABaseController{
 
     // 订单详情（含明细）
     @PostMapping("/getMyOrderDetail")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO getMyOrderDetail(@NotEmpty String orderId){
         String userId = getTokenUserInfo().getUserId();
         OrderInfo orderInfo = orderInfoService.getOrderInfoByOrderId(orderId);
@@ -284,14 +284,14 @@ public class OrderController extends ABaseController{
 
     // 查看物流
     @PostMapping("/getLogistics")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO getLogistics(@NotEmpty String orderId){
         return getSuccessResponseVO(orderLogisticsInfoService.getOrderLogisticsRecords(getTokenUserInfo().getUserId(), orderId));
     }
 
     // 获取订单数量 待付款、待发货、待收货、待评价
     @GetMapping("/getOrderCountInfo")
-    @GlobalInterceptor(checkLogin = true)
+    @SaCheckLogin
     public ResponseVO getOrderCountInfo(){
         String userId = getTokenUserInfo().getUserId();
         List<OrderCountVO> orderCountVOList = orderInfoService.getOrderCountInfo(userId);
