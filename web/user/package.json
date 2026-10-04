@@ -14,16 +14,11 @@
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
     "axios": "^1.16.1",
-    "cropperjs": "^2.1.1",
     "crypto-js": "^4.2.0",
-    "dayjs": "^1.11.21",
     "element-china-area-data": "^6.1.0",
     "element-plus": "^2.14.0",
-    "js-md5": "^0.8.3",
     "markdown-it": "^14.2.0",
-    "nprogress": "^0.2.0",
     "pinia": "^3.0.4",
-    "qrcode": "^1.5.4",
     "vue": "^3.5.34",
     "vue-advanced-cropper": "^2.8.9",
     "vue-router": "^4.6.4"
