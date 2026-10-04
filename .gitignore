@@ -35,8 +35,9 @@ output/
 .zcodeignore
 .research/
 
-# 日志
+# 日志（eval/verification/ 的证据 log 例外：按 AGENTS.md 证据政策入库）
 *.log
+!eval/verification/**/*.log
 
 # 运行态数据仍忽略；评测基准商品集必须随代码版本化
 data/*
