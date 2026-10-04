@@ -531,8 +531,9 @@ class ShoppingMySQLTests(unittest.TestCase):
         self.assertEqual(result['result']['answer_status'],'answered')
         self.assertEqual(result['result']['citations'][0]['doc_id'],'synthetic-refund')
         self.assertEqual(result['context']['model_calls'],4)
-        self.assertEqual(len(result['context']['answer_rejections']),1)
-        self.assertEqual(result['context']['answer_rejections'][0]['candidate_output'],'我先核对资料。')
+        # 结构重述机制（2026-10-04）：散文轮在进校验链前被拦截重述，不再计入
+        # answer_rejections；修复轮先开放只读检索，取证后强制收口。
+        self.assertEqual(result['context'].get('answer_rejections',[]),[])
         self.assertEqual(len(self.knowledge.searches),1)
         self.assertEqual(self.store.get_conversation(self.actor,self.conversation)['proposals'],[])
 
@@ -712,12 +713,18 @@ class ShoppingMySQLTests(unittest.TestCase):
         run,lease=self.begin()
         self.store.save_context(lease,{'model_calls':1,'answer_repairs':1,'answer_rejections':[{'reason':'prior repair'}]})
         run=self.store.get_run(self.actor,run['agent_run_id'])
-        provider=FakeProvider([{'role':'assistant','content':'bad json'},grounded])
+        # 修复配额已耗尽时，散文轮走结构重述（不消耗 answer_repairs），随后给出
+        # 合法结构化终答即可正常收口——配额守恒语义在重述机制下依然成立。
+        provider=FakeProvider([{'role':'assistant','content':'bad json'},
+            {'role':'assistant','content':json.dumps({'answer':'本轮未能完成核对，请稍后再试。',
+                'request_kind':'inquire_fact','handoff_requested':False,'grounding':'no_business_claim',
+                'citation_chunk_ids':[],'selected_sku_keys':[],'requires_clarification':False})}])
         result=asyncio.run(self.execute(provider,run,lease))
-        self.assertEqual(provider.actual_attempts,1)
-        self.assertEqual(result['context']['model_calls'],2)
+        self.assertEqual(provider.actual_attempts,2)
+        self.assertEqual(result['context']['model_calls'],3)
         self.assertEqual(result['context']['answer_repairs'],1)
-        self.assertEqual(result['result']['model_mode'],'rule-fallback')
+        # no_business_claim 无引用的诚实收口编译为 insufficient（合法收束，非失败）
+        self.assertEqual(result['result']['answer_status'],'insufficient')
 
     def test_untrusted_source_text_is_data_and_does_not_force_handoff_or_stop_other_observations(self):
         # Retires lexical whole-run blocking. This fake proves controller routing, not model injection resistance.
