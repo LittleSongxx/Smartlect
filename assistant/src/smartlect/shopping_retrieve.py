@@ -5,6 +5,7 @@ from hashlib import sha256
 import uuid
 
 from smartlect.algo_version import content_hash
+import re
 from smartlect.catalog_gate import _fold, eligible_skus, in_scope, scope_filter
 from smartlect.commerce import PRODUCT_SNAPSHOT_BATCH_PATH, STOCK_BATCH_PATH, CommerceError
 from smartlect.db import canonical
@@ -304,10 +305,22 @@ class ShoppingRetrieve:
                 relaxed_terms = [t for t in request['required_terms'] if t != term]
                 relaxed_request = {**request, 'required_terms': relaxed_terms}
                 relaxed_cards, relaxed_removed = await self._snapshot(base_ids, relaxed_request, scope)
-                if relaxed_cards:
+                if not relaxed_cards:
+                    continue
+                # 锚定栅栏（v17 官方跑 shop-d-13 教训）：放宽绝不能把约束请求
+                # 变成无约束枚举——合法空集（如"300 以内的人体工学椅"，椅子超预
+                # 算）被 USB 线/鼠标灌回即是伪救援。放宽候选必须仍被剩余必含词
+                # 或查询显著词钉住商品族，且只回传锚命中子集。
+                anchors = [_fold(str(t)) for t in relaxed_terms]
+                anchors += [_fold(t) for t in re.split(r'[\s,，、]+', str(request.get('query') or '')) if len(t) >= 2]
+                def _card_text(card):
+                    return _fold(str(card.get('productName') or '') + str(card.get('specification') or ''))
+                anchored = [card for card in relaxed_cards
+                            if any(anchor in _card_text(card) for anchor in anchors if anchor)]
+                if anchored:
                     errors['required_term_relaxed'] = term
                     request = relaxed_request
-                    cards, initial_removed = relaxed_cards, relaxed_removed
+                    cards, initial_removed = anchored, relaxed_removed
                     break
         if not cards:
             return self._finish([], ranked=[], cards=cards, mode='content_rule', rerank_error=None,
