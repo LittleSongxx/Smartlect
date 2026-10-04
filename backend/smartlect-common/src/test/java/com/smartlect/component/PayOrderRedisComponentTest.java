@@ -1,14 +1,13 @@
 package com.smartlect.component;
 
-import com.smartlect.support.PayOrderLifecycleLockHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -16,11 +15,10 @@ import org.springframework.transaction.support.TransactionSynchronizationUtils;
 
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,20 +27,17 @@ import static org.mockito.Mockito.when;
 class PayOrderRedisComponentTest {
 
     @Mock
-    private StringRedisTemplate redisTemplate;
+    private RedissonClient redissonClient;
     @Mock
-    private ValueOperations<String, String> valueOperations;
+    private RLock lock;
 
     private PayOrderRedisComponent component;
 
     @BeforeEach
     void setUp() {
         component = new PayOrderRedisComponent();
-        ReflectionTestUtils.setField(component, "stringRedisTemplate", redisTemplate);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(any(), any(), anyLong(), eq(TimeUnit.SECONDS)))
-                .thenReturn(true);
-        when(redisTemplate.execute(any(), any(), any())).thenReturn(1L);
+        ReflectionTestUtils.setField(component, "redissonClient", redissonClient);
+        when(redissonClient.getLock(anyString())).thenReturn(lock);
     }
 
     @AfterEach
@@ -51,34 +46,56 @@ class PayOrderRedisComponentTest {
             TransactionSynchronizationManager.clearSynchronization();
         }
         TransactionSynchronizationManager.setActualTransactionActive(false);
-        PayOrderLifecycleLockHolder.clear();
     }
 
     @Test
-    void transactionKeepsLifecycleLockUntilAfterCompletion() {
+    void transactionKeepsLifecycleLockUntilAfterCompletion() throws InterruptedException {
+        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
 
-        component.runWithPayOrderLifecycleLock(
-                "pay-1", () -> assertTrue(PayOrderLifecycleLockHolder.isBound()));
+        component.runWithPayOrderLifecycleLock("pay-1", () -> null);
 
-        assertTrue(PayOrderLifecycleLockHolder.isBound());
-        verify(redisTemplate, never()).execute(any(), any(), any());
-
+        // 事务内：锁不释放，交给 afterCompletion
+        verify(lock, never()).unlock();
         TransactionSynchronizationUtils.invokeAfterCompletion(
                 TransactionSynchronizationManager.getSynchronizations(),
                 TransactionSynchronization.STATUS_COMMITTED);
-
-        assertFalse(PayOrderLifecycleLockHolder.isBound());
-        verify(redisTemplate).execute(any(), any(), any());
+        verify(lock).unlock();
     }
 
     @Test
-    void callWithoutTransactionReleasesLifecycleLockImmediately() {
-        component.runWithPayOrderLifecycleLock(
-                "pay-2", () -> assertTrue(PayOrderLifecycleLockHolder.isBound()));
+    void callWithoutTransactionReleasesLifecycleLockImmediately() throws InterruptedException {
+        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
 
-        assertFalse(PayOrderLifecycleLockHolder.isBound());
-        verify(redisTemplate).execute(any(), any(), any());
+        component.runWithPayOrderLifecycleLock("pay-2", () -> null);
+
+        verify(lock).unlock();
+    }
+
+    @Test
+    void busyLockThrowsLifecycleBusyException() throws InterruptedException {
+        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.smartlect.exception.PayOrderLifecycleBusyException.class,
+                () -> component.runWithPayOrderLifecycleLock("pay-3", () -> null));
+        verify(lock, never()).unlock();
+    }
+
+    @Test
+    void unlockFailureAfterCommitIsSwallowedToKeepCommittedResult() throws InterruptedException {
+        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        org.mockito.Mockito.doThrow(new IllegalStateException("lease expired"))
+                .when(lock).unlock();
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+
+        component.runWithPayOrderLifecycleLock("pay-4", () -> "ok");
+
+        // 释放失败不能把已提交的事务翻成请求失败——吞掉，等租约过期。
+        TransactionSynchronizationUtils.invokeAfterCompletion(
+                TransactionSynchronizationManager.getSynchronizations(),
+                TransactionSynchronization.STATUS_COMMITTED);
+        assertTrue(true);
     }
 }

@@ -70,7 +70,7 @@ class LuaScriptLoaderTest {
     @Test
     void sha1IsStableAcrossCallsOnSameInstance() {
         // EVALSHA 复用的前提：同一实例多次取 sha1 必须一致，脚本文本不能是动态拼的
-        DefaultRedisScript<Long> script = LuaScriptLoader.load("rate_limit_v1.lua", Long.class);
+        DefaultRedisScript<Long> script = LuaScriptLoader.load("coupon_rush_reserve_v1.lua", Long.class);
         assertSame(script.getSha1(), script.getSha1());
     }
 

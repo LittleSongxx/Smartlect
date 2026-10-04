@@ -3,30 +3,32 @@ package com.smartlect.component;
 import com.smartlect.constants.Constants;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.exception.HttpBusinessException;
-import com.smartlect.redis.LuaScriptLoader;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.redisson.api.RRateLimiter;
+import org.redisson.api.RedissonClient;
+import org.redisson.api.RateIntervalUnit;
+import org.redisson.api.RateType;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 秒杀链路的分布式限流。Redisson RRateLimiter 取代自研固定窗口 Lua
+ * （resources/lua/rate_limit_v1.lua 已随 2026-10 收敛重构退役）：
+ * OVERALL 速率语义与原「每 windowSeconds 最多 maxCount 次」一致，
+ * 原子性与配额存储由框架承担；限流器实例按参数三元组进程内缓存，trySetRate 幂等。
+ */
 @Service
 @Slf4j
 public class CouponRushRateLimitService {
 
-    /**
-     * 固定窗口计数限流，脚本见 {@code resources/lua/rate_limit_v1.lua}。
-     * <p>脚本实例复用：{@link DefaultRedisScript} 的 sha1 是加锁懒加载的，多线程共享一个实例安全。
-     * 限流是每次抢购请求都要走的路径，每次新建实例等于每次重算 sha1、退回 EVAL 传全量脚本文本。
-     */
-    private static final DefaultRedisScript<Long> RATE_LIMIT_SCRIPT =
-            LuaScriptLoader.load("rate_limit_v1.lua", Long.class);
-
     @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private RedissonClient redissonClient;
+
+    private final Map<String, RRateLimiter> limiters = new ConcurrentHashMap<>();
 
     public void checkUserLimit(String userId) {
         checkUserLimit(userId, Constants.RUSH_RATE_USER_MAX_PER_MINUTE, Constants.RUSH_RATE_USER_WINDOW_SECONDS);
@@ -57,16 +59,13 @@ public class CouponRushRateLimitService {
     }
 
     public boolean tryAcquire(String key, long windowSeconds, int maxCount) {
-        return tryAcquireInternal(key, windowSeconds, maxCount);
-    }
-
-    private boolean tryAcquireInternal(String key, long windowSeconds, int maxCount) {
-        Long ok = stringRedisTemplate.execute(
-                RATE_LIMIT_SCRIPT,
-                Collections.singletonList(key),
-                String.valueOf(windowSeconds),
-                String.valueOf(maxCount)
-        );
-        return ok != null && ok == 1L;
+        RRateLimiter limiter = limiters.computeIfAbsent(
+                key + ":" + windowSeconds + ":" + maxCount,
+                ignored -> {
+                    RRateLimiter created = redissonClient.getRateLimiter("rrate:" + key);
+                    created.trySetRate(RateType.OVERALL, maxCount, windowSeconds, RateIntervalUnit.SECONDS);
+                    return created;
+                });
+        return limiter.tryAcquire();
     }
 }

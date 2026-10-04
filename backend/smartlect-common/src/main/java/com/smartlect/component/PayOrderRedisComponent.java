@@ -3,20 +3,17 @@ package com.smartlect.component;
 import com.smartlect.constants.Constants;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.exception.PayOrderLifecycleBusyException;
-import com.smartlect.redis.LuaScriptLoader;
 import com.smartlect.redis.RedisUtils;
-import com.smartlect.support.PayOrderLifecycleLockHolder;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
@@ -72,10 +69,10 @@ public class PayOrderRedisComponent {
 				Constants.REDIS_KEY_PAY_ORDER_CLOSE_DONE + payOrderId));
 	}
 
-	// 只有持锁者能删自己的锁：token 不匹配就不删，避免删掉别人续期后的锁
-	// 脚本见 resources/lua/pay_order_lifecycle_unlock_v1.lua
-	private static final DefaultRedisScript<Long> PAY_ORDER_LIFECYCLE_UNLOCK_SCRIPT =
-			LuaScriptLoader.load("pay_order_lifecycle_unlock_v1.lua", Long.class);
+	// Redisson RLock 取代自研 SETNX+token+Lua 安全解锁：看门狗续期与"仅持有者可解"由框架保证。
+	// 保留的框架外语义只有一条——事务提交后才释放锁（afterCompletion 钩子），这是业务正确性要求。
+	@Resource
+	private RedissonClient redissonClient;
 
 	public void runWithPayOrderLifecycleLock(String payOrderId, Runnable action) {
 		runWithPayOrderLifecycleLock(payOrderId, () -> {
@@ -94,21 +91,12 @@ public class PayOrderRedisComponent {
 				throw new BusinessException("支付订单处理失败", e);
 			}
 		}
-		String lockKey = Constants.REDIS_KEY_PAY_ORDER_LIFECYCLE_LOCK + payOrderId;
-		long deadline = System.currentTimeMillis() + Constants.PAY_ORDER_LIFECYCLE_LOCK_WAIT_MS;
-		String token = null;
+		RLock lock = redissonClient.getLock(Constants.REDIS_KEY_PAY_ORDER_LIFECYCLE_LOCK + payOrderId);
 		boolean acquired = false;
 		boolean releaseDeferred = false;
 		try {
-			while (System.currentTimeMillis() < deadline) {
-				token = newPayOrderLifecycleLockToken();
-				if (setIfAbsent(lockKey, token, Constants.PAY_ORDER_LIFECYCLE_LOCK_SECONDS, TimeUnit.SECONDS)) {
-					acquired = true;
-					PayOrderLifecycleLockHolder.bind(lockKey, token);
-					break;
-				}
-				Thread.sleep(50L);
-			}
+			long waitMs = Constants.PAY_ORDER_LIFECYCLE_LOCK_WAIT_MS;
+			acquired = lock.tryLock(waitMs, Constants.PAY_ORDER_LIFECYCLE_LOCK_SECONDS * 1000L, TimeUnit.MILLISECONDS);
 			if (!acquired) {
 				throw new PayOrderLifecycleBusyException();
 			}
@@ -121,41 +109,26 @@ public class PayOrderRedisComponent {
 		} catch (Exception e) {
 			throw new BusinessException("支付订单处理失败", e);
 		} finally {
-			if (acquired && token != null) {
-				releaseDeferred = deferReleaseUntilTransactionCompletion(lockKey, token);
+			if (acquired) {
+				releaseDeferred = deferReleaseUntilTransactionCompletion(lock);
 				if (!releaseDeferred) {
-					releasePayOrderLifecycleLock(lockKey, token);
+					releasePayOrderLifecycleLock(lock);
 				}
-			}
-			if (!releaseDeferred) {
-				PayOrderLifecycleLockHolder.clear();
 			}
 		}
 	}
 
-	public String getCurrentPayOrderLifecycleLockToken() {
-		return PayOrderLifecycleLockHolder.getToken();
-	}
-
-	private static String newPayOrderLifecycleLockToken() {
-		return UUID.randomUUID() + ":" + Thread.currentThread().getId();
-	}
-
-	private void releasePayOrderLifecycleLock(String lockKey, String token) {
+	private void releasePayOrderLifecycleLock(RLock lock) {
 		try {
-			Long deleted = stringRedisTemplate.execute(
-					PAY_ORDER_LIFECYCLE_UNLOCK_SCRIPT, List.of(lockKey), token);
-			if (deleted == null || deleted == 0L) {
-				log.warn("支付生命周期锁释放跳过（非持有者或已过期） lockKey={}", lockKey);
-			}
+			lock.unlock();
 		} catch (RuntimeException e) {
 			// The lease still has a TTL. Unlock failure must not turn a committed
 			// order transaction into an apparent request failure.
-			log.error("支付生命周期锁释放失败，等待租约过期 lockKey={}", lockKey, e);
+			log.error("支付生命周期锁释放失败，等待租约过期 lockName={}", lock.getName(), e);
 		}
 	}
 
-	private boolean deferReleaseUntilTransactionCompletion(String lockKey, String token) {
+	private boolean deferReleaseUntilTransactionCompletion(RLock lock) {
 		if (!TransactionSynchronizationManager.isSynchronizationActive()
 				|| !TransactionSynchronizationManager.isActualTransactionActive()) {
 			return false;
@@ -163,11 +136,7 @@ public class PayOrderRedisComponent {
 		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 			@Override
 			public void afterCompletion(int status) {
-				try {
-					releasePayOrderLifecycleLock(lockKey, token);
-				} finally {
-					PayOrderLifecycleLockHolder.clear();
-				}
+				releasePayOrderLifecycleLock(lock);
 			}
 		});
 		return true;
