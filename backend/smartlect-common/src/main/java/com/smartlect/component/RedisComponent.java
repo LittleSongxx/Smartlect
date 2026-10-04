@@ -97,10 +97,12 @@ public class RedisComponent {
                 || principal.getSessionVersion() == null) {
             return null;
         }
-        // 版本检查（角色变更时由 invalidateAdminSessions 升版踢人）
+        // 版本检查（角色变更时由 invalidateAdminSessions 升版踢人）。
+        // 该键只由 invalidateAdminSessions 写入：键缺失 = 全新部署从未升版踢人，
+        // 放行；键存在且不匹配才拒绝——否则全新环境管理端内省永远 401。
         String currentVersion = stringRedisTemplate.opsForValue().get(
                 Constants.REDIS_KEY_ADMIN_SESSION_VERSION + principal.getAdminId());
-        if (!String.valueOf(principal.getSessionVersion()).equals(currentVersion)) {
+        if (currentVersion != null && !String.valueOf(principal.getSessionVersion()).equals(currentVersion)) {
             stringRedisTemplate.delete(SA_TOKEN_ADMIN_TOKEN_PREFIX + token);
             return null;
         }
