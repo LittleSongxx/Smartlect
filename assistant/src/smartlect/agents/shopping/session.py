@@ -554,11 +554,31 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
         # 上一轮被丢弃的预览（如修复轮前的无效输出）不会拼接进本轮。
         await emit('message_delta', {'text': '', 'replace': True})
         repairing = bool(state.get('repair'))
-        available = [] if repairing else schemas(actor, allowed_tools())
+        if repairing and state.get('repair_no_tools'):
+            # 修复阶段 2：只暴露 finish_answer 并定向强制调用。函数调用参数 schema 由
+            # provider 原生强制（实验确认 json_schema 在带 tools 时被静默忽略），
+            # 结构化终答因此有确定性出口；解析走既有 finish_answer 分支。
+            from .contract import final_answer_schema
+            finish = final_answer_schema()
+            messages, context['context_upper_bound_tokens'] = bounded_messages(state['messages'], [finish], question)
+            response = await provider.chat(messages, before_attempt=before_attempt, on_trace=trace, max_tokens=1600,
+                                           prompt_version=context['prompt_version'], skill_versions=context['skill_versions'],
+                                           schema_version=SCHEMA_VERSION, stream=True, on_delta=on_token,
+                                           tools=[finish],
+                                           tool_choice={'type': 'function', 'function': {'name': 'finish_answer'}})
+            return {'messages': messages + [response['message']], 'response': response['message']}
+        elif repairing:
+            # 修复阶段 1：放开只读检索工具。修复提示词写着「可用只读工具补充本题事实」，
+            # 此前却把工具剥光，模型只能把「没检索的追问」格式化。通用机制：先给一次
+            # 补检索的机会；一旦检索过（或再次失败）由 tool_node/answer_node 置
+            # repair_no_tools 进入阶段 2 的 schema 强制收口。
+            available = [schema for schema in schemas(actor, allowed_tools())
+                         if schema['function']['name'] in
+                         {'search_knowledge', 'recommend_skus', 'search_skus', 'compare_skus', 'get_product_offer'}]
+        else:
+            available = schemas(actor, allowed_tools())
         messages, context['context_upper_bound_tokens'] = bounded_messages(state['messages'], available, question)
-        kwargs = {'tools': available or None, 'tool_choice': 'none' if repairing else ('auto' if available else None)}
-        if repairing:
-            kwargs['response_format'] = final_answer_response_format()
+        kwargs = {'tools': available or None, 'tool_choice': 'auto' if available else None}
         response = await provider.chat(messages, before_attempt=before_attempt, on_trace=trace, max_tokens=1600,
                                        prompt_version=context['prompt_version'], skill_versions=context['skill_versions'],
                                        schema_version=SCHEMA_VERSION, stream=True, on_delta=on_token, **kwargs)
@@ -645,8 +665,11 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                     await emit('decision', {'fork': 'catalog_template_closeout',
                                             'reason': 'catalog_facts_observed',
                                             'detail': '检索类工具已有结果，控制器按目录模板直接收口'})
-                    return {'messages': messages, 'result': templated}
-        return {'messages': messages}
+                    return {'messages': messages, 'result': templated,
+                            **({'repair_no_tools': True} if state.get('repair') else {})}
+        # 修复阶段 1 检索过一次就进入阶段 2：下一轮模型调用无工具 + json_schema 强制。
+        return {'messages': messages,
+                **({'repair_no_tools': True} if state.get('repair') else {})}
 
     def repair_round_messages(state, reason):
         feedback = [{'role':'tool','tool_call_id':call['id'],
@@ -654,7 +677,7 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             for call in state['response'].get('tool_calls') or []]
         hint = (
                  '请仅修复输出格式或引用。校验失败：' + reason[:500] +
-                 '。用结构化 JSON 提交 answer/request_kind/handoff_requested/grounding/citation_chunk_ids/selected_sku_keys/requires_clarification，不要填写answer_status，不要调用 finish_answer。允许引用chunk_id：' +
+                 '。用结构化 JSON 提交 answer/request_kind/handoff_requested/grounding/citation_chunk_ids/selected_sku_keys/requires_clarification，不要填写answer_status；若系统只给出 finish_answer 工具则通过它提交同构参数。允许引用chunk_id：' +
                  canonical(list(citations)) + '；允许sku_key：' + canonical(list(products)) +
                  '。按request_kind声明诉求，系统编译是否建单。也可单独request_handoff。'
                  '可用只读工具补充本题事实，也可说明未知并继续可完成的部分；历史对话不代替本轮交易事实。'
@@ -688,6 +711,26 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                                         'reason': 'catalog_facts_observed',
                                         'detail': '答前已有目录事实，控制器按目录模板收口'})
                 return {'result': templated}
+        if not calls and not state.get('repair') and raw.strip() and not raw.lstrip().startswith('{'):
+            # 确定性结构重述（通用机制，v15 的 finish_answer 工具等价物）：provider 在带
+            # tools 时忽略 json_schema，散文通道因此敞开。散文不作为终答进入校验链，
+            # 而是丢弃该散文轮、按「本轮是否已有证据」分流重做——无检索证据先给一轮
+            # 只读工具（阶段1），已有证据直接 schema 强制收口（阶段2）。不消耗 answer_repairs。
+            phase2 = bool(products or citations or context.get('retrieval_calls'))
+            await emit('decision', {'fork': 'structure_restate',
+                                    'reason': 'freeform_text_without_schema',
+                                    'detail': ('已有本轮证据，schema 强制收口' if phase2
+                                               else '尚无本轮证据，先开放只读检索再收口')})
+            kept = list(state['messages'])
+            if kept and kept[-1].get('role') == 'assistant' and not kept[-1].get('tool_calls'):
+                kept = kept[:-1]  # 重做而非续写：散文轮不进入重述上下文，避免模型延续散文立场
+            restate = [{'role': 'system',
+                        'content': '上一次输出是不合契约的自由文本，已丢弃。请重新完成本轮任务：'
+                                   '如仍缺事实先用工具检索；已有本轮工具回执时，终答必须基于回执收口'
+                                   '（选品回执按推荐序填 selected_sku_keys，政策回执填 chunk_id 引用），'
+                                   '不得以追问替代。准备好后按 FinalAnswer 契约提交结构化终答。'}]
+            return {'repair': 1, 'repair_no_tools': phase2,
+                    'messages': kept + restate}
         try:
             if calls:
                 if len(calls)!=1 or calls[0]['function']['name'] not in {'finish_answer', 'request_handoff'}:
@@ -959,6 +1002,15 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                 'allowed_chunk_ids': list(citations), 'allowed_sku_keys': list(products)})
             if not isinstance(error, GuardViolation):
                 if context['answer_repairs'] >= 1:
+                    if state.get('repair') and not state.get('repair_no_tools'):
+                        # 修复阶段 1 再失败：不给第二次自由轮，直接进阶段 2 的
+                        # schema 强制收口（无工具）。这是同一次修复轮内的相位推进，
+                        # 不增加 answer_repairs 计数，预算由 model_attempts 兜底。
+                        await persist()
+                        await emit('decision', {'fork': 'answer_repair_phase2', 'reason': str(reason)[:200],
+                                                'detail': '修复轮检索阶段未收口，切 schema 强制终答'})
+                        return {'repair': 1, 'repair_no_tools': True,
+                                'messages': repair_round_messages(state, reason)}
                     await persist()
                     raise BudgetExceeded('answer_contract_failed')
                 context['answer_repairs'] += 1

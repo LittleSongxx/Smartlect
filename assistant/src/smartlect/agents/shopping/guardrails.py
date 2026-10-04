@@ -165,6 +165,11 @@ def salvage_unstructured_fact_answer(raw, context):
         return None
     if _STORE_POLICY_CUE.search(text) and not context.get('retrieval_calls'):
         return None
+    if context.get('shopping_request') is not None or context.get('recommendations'):
+        # 本轮已有选品检索回执：散文终答按零选品 salvage 会把 Pass@1 打分面清空
+        # （终答文本列了 SKU 而结构化 selected_sku_keys 为空）。放行给修复轮——
+        # 修复轮带 json_schema strict 绑定，能拿到带选品的合法终答。
+        return None
     return FinalAnswer(
         answer=text[:4000],
         request_kind='inquire_fact',

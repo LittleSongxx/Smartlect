@@ -9,6 +9,8 @@ class RunState(TypedDict):
     response: dict
     result: dict
     repair: int
+    # 修复轮相位：True = 阶段 2（无工具 + json_schema 强制收口）
+    repair_no_tools: bool
 
 
 def route_shopping_model(state):

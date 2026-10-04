@@ -45,11 +45,19 @@ class GuardViolation(ValueError):
 
 
 def final_answer_schema():
-    """Legacy tool schema kept for test fakes. Live tools no longer advertise finish_answer."""
+    """finish_answer 工具 schema：阶段 2 收口轮专用。
+
+    实验确认（2026-10-04）：本 provider 在请求携带 tools 时静默忽略 response_format
+    json_schema，结构化绑定只对纯文本轮生效；而函数调用的参数 schema 由 provider
+    原生强制。因此终答收口轮改为只暴露本工具并强制调用（tool_choice 定向），
+    参数结构即 FinalAnswer 契约——这是 finish_answer 工具时代强制力的等价迁移。
+    """
     schema = tool_schema(FinalAnswer)
     schema['required'] = list(schema['properties'])
+    schema['additionalProperties'] = False
     return {'type':'function','function':{'name':'finish_answer',
-        'description':'已停用。终答改为结构化 JSON。',
+        'description':'提交本轮结构化终答（唯一出口）。answer 为面向用户的全文；'
+                      'grounding/citation_chunk_ids/selected_sku_keys 必须基于本轮工具回执。',
         'parameters':schema}}
 
 
