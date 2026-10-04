@@ -26,11 +26,8 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/crypto-js": "^4.2.2",
-    "@types/js-md5": "^0.8.0",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.12.3",
-    "@types/nprogress": "^0.2.3",
-    "@types/qrcode": "^1.5.6",
     "@typescript-eslint/eslint-plugin": "^8.70.0",
     "@typescript-eslint/parser": "^8.70.0",
     "@vitejs/plugin-vue": "^6.0.6",
