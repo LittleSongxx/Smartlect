@@ -84,3 +84,8 @@ Step 2 的 admin 键相应为 `adminToken:admin:token:`（StpLogic("admin") 配�
 - 测试：AccountControllerSaTokenTest（login/autoLogin/logout 全链路，内存 dao）、
   RedisComponentSaTokenSessionTest（裸读契约）、AuthGlobalFilterTest 更新键格式、
   两个 demo 控制器测试改断言 StpUtil 会话
+
+## 2026-10-04 演进注记
+
+- 管理端会话键实测为 `adminToken:admin:*`（StpAdminLogic 的 loginType=admin），Step 2 阶段误写的 `adminToken:login:*` 已修正，admin 路径测试护栏补齐。
+- 网关 web/admin 分支不再向下游设置 `X-User-Id` / `X-User-Token-Verified` / `X-Admin-Token-Verified`：全仓（Java+Python+前端）无任何消费者，下游一律经 Sa-Token 会话内省自取身份；网关仍保留对客户端伪造身份头的无条件剥离。

@@ -83,14 +83,9 @@ smartlect:
   internal:
     token: ${SMARTLECT_INTERNAL_TOKEN:}
     auth-enabled: true
-  admin-assertion:
-    current-secret: ${SMARTLECT_ADMIN_ASSERTION_CURRENT_SECRET:}
-    current-key-id: ${SMARTLECT_ADMIN_ASSERTION_CURRENT_KEY_ID:current}
   feign:
     connect-timeout-ms: 3000
     read-timeout-ms: 10000
-  security:
-    admin-interceptor: true
 
 app:
   common-scheduling:

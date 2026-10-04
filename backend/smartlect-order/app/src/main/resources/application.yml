@@ -90,7 +90,6 @@ management:
         include: health,info,prometheus
 
 smartlect:
-  security:
   internal:
     token: ${SMARTLECT_INTERNAL_TOKEN:}
     auth-enabled: true

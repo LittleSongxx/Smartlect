@@ -1,5 +1,7 @@
 package com.smartlect.utils;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
@@ -11,6 +13,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 public class DateUtil {
 
     private static final Object lockObj = new Object();
@@ -44,7 +47,8 @@ public class DateUtil {
         try {
             return getSdf(pattern).parse(dateStr);
         } catch (ParseException e) {
-            e.printStackTrace();
+            // 保持原兜底行为（返回当前时间），但走日志而不是 stderr
+            log.warn("日期解析失败，回退为当前时间：dateStr={}, pattern={}", dateStr, pattern, e);
         }
         return new Date();
     }

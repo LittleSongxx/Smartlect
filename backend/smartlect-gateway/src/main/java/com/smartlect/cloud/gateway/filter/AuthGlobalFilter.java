@@ -83,16 +83,12 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
             if (!StringUtils.hasText(adminToken)) {
                 return unauthorized(sanitizedExchange, "登录超时");
             }
+            // 校验通过即放行：下游服务各自经 Sa-Token 会话内省取得身份；
+            // 身份信任头不在此下发（历史上设置的 X-User-Id/X-*-Token-Verified 无任何消费者，已删）。
             return reactiveStringRedisTemplate.hasKey(REDIS_KEY_TOKEN_ADMIN + adminToken)
-                    .flatMap(exists -> {
-                        if (Boolean.TRUE.equals(exists)) {
-                            ServerHttpRequest mutated = request.mutate()
-                                    .headers(headers -> headers.set(ADMIN_VERIFIED_HEADER, "1"))
-                                    .build();
-                            return chain.filter(sanitizedExchange.mutate().request(mutated).build());
-                        }
-                        return unauthorized(sanitizedExchange, "登录超时");
-                    });
+                    .flatMap(exists -> Boolean.TRUE.equals(exists)
+                            ? chain.filter(sanitizedExchange)
+                            : unauthorized(sanitizedExchange, "登录超时"));
         }
 
         if (path.startsWith("/api/")) {
@@ -105,15 +101,9 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
             }
             return reactiveStringRedisTemplate.opsForValue().get(REDIS_KEY_TOKEN_WEB + token)
                     .defaultIfEmpty("")
-                    .flatMap(loginId -> {
-                        if (!StringUtils.hasText(loginId)) {
-                            return unauthorized(sanitizedExchange, "登录超时");
-                        }
-                        ServerHttpRequest.Builder builder = request.mutate()
-                                .headers(headers -> headers.set(USER_VERIFIED_HEADER, "1"));
-                        builder.headers(headers -> headers.set(USER_ID_HEADER, loginId));
-                        return chain.filter(sanitizedExchange.mutate().request(builder.build()).build());
-                    });
+                    .flatMap(loginId -> StringUtils.hasText(loginId)
+                            ? chain.filter(sanitizedExchange)
+                            : unauthorized(sanitizedExchange, "登录超时"));
         }
 
         return chain.filter(sanitizedExchange);

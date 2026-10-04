@@ -39,7 +39,6 @@ class SysCategoryServiceImplTest {
         assertEquals(List.of("20003"),
                 result.get(0).getChildren().stream()
                         .map(SysCategory::getCategoryId).toList());
-        verify(redis, never()).getCategoryList();
         verify(redis).saveCategory2Redis(databaseRows);
     }
 

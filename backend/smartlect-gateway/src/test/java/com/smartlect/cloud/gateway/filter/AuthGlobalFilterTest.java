@@ -46,7 +46,7 @@ class AuthGlobalFilterTest {
     }
 
     @Test
-    void authenticatedRequestOverwritesSpoofedUserIdentityHeaders() {
+    void authenticatedRequestStripsSpoofedIdentityHeadersInsteadOfOverwriting() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         // Sa-Token 键：token:login:token:{token} -> loginId 裸字符串
         when(valueOperations.get("token:login:token:valid-token"))
@@ -62,8 +62,9 @@ class AuthGlobalFilterTest {
 
         filter.filter(exchange, capture(forwarded)).block();
 
-        assertEquals("trusted-user", forwarded.get().getRequest().getHeaders().getFirst("X-User-Id"));
-        assertEquals(List.of("1"), forwarded.get().getRequest().getHeaders().get("X-User-Token-Verified"));
+        // 身份信任头一律剥离、不再下发：下游经 Sa-Token 会话内省自行取身份
+        assertNull(forwarded.get().getRequest().getHeaders().getFirst("X-User-Id"));
+        assertNull(forwarded.get().getRequest().getHeaders().getFirst("X-User-Token-Verified"));
         assertNull(forwarded.get().getRequest().getHeaders().getFirst("X-Admin-Token-Verified"));
         assertEquals(HttpStatus.OK, exchange.getResponse().getStatusCode());
         assertEquals("downstream", exchange.getResponse().getBodyAsString().block());
@@ -145,7 +146,8 @@ class AuthGlobalFilterTest {
 
         filter.filter(exchange, capture(forwarded)).block();
 
-        assertEquals(List.of("1"), forwarded.get().getRequest().getHeaders().get("X-Admin-Token-Verified"));
+        // 校验通过放行，但不携带任何身份信任头（下游自行内省）
+        assertNull(forwarded.get().getRequest().getHeaders().getFirst("X-Admin-Token-Verified"));
         assertNull(forwarded.get().getRequest().getHeaders().getFirst("X-User-Id"));
 
         // 键不存在（旧前缀/过期/伪造）一律 401，不透传任何已验证标记

@@ -45,8 +45,8 @@ public class DiscountCouponServiceImpl implements DiscountCouponService {
 	private DiscountCouponMapper<DiscountCoupon, DiscountCouponQuery> discountCouponMapper;
 	@Resource
 	private UserCouponMapper<UserCoupon, UserCouponQuery> userCouponMapper;
-@Resource
-private CouponRushRedisComponent couponRushRedisComponent;
+	@Resource
+	private CouponRushRedisComponent couponRushRedisComponent;
 	@Resource
 	private RabbitTemplate rabbitTemplate;
 

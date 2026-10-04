@@ -1,4 +1,6 @@
 -- Current schema owned by the order service.
+-- 版本号说明：V2 曾在 Phase2 重构（25ef508）中随旧表一起移除，编号有意跳过；
+-- 全新部署按 V1→V3 顺序执行无影响。曾应用过 V2 的存量环境需先比对 V2 内容再升级。
 create table if not exists order_info
 (
     order_id         varchar(32)                 not null comment '订单ID' primary key,

@@ -113,10 +113,6 @@ public class RedisComponent {
         return principal;
     }
 
-    public Object getLoginInfo4Admin(String token) {
-        return getAdminPrincipal(token);
-    }
-
     public void invalidateAdminSessions(String adminId, long sessionVersion) {
         if (StringTools.isEmpty(adminId)) {
             return;
@@ -169,12 +165,6 @@ public class RedisComponent {
             }
         }
         return values;
-    }
-
-    @SuppressWarnings("unchecked")
-    public List<?> getCategoryList() {
-        List<?> list = (List<?>) redisUtils.get(Constants.REDIS_KEY_CATEGORY_LIST);
-        return list == null ? null : list;
     }
 
     // ===== 用户端 web 会话（Sa-Token 键布局，ADR-0011 Step 1）=====
@@ -307,34 +297,8 @@ public class RedisComponent {
         return value == null || value.isNull() ? null : value.asText();
     }
 
-    // 添加到延时队列
-    public void addOrder2DelayQueue(String queueName,Integer delayMinute,String orderId){
-        // zset,以当前时间毫秒+delayMinute转毫秒为score
-        long expireTime = System.currentTimeMillis() + delayMinute * 60 * 1000;
-        redisUtils.zsetAdd(queueName, orderId, expireTime);
-    }
-
-    // 获取超时订单
-    public Set<String> getTimeOutOrder(String queueName){
-        // 从score为0开始到当前时间顺序取出
-        return redisUtils.zsetRangeByScore(queueName, 0, System.currentTimeMillis());
-    }
-
-    // 移除超时订单
-    public long removeTimeOutOrder(String queueName,String orderId){
-        return redisUtils.zsetAddRemove(queueName, orderId);
-    }
-
     public void saveLogistics(LogisticsSendDTO logisticsSendDTO) {
         redisUtils.set(Constants.REDIS_KEY_SETTING_LOGISTICS, logisticsSendDTO);
-    }
-
-    public LogisticsSendDTO getLogistics(String senderName) {
-        return (LogisticsSendDTO) redisUtils.get(Constants.REDIS_KEY_SETTING_LOGISTICS + senderName);
-    }
-
-    public void addOrder2DeliverQueue(String redisKeyOrderDelayQueue, Integer delaySecond, String orderId) {
-        redisUtils.zsetAdd(redisKeyOrderDelayQueue, orderId, System.currentTimeMillis() + delaySecond * 1000);
     }
 
     public LogisticsSendDTO getLogisticsInfo() {
@@ -357,80 +321,12 @@ public class RedisComponent {
         redisUtils.setex(Constants.REDIS_KEY_USER_LOCATION + userId, coords, appConfig.getUserLocationExpireDay() * 24L * 3600);
     }
 
-    public UserLocationCoordsDTO getUserLocationCoords(String userId) {
-        if (StringTools.isEmpty(userId)) {
-            return null;
-        }
-        return (UserLocationCoordsDTO) redisUtils.get(Constants.REDIS_KEY_USER_LOCATION + userId);
-    }
-
     // 支付单生命周期的锁与一次性标记搬到 PayOrderRedisComponent。
     // 抢购预占（库存计数 + 参与者 SET + 预占 hash 的联动 Lua）搬到 CouponRushRedisComponent。
-
-    public void deleteCacheKey(String key) {
-        if (StringTools.isEmpty(key)) {
-            return;
-        }
-        redisUtils.delete(key);
-    }
 
     public boolean setIfAbsent(String key, String value, long timeout, TimeUnit unit) {
         Boolean ok = stringRedisTemplate.opsForValue().setIfAbsent(key, value, timeout, unit);
         return Boolean.TRUE.equals(ok);
-    }
-
-    private static final String MEMBER_LEVEL_CLAIM_PREFIX = "smartlect:member:level:claim:";
-
-    public java.util.Set<Integer> getMemberLevelClaimed(String userId) {
-        String raw = stringRedisTemplate.opsForValue().get(MEMBER_LEVEL_CLAIM_PREFIX + userId);
-        java.util.Set<Integer> set = new java.util.HashSet<>();
-        if (StringTools.isEmpty(raw)) {
-            return set;
-        }
-        for (String part : raw.split(",")) {
-            if (StringTools.isEmpty(part)) {
-                continue;
-            }
-            try {
-                set.add(Integer.parseInt(part.trim()));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return set;
-    }
-
-    public void addMemberLevelClaimed(String userId, int levelCode) {
-        java.util.Set<Integer> set = getMemberLevelClaimed(userId);
-        set.add(levelCode);
-        StringBuilder sb = new StringBuilder();
-        for (Integer code : set) {
-            if (sb.length() > 0) {
-                sb.append(',');
-            }
-            sb.append(code);
-        }
-        stringRedisTemplate.opsForValue().set(MEMBER_LEVEL_CLAIM_PREFIX + userId, sb.toString());
-    }
-
-    public long incr(String key) {
-        return stringRedisTemplate.opsForValue().increment(key);
-    }
-
-    public long decr(String key) {
-        return stringRedisTemplate.opsForValue().decrement(key);
-    }
-
-    public long getCounter(String key) {
-        String value = stringRedisTemplate.opsForValue().get(key);
-        return value == null ? 0 : Long.parseLong(value);
-    }
-
-    public void setCounter(String key, long value) {
-        stringRedisTemplate.opsForValue().set(key, String.valueOf(value));
-    }
-
-    public void deleteCounter(String key) {
-        stringRedisTemplate.delete(key);
     }
 
     // 邮件验证码

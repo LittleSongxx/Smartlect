@@ -2,6 +2,7 @@ package com.smartlect.utils;
 import com.smartlect.constants.Constants;
 import com.smartlect.exception.BusinessException;
 import jakarta.validation.constraints.NotNull;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.util.DigestUtils;
 
@@ -12,6 +13,7 @@ import java.util.Date;
 import java.util.UUID;
 
 
+@Slf4j
 public class StringTools {
 
     public static void checkParam(Object param) {
@@ -34,7 +36,7 @@ public class StringTools {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("参数非空校验反射失败：{}", param.getClass().getName(), e);
             throw new BusinessException("校验参数是否为空失败");
         }
     }
