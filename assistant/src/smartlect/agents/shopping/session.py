@@ -45,7 +45,8 @@ from .compile import (attach_proposal_confirmation, classify_evidence,
                       template_observed_catalog_result)
 from .guardrails import (allow_retrieval_rewrite, answer_defers_ticket_to_user,
                          answer_offers_human_transfer, answer_states_human_necessity,
-                         bind_sole_observed_sku, coerce_observed_fact_grounding,
+                         bind_named_observed_skus, bind_sole_observed_sku,
+                         coerce_observed_fact_grounding,
                          keep_uncovered_leftovers, looks_like_catalog_fact_question,
                          looks_like_irreconcilable_sources, looks_like_product_unique_fact,
                          looks_like_service_request, no_business_claim_has_store_conclusion,
@@ -380,6 +381,18 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
         elif name in {'search_skus', 'recommend_skus', 'compare_skus'}:
             products.update({item['sku_key']: item for item in sku_items(data)})
             if isinstance(data, dict):
+                route_errors = (data.get('diagnostics') or {}).get('route_errors') or {}
+                relaxed_term = route_errors.get('required_term_relaxed')
+                if relaxed_term:
+                    # 检索层已判定该必含词不是商品属性词并放宽（诊断留痕）；会话级
+                    # 发布门（sku_obeys_request）必须用同一口径，否则放宽的商品
+                    # 会在终答发布时被旧词二次筛掉——选品面在最后一米丢失。
+                    context['required_term_relaxed'] = relaxed_term
+                    current = context.get('shopping_request') or {}
+                    if relaxed_term in (current.get('required_terms') or []):
+                        updated = dict(current)
+                        updated['required_terms'] = [t for t in current['required_terms'] if t != relaxed_term]
+                        context['shopping_request'] = updated
                 if data.get('comparison'):
                     context['comparison'] = data['comparison']
                 if 'comparison_complete' in data:
@@ -755,6 +768,7 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                     context['final_output_channel'] = 'structured_outputs'
             coerce_observed_fact_grounding(final, context)
             bind_sole_observed_sku(final, products, context)
+            bind_named_observed_skus(final, products, context)
             if any(key not in citations for key in final.citation_chunk_ids) or any(key not in products for key in final.selected_sku_keys):
                 raise ValueError('unsupported_reference')
             # The declared basis has to match what this turn actually observed. This replaces the

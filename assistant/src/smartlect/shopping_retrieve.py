@@ -128,7 +128,9 @@ class ShoppingRetrieve:
             raise StateError('recommendation_scope_capacity_exceeded', 422)
         if scope[0] is not None:
             recall_scope['productIds'] = sorted(scope[0])
-        query = {'keyword': keyword or '', 'limit': limit, **recall_scope}
+        import re as _re
+        # 空白归一：与 catalog_gate._fold 同口径（"USB 线"→"USB线"），目录命名无空格语义
+        query = {'keyword': _re.sub(r'\s+', '', keyword or ''), 'limit': limit, **recall_scope}
         if category_id is not None:
             query['categoryId'] = category_id
         if request.get('max_price_cents') is not None:
@@ -292,6 +294,21 @@ class ShoppingRetrieve:
             extra_ids = self._product_ids(extra, request)
             if extra_ids and set(extra_ids) != set(product_ids):
                 cards, initial_removed = await self._snapshot(extra_ids, request, scope)
+        if not cards and request.get('required_terms'):
+            # 必含词单门全剔守卫（holdout-4 归因泛化）：全组 AND 后清零、去掉某个词
+            # 即有候选——该词大概率是范畴说法或口语衬字（"音频设备"/"礼物"），不是
+            # 商品属性词。逐词试剔一次（有界，仅空集路径触发），首次非空即采用并
+            # 贯穿后续排序/复验；diagnostics 显式记录 required_term_relaxed。
+            base_ids = product_ids or extra_ids
+            for term in request['required_terms']:
+                relaxed_terms = [t for t in request['required_terms'] if t != term]
+                relaxed_request = {**request, 'required_terms': relaxed_terms}
+                relaxed_cards, relaxed_removed = await self._snapshot(base_ids, relaxed_request, scope)
+                if relaxed_cards:
+                    errors['required_term_relaxed'] = term
+                    request = relaxed_request
+                    cards, initial_removed = relaxed_cards, relaxed_removed
+                    break
         if not cards:
             return self._finish([], ranked=[], cards=cards, mode='content_rule', rerank_error=None,
                                 initial_removed=initial_removed, final_removed={},

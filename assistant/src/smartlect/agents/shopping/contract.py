@@ -29,7 +29,9 @@ class FinalAnswer(Arguments):
     citation_chunk_ids: list[str] = Field(default_factory=list, max_length=4,
         description="仅search_knowledge本轮返回的chunk_id；其它工具的call_id/evidence_id不能填，未检索时必须空列表")
     selected_sku_keys: list[str] = Field(default_factory=list, max_length=8,
-        description="本轮 recommend_skus 或 compare_skus 返回的 sku_key；商品级信息不能当可售SKU，下单/规格选购前先查")
+        description="本轮 recommend_skus 或 compare_skus 回执中的 sku_key，按推荐序填写；"
+                    "凡答案向用户列出/推荐了商品就必须逐个填入，空列表仅用于本轮确无可推荐商品。"
+                    "商品级信息不能当可售SKU，下单/规格选购前先查")
     requires_clarification: bool = False
 
 

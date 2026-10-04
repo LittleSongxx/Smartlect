@@ -182,16 +182,61 @@ def salvage_unstructured_fact_answer(raw, context):
 
 
 def bind_sole_observed_sku(final, products, context):
-    """A single observed SKU is the spec the user asked about; attach it."""
+    """A single observed SKU is the spec the user asked about; attach it.
+
+    内容寻址版（2026-10-05）：模型声明 grounding 不可靠时（强制收口轮常标错），
+    只要答案正文实际点名了唯一观察 SKU 的商品名，就按确定性证据绑定——
+    陈述了该商品的价格/库存却交空选品，是把打分面丢掉而不是诚实留空。
+    """
     if getattr(final, 'selected_sku_keys', None):
-        return False
-    if getattr(final, 'grounding', None) != 'user_facts':
         return False
     keys = [key for key in (products or {}) if key]
     if len(keys) != 1:
         return False
+    if getattr(final, 'grounding', None) != 'user_facts':
+        card = (products or {}).get(keys[0]) or {}
+        name = str(card.get('productName') or '').strip()
+        answer = str(getattr(final, 'answer', '') or '')
+        if not name or name.casefold() not in answer.casefold():
+            return False
+        final.grounding = 'user_facts'
+        context['grounding_compiled_from_observation'] = True
     final.selected_sku_keys = keys
     context['sku_selected_from_sole_observation'] = True
+    return True
+
+
+def bind_named_observed_skus(final, products, context):
+    """内容寻址选品绑定（sole-bind 的多选泛化，2026-10-05）。
+
+    终答正文点名了哪些本轮观察到的商品（商品名折叠子串命中），就把哪些
+    绑进 selected_sku_keys——「列了就要选」是打分面完整性不变量：强制收口
+    轮的模型常叙述商品却漏填结构化选品（holdout-4 范畴词形状根因）。
+    只绑定本轮回执内商品、按回执推荐序、上限 8；诚实空集答案不点名商品
+    则不触发。与 answer_guards 同哲学：声明（正文）×证据（回执）确定性编译。
+    """
+    if getattr(final, 'selected_sku_keys', None):
+        return False
+    answer = str(getattr(final, 'answer', '') or '')
+    if not answer:
+        return False
+    from smartlect.catalog_gate import _fold
+    folded = _fold(answer)
+    hits = []
+    for key, card in (products or {}).items():
+        if not isinstance(card, dict) or not key:
+            continue
+        name = str(card.get('productName') or '').strip()
+        if name and _fold(name) in folded:
+            hits.append(key)
+    if not hits:
+        return False
+    hits.sort(key=lambda k: ((products[k].get('rank') or products[k].get('position') or 9999), k))
+    final.selected_sku_keys = hits[:8]
+    context['sku_selected_from_named_observation'] = True
+    if getattr(final, 'grounding', None) != 'user_facts':
+        final.grounding = 'user_facts'
+        context['grounding_compiled_from_observation'] = True
     return True
 
 

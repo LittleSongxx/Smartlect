@@ -27,7 +27,10 @@ class RecommendationRequest(BaseModel):
 
 
 def _fold(text):
-    return unicodedata.normalize('NFKC', text).casefold()
+    # 空白归一：目录中文命名不含空格，用户/模型输入的空格是排版噪声——
+    # "USB 线" 必须能命中 "USB线"（holdout-4 shop-h4-12 根因）。
+    import re as _re
+    return _re.sub(r'\s+', '', unicodedata.normalize('NFKC', text).casefold())
 
 
 def constraints(request, preferences=()):
