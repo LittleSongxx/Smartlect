@@ -11,10 +11,10 @@ import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.query.UserAddressQuery;
 import com.smartlect.entity.po.UserAddress;
 import com.smartlect.entity.vo.PaginationResultVO;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.mappers.UserAddressMapper;
 import com.smartlect.biz.UserAddressService;
 import com.smartlect.utils.StringTools;
+import com.smartlect.utils.PageUtils;
 
 @Service("userAddressService")
 public class UserAddressServiceImpl implements UserAddressService {
@@ -34,14 +34,7 @@ public class UserAddressServiceImpl implements UserAddressService {
 
 	@Override
 	public PaginationResultVO<UserAddress> findListByPage(UserAddressQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<UserAddress> list = this.findListByParam(param);
-		PaginationResultVO<UserAddress> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

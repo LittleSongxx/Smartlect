@@ -20,7 +20,6 @@ import com.smartlect.entity.po.ProductSku;
 import com.smartlect.entity.query.ProductInfoQuery;
 import com.smartlect.entity.query.ProductPropertyValueQuery;
 import com.smartlect.entity.query.ProductSkuQuery;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.entity.vo.Product4VO;
 import com.smartlect.entity.vo.ProductSkuCountVO;
@@ -47,6 +46,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.smartlect.utils.PageUtils;
 
 @Service("productInfoService")
 @Slf4j
@@ -83,18 +83,9 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 		if (categoryUnion) {
 			prepareCategoryUnionQuery(param);
 		}
-		int count = categoryUnion
-				? productInfoMapper.selectCountByCategoryUnion(param)
-				: this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<ProductInfo> list = categoryUnion
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> categoryUnion
 				? productInfoMapper.selectListByCategoryUnion(param)
-				: this.findListByParam(param);
-		PaginationResultVO<ProductInfo> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+				: this.findListByParam(param));
 	}
 
 	private boolean useCategoryUnionQuery(ProductInfoQuery param) {

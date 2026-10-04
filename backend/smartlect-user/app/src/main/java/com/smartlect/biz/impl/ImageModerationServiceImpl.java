@@ -14,7 +14,6 @@ import com.smartlect.api.enums.ImageModerationStatusEnum;
 import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.po.ImageModerationRecord;
 import com.smartlect.entity.query.ImageModerationRecordQuery;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.mappers.ImageModerationRecordMapper;
@@ -35,6 +34,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.smartlect.utils.PageUtils;
 
 @Service("imageModerationService")
 @Slf4j
@@ -141,12 +141,7 @@ public class ImageModerationServiceImpl implements ImageModerationService {
 
     @Override
     public PaginationResultVO<ImageModerationRecord> findListByPage(ImageModerationRecordQuery param) {
-        int count = imageModerationRecordMapper.selectCount(param);
-        int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-        SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-        param.setSimplePage(page);
-        List<ImageModerationRecord> list = findListByParam(param);
-        return new PaginationResultVO<>(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
+        return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> findListByParam(param));
     }
 
     @Override

@@ -10,10 +10,10 @@ import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.query.OrderItemQuery;
 import com.smartlect.entity.po.OrderItem;
 import com.smartlect.entity.vo.PaginationResultVO;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.mappers.OrderItemMapper;
 import com.smartlect.biz.OrderItemService;
 import com.smartlect.utils.StringTools;
+import com.smartlect.utils.PageUtils;
 
 @Service("orderItemService")
 public class OrderItemServiceImpl implements OrderItemService {
@@ -33,14 +33,7 @@ public class OrderItemServiceImpl implements OrderItemService {
 
 	@Override
 	public PaginationResultVO<OrderItem> findListByPage(OrderItemQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<OrderItem> list = this.findListByParam(param);
-		PaginationResultVO<OrderItem> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

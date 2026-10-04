@@ -21,10 +21,10 @@ import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.query.SysCategoryQuery;
 import com.smartlect.entity.po.SysCategory;
 import com.smartlect.entity.vo.PaginationResultVO;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.mappers.SysCategoryMapper;
 import com.smartlect.biz.SysCategoryService;
 import com.smartlect.utils.StringTools;
+import com.smartlect.utils.PageUtils;
 
 @Service("sysCategoryService")
 @Slf4j
@@ -111,14 +111,7 @@ public class SysCategoryServiceImpl implements SysCategoryService {
 
 	@Override
 	public PaginationResultVO<SysCategory> findListByPage(SysCategoryQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<SysCategory> list = this.findListByParam(param);
-		PaginationResultVO<SysCategory> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

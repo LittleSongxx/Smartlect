@@ -28,6 +28,7 @@ import com.smartlect.mappers.ProductCartMapper;
 import com.smartlect.biz.ProductCartService;
 import com.smartlect.utils.StringTools;
 import org.springframework.transaction.annotation.Transactional;
+import com.smartlect.utils.PageUtils;
 
 @Service("productCartService")
 public class ProductCartServiceImpl implements ProductCartService {
@@ -55,14 +56,7 @@ public class ProductCartServiceImpl implements ProductCartService {
 
 	@Override
 	public PaginationResultVO<ProductCart> findListByPage(ProductCartQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<ProductCart> list = this.findListByParam(param);
-		PaginationResultVO<ProductCart> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

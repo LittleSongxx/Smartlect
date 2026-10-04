@@ -25,11 +25,11 @@ import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.query.OrderLogisticsInfoQuery;
 import com.smartlect.entity.po.OrderLogisticsInfo;
 import com.smartlect.entity.vo.PaginationResultVO;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.mappers.OrderLogisticsInfoMapper;
 import com.smartlect.biz.OrderLogisticsInfoService;
 import com.smartlect.utils.StringTools;
 import org.springframework.transaction.annotation.Transactional;
+import com.smartlect.utils.PageUtils;
 
 @Service("orderLogisticsInfoService")
 public class OrderLogisticsInfoServiceImpl implements OrderLogisticsInfoService {
@@ -58,14 +58,7 @@ public class OrderLogisticsInfoServiceImpl implements OrderLogisticsInfoService 
 
 	@Override
 	public PaginationResultVO<OrderLogisticsInfo> findListByPage(OrderLogisticsInfoQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<OrderLogisticsInfo> list = this.findListByParam(param);
-		PaginationResultVO<OrderLogisticsInfo> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

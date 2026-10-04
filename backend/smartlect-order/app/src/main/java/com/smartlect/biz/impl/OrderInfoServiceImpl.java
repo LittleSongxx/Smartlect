@@ -46,6 +46,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
+import com.smartlect.utils.PageUtils;
 
 @Service("orderInfoService")
 @Slf4j
@@ -126,14 +127,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 
 	@Override
 	public PaginationResultVO<OrderInfo> findListByPage(OrderInfoQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<OrderInfo> list = this.findListByParam(param);
-		PaginationResultVO<OrderInfo> result = new PaginationResultVO(count, pageSize, page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

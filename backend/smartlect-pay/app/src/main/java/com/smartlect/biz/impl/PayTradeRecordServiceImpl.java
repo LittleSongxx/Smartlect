@@ -3,7 +3,6 @@ package com.smartlect.biz.impl;
 import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.po.PayTradeRecord;
 import com.smartlect.entity.query.PayTradeRecordQuery;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.mappers.PayTradeRecordMapper;
 import com.smartlect.biz.PayTradeRecordService;
@@ -17,6 +16,7 @@ import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import com.smartlect.utils.PageUtils;
 
 @Service("payTradeRecordService")
 public class PayTradeRecordServiceImpl implements PayTradeRecordService {
@@ -117,11 +117,6 @@ public class PayTradeRecordServiceImpl implements PayTradeRecordService {
         query.setUserId(userId);
         query.setPageNo(pageNo);
         query.setOrderBy(com.smartlect.entity.query.SafeSort.of("create_time desc"));
-        int count = payTradeRecordMapper.selectCount(query);
-        int pageSize = PageSize.SIZE15.getSize();
-        SimplePage page = new SimplePage(pageNo, count, pageSize);
-        query.setSimplePage(page);
-        List<PayTradeRecord> list = payTradeRecordMapper.selectList(query);
-        return new PaginationResultVO<>(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
+        return PageUtils.page(pageNo, PageSize.SIZE15.getSize(), () -> payTradeRecordMapper.selectList(query));
     }
 }

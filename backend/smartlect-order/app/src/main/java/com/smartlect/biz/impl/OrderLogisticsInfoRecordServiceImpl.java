@@ -10,10 +10,10 @@ import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.query.OrderLogisticsInfoRecordQuery;
 import com.smartlect.entity.po.OrderLogisticsInfoRecord;
 import com.smartlect.entity.vo.PaginationResultVO;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.mappers.OrderLogisticsInfoRecordMapper;
 import com.smartlect.biz.OrderLogisticsInfoRecordService;
 import com.smartlect.utils.StringTools;
+import com.smartlect.utils.PageUtils;
 
 @Service("orderLogisticsInfoRecordService")
 public class OrderLogisticsInfoRecordServiceImpl implements OrderLogisticsInfoRecordService {
@@ -33,14 +33,7 @@ public class OrderLogisticsInfoRecordServiceImpl implements OrderLogisticsInfoRe
 
 	@Override
 	public PaginationResultVO<OrderLogisticsInfoRecord> findListByPage(OrderLogisticsInfoRecordQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<OrderLogisticsInfoRecord> list = this.findListByParam(param);
-		PaginationResultVO<OrderLogisticsInfoRecord> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

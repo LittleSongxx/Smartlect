@@ -31,6 +31,8 @@ import com.smartlect.mappers.ProductSkuMapper;
 import com.smartlect.biz.ProductSkuService;
 import com.smartlect.utils.StringTools;
 import org.springframework.transaction.annotation.Transactional;
+import com.github.pagehelper.PageInfo;
+import com.smartlect.utils.PageUtils;
 
 @Service("productSkuService")
 public class ProductSkuServiceImpl implements ProductSkuService {
@@ -58,14 +60,7 @@ public class ProductSkuServiceImpl implements ProductSkuService {
 
 	@Override
 	public PaginationResultVO<ProductSku> findListByPage(ProductSkuQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<ProductSku> list = this.findListByParam(param);
-		PaginationResultVO<ProductSku> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override
@@ -128,11 +123,9 @@ public class ProductSkuServiceImpl implements ProductSkuService {
 
 	@Override
 	public PaginationResultVO<ProductSkuListVO> findListByPage4ListVO(ProductSkuQuery query) {
-		int count = this.findCountByParam(query);
-		int pageSize = query.getPageSize() == null ? PageSize.SIZE15.getSize() : query.getPageSize();
-		SimplePage page = new SimplePage(query.getPageNo(), count, pageSize);
-		query.setSimplePage(page);
-		List<ProductSku> productSkuList = findListByParam(query);
+		PageInfo<ProductSku> pageInfo = PageUtils.pageInfo(query.getPageNo(), query.getPageSize(), () -> findListByParam(query));
+		int count = (int) pageInfo.getTotal();
+		List<ProductSku> productSkuList = pageInfo.getList();
 		List<ProductSkuListVO> productSkuListVOList = new ArrayList<>();
 		for (ProductSku productSku : productSkuList){
 			ProductInfo productInfo = productInfoService.getProductInfoByProductId(productSku.getProductId());
@@ -165,7 +158,8 @@ public class ProductSkuServiceImpl implements ProductSkuService {
 			productSkuListVO.setPropertyData(productSkuProperDataVOList);
 			productSkuListVOList.add(productSkuListVO);
 		}
-		return new PaginationResultVO<>(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), productSkuListVOList);
+		int pageTotal = (int) Math.ceil((double) count / pageInfo.getPageSize());
+		return new PaginationResultVO<>(count, pageInfo.getPageSize(), pageInfo.getPageNum(), pageTotal, productSkuListVOList);
 	}
 
 	@Override

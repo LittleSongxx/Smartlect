@@ -19,11 +19,11 @@ import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.query.UserInfoQuery;
 import com.smartlect.entity.po.UserInfo;
 import com.smartlect.entity.vo.PaginationResultVO;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.mappers.UserInfoMapper;
 import com.smartlect.service.PasswordService;
 import com.smartlect.biz.UserInfoService;
 import com.smartlect.utils.StringTools;
+import com.smartlect.utils.PageUtils;
 
 @Service("userInfoService")
 public class UserInfoServiceImpl implements UserInfoService {
@@ -51,14 +51,7 @@ public class UserInfoServiceImpl implements UserInfoService {
 
 	@Override
 	public PaginationResultVO<UserInfo> findListByPage(UserInfoQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<UserInfo> list = this.findListByParam(param);
-		PaginationResultVO<UserInfo> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

@@ -10,10 +10,10 @@ import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.query.SysProductPropertyQuery;
 import com.smartlect.entity.po.SysProductProperty;
 import com.smartlect.entity.vo.PaginationResultVO;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.mappers.SysProductPropertyMapper;
 import com.smartlect.biz.SysProductPropertyService;
 import com.smartlect.utils.StringTools;
+import com.smartlect.utils.PageUtils;
 
 @Service("sysProductPropertyService")
 public class SysProductPropertyServiceImpl implements SysProductPropertyService {
@@ -33,14 +33,7 @@ public class SysProductPropertyServiceImpl implements SysProductPropertyService 
 
 	@Override
 	public PaginationResultVO<SysProductProperty> findListByPage(SysProductPropertyQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<SysProductProperty> list = this.findListByParam(param);
-		PaginationResultVO<SysProductProperty> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

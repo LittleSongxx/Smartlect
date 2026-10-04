@@ -9,10 +9,10 @@ import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.query.UserCouponQuery;
 import com.smartlect.entity.po.UserCoupon;
 import com.smartlect.entity.vo.PaginationResultVO;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.mappers.UserCouponMapper;
 import com.smartlect.biz.UserCouponService;
 import com.smartlect.utils.StringTools;
+import com.smartlect.utils.PageUtils;
 
 @Service("userCouponService")
 public class UserCouponServiceImpl implements UserCouponService {
@@ -32,14 +32,7 @@ public class UserCouponServiceImpl implements UserCouponService {
 
 	@Override
 	public PaginationResultVO<UserCoupon> findListByPage(UserCouponQuery param) {
-		int count = this.findCountByParam(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<UserCoupon> list = this.findListByParam(param);
-		PaginationResultVO<UserCoupon> result = new PaginationResultVO(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
-		return result;
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> this.findListByParam(param));
 	}
 
 	@Override

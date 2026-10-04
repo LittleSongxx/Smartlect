@@ -164,5 +164,10 @@
       <artifactId>sentinel-core</artifactId>
       <optional>true</optional>
     </dependency>
-  </dependencies>
+          <dependency>
+            <groupId>com.github.pagehelper</groupId>
+            <artifactId>pagehelper-spring-boot-starter</artifactId>
+            <version>${pagehelper.version}</version>
+        </dependency>
+    </dependencies>
 </project>
