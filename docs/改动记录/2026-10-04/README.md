@@ -15,5 +15,6 @@
 | [后端死代码清理.md](后端死代码清理.md) | `14cbee9` | 已完成（mvn test 全绿） |
 | [前端死代码与依赖清理.md](前端死代码与依赖清理.md) | `915a8fe` | 已完成（双端 vitest+build 绿） |
 | [assistant-小修复.md](assistant-小修复.md) | — | 移交（评测调试进行中） |
+| [自查修复.md](自查修复.md) | `0a428de`..`a3dc563` | 已完成（6 项，含 2 处被遮蔽的重复方法定义） |
 
 验证汇总：backend `mvn test` 全模块 0 失败；web user 79/79 + admin 31/31 vitest、双端 build 通过；requirements.lock 在临时 venv 复刻 CI 三步通过。未执行项与生产验收缺口见各记录页「验证」段。
