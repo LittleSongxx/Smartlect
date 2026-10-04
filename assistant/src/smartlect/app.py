@@ -231,7 +231,8 @@ def create_app(settings=None, *, config=None, store=None, identity=None, commerc
         # 混合检索后端（ES/Qdrant）幂等建索引；未配置环境由 hybrid_search 内部跳过。
         try:
             from smartlect import hybrid_search
-            await db(hybrid_search.ensure_schema)
+            # ensure_schema 是协程：直接 await（此前误经 db()=to_thread 包装，从未真正执行）
+            await hybrid_search.ensure_schema()
         except Exception:
             log.warning("hybrid search schema bootstrap skipped", exc_info=True)
         # 30 天数据保留任务原在 worker 进程；worker 退役后并入 API 进程（每日一跑，守护线程）。
