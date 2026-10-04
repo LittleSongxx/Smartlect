@@ -63,8 +63,10 @@ python3 scripts/eval_support_eval.py score --input artifacts/support-eval/collec
 
 ## 与旧线关系
 
-- quality-v2 客服线（Recall@8/Faithfulness 判级版/Pass@1/建单 F1）：退役，
-  数字归档不引用。
+- quality-v2 客服线（Recall@8/Faithfulness 判级版/Pass@1/建单 F1）：本文件 2026-09-14
+  撰写时曾计划退役换轨，实际未退役——metrics-contract v7（2026-09-18）退役的是广告线，
+  客服线随 v16 扩容（2026-10-04，63→83 题 + 难负例）继续作为 quality-v2 官方主线，
+  本线（support-eval）保持独立并行，两线数字互不引用。
 - support-ragas（RAGAS 四件套）：只冒烟未首跑即被本方案替代，git 历史存证
   （`f8976c1`）。判分不再依赖 ragas/langchain，系统 python3 直连 judge。
-- 导购/广告两线：维持 quality-v2（与本线无关）。
+- 导购线：维持 quality-v2（与本线无关）。

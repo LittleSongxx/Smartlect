@@ -147,7 +147,20 @@ def setup_knowledge(client, evidence, save, manifest, case):
         path = f"knowledge/{quote(source['doc_id'], safe='')}/{created['version']}"
         if lifecycle != 'draft_only':
             published = api(client, evidence, save, path + '/publish', {}, merchant=True)
-            if published['status'] != 'PUBLISHED' or server_time(client) >= end:
+            # publish 双模式：embedding 启用时返回异步索引 job（无 status 键），
+            # 文档状态要轮询到 PUBLISHED 才算发布完成（每篇 1-2 chunk，正常数秒内）。
+            if 'status' not in published:
+                deadline = time.monotonic() + 180
+                while True:
+                    checked = api(client, evidence, save, path, merchant=True)
+                    if checked.get('status') == 'PUBLISHED':
+                        break
+                    if time.monotonic() >= deadline:
+                        raise ValueError('document_publish_job_not_completed')
+                    time.sleep(0.5)
+            elif published['status'] != 'PUBLISHED':
+                raise ValueError('document_did_not_publish_while_valid')
+            if server_time(client) >= end:
                 raise ValueError('document_did_not_publish_while_valid')
         if lifecycle == 'publish_then_withdraw_before_question':
             withdrawn = api(client, evidence, save, path + '/withdraw', {}, merchant=True)
