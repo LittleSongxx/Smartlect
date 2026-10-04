@@ -103,7 +103,12 @@
 				 and  p.product_id like concat('%', #{query.productIdFuzzy}, '%')
 			</if>
 			<if test="query.productNameFuzzy!= null  and query.productNameFuzzy!=''">
-				 and MATCH(p.product_name, p.product_desc) AGAINST (#{query.productNameFuzzy} IN NATURAL LANGUAGE MODE)
+				<!-- 品名模糊=短语包含（与同文件其他 *Fuzzy 字段同语义）。曾短暂改为 FULLTEXT
+				     NATURAL LANGUAGE MODE（7c15e0d，2026-09-18），分词后任一命中即返回，
+				     把「游戏耳机」放宽成整个耳机品类——目录选品的资格语义被破坏，
+				     v16 官方评测定位为导购线质量下滑主因后回退。相关性排序归
+				     知识检索栈（ES/BM25），目录检索要的是确定性短语过滤。 -->
+				 and p.product_name like concat('%', #{query.productNameFuzzy}, '%')
 			</if>
 			<if test="query.productDescFuzzy!= null  and query.productDescFuzzy!=''">
 				 and  p.product_desc like concat('%', #{query.productDescFuzzy}, '%')

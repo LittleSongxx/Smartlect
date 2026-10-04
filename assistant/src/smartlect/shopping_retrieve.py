@@ -136,10 +136,26 @@ class ShoppingRetrieve:
         if request.get('min_price_cents'):
             query['minPriceCents'] = request['min_price_cents']
         try:
-            return await self.commerce.request('product', '/internal/product/commerce/searchOnSale', data=query)
+            rows = await self.commerce.request('product', '/internal/product/commerce/searchOnSale', data=query)
         except CommerceError:
             errors['content'] = 'commerce_unavailable'
             return []
+        if not rows and keyword and category_id is not None:
+            # 类目内双重门守卫：类目是用户的显式枚举意图，关键词只是定位辅助。
+            # 类目有货而叠加关键词后清零时，该空集是「类目门×品名门」叠加出的伪约束，
+            # 不是用户约束的诚实结果——保持类目与其余硬约束不变，仅放宽软关键词重试
+            # 一次，并在诊断里显式记录（回答层与评测均可见，绝不静默）。
+            relaxed_query = dict(query)
+            relaxed_query['keyword'] = ''
+            try:
+                relaxed_rows = await self.commerce.request(
+                    'product', '/internal/product/commerce/searchOnSale', data=relaxed_query)
+            except CommerceError:
+                return rows
+            if relaxed_rows:
+                errors['keyword_relaxed_in_category'] = keyword
+                return relaxed_rows
+        return rows
 
     def _product_ids(self, rows, request):
         ids = []
