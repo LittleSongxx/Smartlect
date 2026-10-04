@@ -19,6 +19,7 @@ from runtime import ROOT, ENV_FILE, model_env, parse_env
 from smartlect.commerce import CommerceClient
 from smartlect.db import connect_from_env
 from smartlect.adminscope import AdminScopeStore
+from smartlect.scenario_scope import ScenarioScopeStore
 
 
 def now():
@@ -45,7 +46,10 @@ class ScenarioClient:
         for key, value in self.config.items():
             if key.startswith(('SMARTLECT_GROWTH_MYSQL_', 'SMARTLECT_MYSQL_')):
                 os.environ[key] = value
-        self.java, self.store = CommerceClient(self.config), AdminScopeStore()
+        self.java = CommerceClient(self.config)
+        self.store = AdminScopeStore()
+        # register_scope 在架构清晰化重构中从 AdminScopeStore 移到 ScenarioScopeStore
+        self.scopes = ScenarioScopeStore(self.store.connect)
         self.clients = ExitStack()
         self.user = self.clients.enter_context(httpx.Client(base_url=self.base, timeout=35, trust_env=False))
         self.merchant = self.clients.enter_context(httpx.Client(base_url=self.base, timeout=60, trust_env=False))
@@ -71,8 +75,15 @@ class ScenarioClient:
         self.evidence['checks'].append(label)
         self.save()
 
+    def _fresh_csrf(self, merchant=False):
+        # 服务端 CSRF nonce 一次性消费（与前端 refreshCsrf 契约一致）：每次写前取新 token
+        client, prefix = (self.merchant, '/admin-api/assistant/') if merchant else (self.user, '/api/assistant/')
+        response = client.get(prefix + 'session')
+        response.raise_for_status()
+        return {'Origin': self.base, 'X-CSRF-Token': response.json()['csrf_token']}
+
     def request(self, path, payload=None, *, merchant=False, method=None, params=None, accepted=(200,)):
-        client, headers = (self.merchant, self.mheaders) if merchant else (self.user, self.uheaders)
+        client, _ = (self.merchant, self.mheaders) if merchant else (self.user, self.uheaders)
         method = method or ('POST' if payload is not None else 'GET')
         prefix = '/admin-api/assistant/' if merchant else '/api/assistant/'
         record = None
@@ -80,8 +91,8 @@ class ScenarioClient:
             record = {'path': prefix + path, 'method': method, 'request': payload, 'started_at': now()}
             self.evidence['writes'].append(record)
             self.save()  # Durable original request before every business write; no cookies/CSRF in evidence.
-        response = client.request(method, prefix + path, json=payload, params=params,
-                                  headers=headers if method != 'GET' else None)
+        headers = self._fresh_csrf(merchant) if method != 'GET' else None
+        response = client.request(method, prefix + path, json=payload, params=params, headers=headers)
         if record is not None:
             record.update(http_status=response.status_code, completed_at=now())
             self.save()
@@ -135,7 +146,7 @@ class ScenarioClient:
             visitor = guest.json()['actor']
             self.check(visitor['subject_type'] == 'visitor', 'Anonymous setup receives a signed visitor identity')
             visitor_id = visitor['actor_id']
-        self.store.register_scope(self.scope, scenario_run_id=self.evidence['run_id'], branch_id=self.evidence['scenario'],
+        self.scopes.register_scope(self.scope, scenario_run_id=self.evidence['run_id'], branch_id=self.evidence['scenario'],
             users=[u['userId'] for u in self.manifest['users']], products=self.manifest['products'],
             **({'visitors': [visitor_id]} if visitor_id else {}))
         self.session = None
@@ -265,7 +276,7 @@ class ScenarioClient:
             self.save()
             # Real request reaches the normal API. The simulated client loses the body,
             # not the server's durable transaction; do not invent a server UNKNOWN state.
-            with self.user.stream('POST', '/api/assistant/' + path, json=request, headers=self.uheaders) as response:
+            with self.user.stream('POST', '/api/assistant/' + path, json=request, headers=self._fresh_csrf()) as response:
                 record['received_http_status'] = response.status_code
                 if response.status_code != 200:
                     raise AssertionError('confirmation_interruption_http_' + str(response.status_code))

@@ -91,7 +91,8 @@ class ScopeResetHttpTests(unittest.IsolatedAsyncioTestCase):
         def select(actor,scope):selected[0]=scope;return actor.model_copy(update={'execution_scope_id':scope})
         adminscope=SimpleNamespace(selected_actor=lambda actor:actor.model_copy(update={'execution_scope_id':selected[0]}),select_scope=Mock(side_effect=select))
         app=create_app(Settings(),config=config,store=SimpleNamespace(connect=lambda:None),identity=bridge,
-                       adminscope=adminscope)
+                       adminscope=adminscope,
+                       scenario_scope=SimpleNamespace(resolve_actor=lambda actor:actor))
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app),base_url=origin) as client:
             client.cookies.set('adminToken','synthetic-admin');client.cookies.set('token','synthetic-user')
             session=(await client.get('/admin-api/assistant/session')).json()

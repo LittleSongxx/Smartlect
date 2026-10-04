@@ -185,7 +185,7 @@ async def execute_proposal(proposal, actor, commerce):
 
 
 def create_app(settings=None, *, config=None, store=None, identity=None, commerce=None,
-               knowledge=None, memory=None, provider=None, adminscope=None):
+               knowledge=None, memory=None, provider=None, adminscope=None, scenario_scope=None):
     settings = settings or Settings.from_env()
     config = dict(os.environ) if config is None else config
     # 无数据库环境（健康探针/纯静态模式）也允许启动：端点按需 503。
@@ -202,7 +202,7 @@ def create_app(settings=None, *, config=None, store=None, identity=None, commerc
     provider = provider or Provider(config, runtime_loader=ModelConfigStore(store.connect).loader() if store else None)
     adminscope = adminscope or (AdminScopeStore(store.connect) if store else None)
     from smartlect.scenario_scope import ScenarioScopeStore
-    scenario_scope = ScenarioScopeStore(store.connect) if store else None
+    scenario_scope = scenario_scope or (ScenarioScopeStore(store.connect) if store else None)
     tasks = {}
     task_owners = {}  # run_id -> (subject_type, actor_id); admission counts live executors, not stale DB rows
     indexing = None
@@ -322,6 +322,9 @@ def create_app(settings=None, *, config=None, store=None, identity=None, commerc
         if identity is None or store is None:
             raise HTTPException(503, "assistant_not_configured")
         actor = await identity.authenticate(request, response, realm=realm)
+        if scenario_scope is not None:
+            # demo 场景把已注册用户的 store scope 解析到其 execution_scope（无注册行时保持 store）
+            actor = await db(scenario_scope.resolve_actor, actor)
         if adminscope is not None and actor.subject_type=='merchant':
             actor = await db(adminscope.selected_actor,actor)
         if user:

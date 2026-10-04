@@ -69,6 +69,25 @@ class ScenarioScopeStore(SessionStore):
             if guard:
                 raise StateError('execution_scope_' + guard['state'].lower(), 410 if guard['state']=='RETIRED' else 409)
 
+    def product_scope(self, actor):
+        """Phase3a 退役 AttributionStore 后，导购检索的商品可见域仍需要 per-actor 解析。"""
+        from smartlect.catalog_scope import product_scope
+        return product_scope(self.connect, actor)
+
+    def save_recommendation(self, actor, result, conversation_id=None):
+        """推荐回执落账（表仍保留）。自 Phase3a 删除的 AttributionStore 移植，键序不变。"""
+        kind, identifier, scope = _actor(actor)
+        now, recommendation_id = self.clock(), uuid.uuid4().hex
+        result = json.loads(canonical(result))
+        result['recommendation_id'] = recommendation_id
+        result['items'] = [{**item, 'recommendation_id': recommendation_id, 'position': index + 1}
+                           for index, item in enumerate(result['items'])]
+        with self._transaction() as cursor:
+            cursor.execute('INSERT INTO recommendation_receipt VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                           (recommendation_id, scope, kind, identifier, actor.session_id, conversation_id,
+                            result.get('assignment_id'), str(result.get('strategy_version')), canonical(result), now, now + timedelta(hours=24)))
+        return result
+
     def scope_reset_status(self, run_id):
         with self._transaction() as cursor:
             cursor.execute('SELECT * FROM execution_scope_reset WHERE scenario_run_id=%s', (_text(run_id,'scenario_run_id',64),))
