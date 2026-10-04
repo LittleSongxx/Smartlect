@@ -391,7 +391,7 @@ def main():
         stage('Pick in-stock catalog SKUs for demo personas')
     print(json.dumps({
         'status': 'READY',
-        'campaigns': len(evidence['campaigns']),
+        'campaigns': len(evidence.get('campaigns', [])),  # 广告线 v7 退役，保留字段兼容输出
         'walkthrough': evidence.get('walkthrough', {}),
         'ticket': ticket,
         'login': DEMO_ACCOUNT,
