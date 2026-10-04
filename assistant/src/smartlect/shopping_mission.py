@@ -256,9 +256,10 @@ def requirement_slots(utterance):
             text):
         raw.append(match.group(1))
     # Bare attributive noun phrase ("白色的入门耳机"): the whole utterance is the
-    # product ask — 带请求动词的句子（"推荐一款…的音频设备"）不是裸名词短语，
-    # 其"的"后成分常是范畴词（音频设备），收获即污染必含词（holdout-4 根因），
-    # 2026-10-05 收紧：请求动词直接排除出帧。Harvest the HEAD noun phrase only — the model reliably names
+    # product ask — 句首带请求动词的句子（"推荐一款…的音频设备"）不是裸名词
+    # 短语，其"的"后成分常是范畴词（音频设备），收获即污染必含词（holdout-4
+    # 根因）；句尾动词（"黑色的键盘来一个"）由既有尾部清理正确收头词，不排除。
+    # 2026-10-05 收紧为句首判定。Harvest the HEAD noun phrase only — the model reliably names
     # colour qualifiers but under-reports the head (v14 shop-d-34 passed only
     # 白色 and let a white wireless headset through), and the tool-arg union
     # then tops the gate up structurally. Interrogatives, negations, reversals
@@ -267,9 +268,8 @@ def requirement_slots(utterance):
     stripped = re.sub(r'[?？。!！]+$', '', text)
     if (2 <= len(stripped) <= 16 and stripped.count('的') == 1
             and not re.search(r'[，,、;；]|吗|呢|能不能|可不可以|有没有|是不是|多少|是什么|哪个|哪些|什么|'
-                              r'怎么|你们|客服|政策|订单|退款|优惠|发票|地址|也|的话|就行|有哪些|不要|别|只要'
-                              r'|推荐|来[一個个只条台份张]|看看|想[要买]|找[一个]?|帮我|请问|介绍|盘点|种草',
-                              stripped)):
+                              r'怎么|你们|客服|政策|订单|退款|优惠|发票|地址|也|的话|就行|有哪些|不要|别|只要', stripped)
+            and not re.match(r'^(?:推荐|来[一個个只条台份张]|看[看一]|想[要买]|找|帮[我你]|请[问帮]|介绍|盘点|种草)', stripped)):
         head = stripped.partition('的')[2]
         if head and 2 <= len(head) <= 10 and not re.search(r'[0-9０-９]', head):
             raw.append(head)
