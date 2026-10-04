@@ -28,19 +28,27 @@ def _cn_count(raw):
     if value.isdigit():
         number = int(value)
         return number if 1 <= number <= 999 else None
-    total, number = 0, None
+    total, number, last_unit = 0, None, 0
     for char in value:
         if char in _CN_DIGITS:
             number = _CN_DIGITS[char]
         elif char == '十':
             total += (number or 1) * 10
+            last_unit = 10
             number = None
         elif char == '百':
             total += (number or 1) * 100
+            last_unit = 100
             number = None
         else:
             return None
-    total += number or 0
+    # 口语尾数：单位后的裸数字按下一级单位计（二百六=260、一百五=150、
+    # 二十一=21）。此前顺序累加把二百六算成 206，溯源守卫据此把模型
+    # 传的正确预算判为无据丢弃（holdout-4 shop-h4-01 根因）。
+    if number and last_unit:
+        total += number * (last_unit // 10)
+    else:
+        total += number or 0
     return total if 1 <= total <= 999 else None
 
 
@@ -248,7 +256,9 @@ def requirement_slots(utterance):
             text):
         raw.append(match.group(1))
     # Bare attributive noun phrase ("白色的入门耳机"): the whole utterance is the
-    # product ask. Harvest the HEAD noun phrase only — the model reliably names
+    # product ask — 带请求动词的句子（"推荐一款…的音频设备"）不是裸名词短语，
+    # 其"的"后成分常是范畴词（音频设备），收获即污染必含词（holdout-4 根因），
+    # 2026-10-05 收紧：请求动词直接排除出帧。Harvest the HEAD noun phrase only — the model reliably names
     # colour qualifiers but under-reports the head (v14 shop-d-34 passed only
     # 白色 and let a white wireless headset through), and the tool-arg union
     # then tops the gate up structurally. Interrogatives, negations, reversals
@@ -257,7 +267,9 @@ def requirement_slots(utterance):
     stripped = re.sub(r'[?？。!！]+$', '', text)
     if (2 <= len(stripped) <= 16 and stripped.count('的') == 1
             and not re.search(r'[，,、;；]|吗|呢|能不能|可不可以|有没有|是不是|多少|是什么|哪个|哪些|什么|'
-                              r'怎么|你们|客服|政策|订单|退款|优惠|发票|地址|也|的话|就行|有哪些|不要|别|只要', stripped)):
+                              r'怎么|你们|客服|政策|订单|退款|优惠|发票|地址|也|的话|就行|有哪些|不要|别|只要'
+                              r'|推荐|来[一個个只条台份张]|看看|想[要买]|找[一个]?|帮我|请问|介绍|盘点|种草',
+                              stripped)):
         head = stripped.partition('的')[2]
         if head and 2 <= len(head) <= 10 and not re.search(r'[0-9０-９]', head):
             raw.append(head)
@@ -609,6 +621,35 @@ def ground_tool_params(params, utterance, mission):
     if category is not None and _squash(category) not in text and category != mission.get('category_id'):
         dropped['category_id'] = category
         filtered.pop('category_id', None)
+    # 量词/衬字净化（holdout-3/4 根因类）：纯「数词+个体量词」的必含词是购买数量
+    # 语义（"两根"→quantity=2），动词衬字+量词（"买个"/"来点"）不是商品属性词。
+    # 两者作为 required_terms 只会把整个目录筛空，且溯源守卫因它们确实出现在
+    # 原话里而无法拦截——在此按词形无条件剔除，诊断记录可回溯。
+    required = filtered.get('required_terms')
+    if required:
+        measure = re.compile(r'^[0-9０-９一二两三四五六七八九十百千]+\s*[个只条台把张件套支根份块]')
+        filler = re.compile(r'(?:买|卖|要|找|想|帮|请|推荐|来)[个点些下张]$')
+        kept_terms, dropped_terms = [], []
+        counted = None
+        for term in required:
+            stripped = str(term).strip()
+            hit = measure.match(stripped)
+            if hit:
+                value = _cn_count(re.sub(r'[个只条台把张件套支根份块]', '', stripped))
+                if value:
+                    counted = value
+                    dropped_terms.append(stripped)
+                    continue
+            if filler.match(stripped):
+                dropped_terms.append(stripped)
+                continue
+            kept_terms.append(term)
+        if dropped_terms:
+            dropped['required_term_fillers'] = dropped_terms
+            filtered['required_terms'] = kept_terms
+            if counted and (params.get('quantity') in (None, 1)):
+                filtered['quantity'] = counted
+                dropped['quantity_from_term'] = counted
     extracted = extract_mission(utterance)
     for param_key, slot_key in (('max_price_cents', 'budget_max_cents'), ('min_price_cents', 'min_price_cents')):
         value = params.get(param_key)
