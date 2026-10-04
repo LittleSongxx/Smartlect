@@ -53,29 +53,69 @@ from .observations import constraint_echo, knowledge_observation, product_observ
 
 
 def bounded_messages(messages, tool_schemas, question):
-    result = [dict(message) for message in messages]
-    def size():
-        return estimate_text_tokens(canonical({'messages': result, 'tools': tool_schemas})) + 16 * len(result)
-    def over_limit():
-        # Window raised 12000->14400 (bytes 36000->43200) by decision 2026-09-12:
-        # five passing dev cases peaked within 110 tokens of the old cap, leaving no
-        # room for any prompt discipline; see ADR 0004 for the measured evidence.
-        return size() > 14400 or len(canonical({'messages': result, 'tools': tool_schemas}).encode()) > 43200
-    matches = [i for i, message in enumerate(result)
-               if message['role'] == 'user' and (message['content'] == question
-                                                 or str(message.get('content') or '').startswith(question))]
-    if not matches:
-        matches = [i for i, message in enumerate(result) if message['role'] == 'user']
-    if not matches:
+    """上下文裁剪：langchain-core trim_messages 按预算保留近期消息，系统提示永不被裁。
+
+    框架原生策略 token_counter 之前 2026-09 由 ADR 0004 实测校准（12000→14400），
+    迁移到 trim_messages 后沿用同一上限做 strategy=last 的硬界。"""
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+    from langchain_core.messages.utils import trim_messages as lc_trim_messages
+
+    def to_lc(entry):
+        role = entry.get('role')
+        if role == 'system':
+            return SystemMessage(content=entry.get('content') or '')
+        if role == 'user':
+            return HumanMessage(content=entry.get('content') or '')
+        if role == 'tool':
+            return ToolMessage(content=entry.get('content') or '', tool_call_id=entry.get('tool_call_id') or '')
+        calls = []
+        for c in entry.get('tool_calls') or []:
+            function = c.get('function') or {}
+            args = function.get('arguments', {})
+            if isinstance(args, str):
+                try:
+                    import json
+                    args = json.loads(args)
+                except Exception:
+                    args = {}
+            calls.append({'id': c.get('id') or '', 'name': function.get('name') or '', 'args': args})
+        return AIMessage(content=entry.get('content') or '', tool_calls=calls)
+
+    def counter(entries):
+        payload = [dict(m) for m in entries]
+        return estimate_text_tokens(canonical({'messages': payload, 'tools': tool_schemas})) + 16 * len(payload)
+
+    # 框架 trim 决定保留集合；返回值仍是原始 wire dict（逐字节不变，模型协议无需转换）。
+    originals = list(messages)
+    lc_pairs = [(to_lc(m), m) for m in originals]
+    original_by_lc_id = {id(lc): original for lc, original in lc_pairs}
+
+    def kept_counter(kept):
+        return counter([original_by_lc_id[id(k)] for k in kept if id(k) in original_by_lc_id])
+
+    trimmed = lc_trim_messages(
+        [pair[0] for pair in lc_pairs],
+        max_tokens=14400, token_counter=kept_counter,
+        strategy='last', allow_partial=False, include_system=True, start_on='human')
+    kept_ids = {id(original_by_lc_id[id(message)]) for message in trimmed if id(message) in original_by_lc_id}
+    result = [original for lc, original in lc_pairs if id(original) in kept_ids]
+    if not any(m['role'] == 'user' for m in result):
         raise BudgetExceeded('context_limit')
-    current = max(matches)
-    while over_limit() and current > 1:
-        end = next((i for i in range(2, current + 1) if result[i]['role'] == 'user'), current)
-        del result[1:end]
-        current -= end - 1
-    if over_limit():
+    # fail-closed：本轮窗口（最后一个用户消息到结尾）必须完整保留——
+    # 框架 trim 会把超限消息静默丢弃，这里把「本轮自身放不下」翻译回原契约的 BudgetExceeded。
+    matches = [i for i, m in enumerate(originals)
+               if m['role'] == 'user' and (m.get('content') == question
+                                           or str(m.get('content') or '').startswith(question))]
+    if not matches:
+        matches = [i for i, m in enumerate(originals) if m['role'] == 'user']
+    if matches:
+        turn_start = max(matches)
+        if len(result) < len(originals) - turn_start:
+            raise BudgetExceeded('context_limit')
+    # ADR 0004 的双上限之一：字节硬界（token 估算之外的真实负载防线）。
+    if len(canonical({'messages': result, 'tools': tool_schemas}).encode()) > 43200:
         raise BudgetExceeded('context_limit')
-    return result, size()
+    return result, counter(trimmed)
 
 
 async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory, provider, mode, config,
@@ -312,7 +352,8 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                                memory=memory, allowed=allowed_tools(), call_id=call_id, recommend=recommend,
                                search=search, compare=compare,
                                product_scope=await asyncio.to_thread(attribution.product_scope, actor) if attribution is not None else None,
-                               observed_citations=citations, user_utterance=question, focus=context)
+                               observed_citations=citations, user_utterance=question, focus=context,
+                               provider=provider if mode == 'live' else None)
         evidence.append(receipt['evidence_id'])
         data = receipt['data']
         if name != 'load_skill':

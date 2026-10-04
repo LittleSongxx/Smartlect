@@ -49,6 +49,12 @@ class CompareArgs(Arguments):
     excluded_product_ids: list[str] = Field(default_factory=list, max_length=64)
     excluded_sku_keys: list[str] = Field(default_factory=list, max_length=64)
 
+class DispatchArgs(Arguments):
+    tasks: list[str] = Field(min_length=1, max_length=3,
+                             description="1-3 个可并行的独立只读检索任务；每个一句话，含目标与约束；派发判据：可并行/需上下文隔离/调用链深，其一成立才用")
+    reason: Literal["parallel", "isolation", "deep_chain"] = Field(description="派发理由")
+
+
 
 class KnowledgeArgs(Arguments):
     query: str = Field(min_length=1, max_length=800)
@@ -147,6 +153,7 @@ REGISTRY = {
     "get_order_status": Tool(OrderArgs, "orders:read", "查询本人的订单及明细状态"),
     "get_refund_status": Tool(OrderArgs, "orders:read", "查询本人的退款业务状态，受理不等于完成"),
     "list_my_coupons": Tool(Arguments, "orders:read", "查询本人未使用优惠券，含券ID与门槛；成交价以报价为准"),
+    "task_dispatch": Tool(DispatchArgs, "shopping:read", "把1-3个独立只读检索任务并行派发给子智能体（各自独立上下文并发执行，只回传结论）；仅当可并行/需隔离/链深时使用，普通单点检索直接调 search/recommend 工具", "read"),
     "propose_order": Tool(CreateOrderArgs, "orders:write", "取得Java报价并生成等待用户确认的下单提案", "proposal"),
     "propose_cancel": Tool(OrderArgs, "orders:write", "生成等待用户确认的取消提案", "proposal"),
     "propose_refund": Tool(RefundArgs, "orders:write", "生成等待用户确认具体金额的退款提案", "proposal"),
@@ -186,7 +193,7 @@ def schemas(actor, allowed=None):
 
 async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None, allowed=None,
                  knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, search=None,
-                 product_scope=None, observed_citations=None, user_utterance=None, focus=None):
+                 product_scope=None, observed_citations=None, user_utterance=None, focus=None, provider=None):
     tool = REGISTRY.get(name)
     if tool is None:
         raise ValueError("tool_not_allowed")
@@ -222,8 +229,8 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
                 "gen_ai.tool.call.id": call_id,
             },
         ):
-            result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, compare, search, observed_citations, user_utterance, focus),
-                                            timeout=30 if name in {"search_knowledge", "search_skus", "recommend_skus", "compare_skus"} else 15)
+            result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, compare, search, observed_citations, user_utterance, focus, provider),
+                                            timeout=90 if name == "task_dispatch" else 30 if name in {"search_knowledge", "search_skus", "recommend_skus", "compare_skus"} else 15)
         status = "command_accepted"
         if name == "get_refund_status":
             status = "business_completed" if result and all(item.get("status") == "COMPLETED" for item in result) else "business_pending"
@@ -242,7 +249,23 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
         raise
 
 
-async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, search=None, observed_citations=None, user_utterance=None, focus=None):
+async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, search=None, observed_citations=None, user_utterance=None, focus=None, provider=None):
+    if name == 'task_dispatch':
+        if provider is None:
+            raise ValueError('dispatch_model_unavailable')
+        from smartlect.agents.shopping import dispatch as dispatch_module
+        from smartlect.agents.shopping.model_adapter import ProviderChatModel
+        model = ProviderChatModel(provider=provider,
+                                  prompt_version=getattr(provider, '_dispatch_prompt_version', 'shopping-react'),
+                                  max_tokens=1024)
+
+        async def sub_invoke(sub_name, sub_args):
+            return await _invoke(sub_name, sub_args, actor, commerce, store, lease,
+                                 knowledge=knowledge, embed_query=embed_query, memory=memory,
+                                 recommend=recommend, compare=compare, search=search,
+                                 observed_citations=observed_citations, user_utterance=user_utterance,
+                                 focus=focus)
+        return await dispatch_module.dispatch(params['tasks'], model=model, invoke=sub_invoke)
     if name == 'request_handoff':
         if actor.is_trial_user():
             raise ValueError('trial_read_only')

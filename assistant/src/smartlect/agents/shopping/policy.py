@@ -5,6 +5,7 @@ PROMPT_VERSION = 'shopping-react-v27'
 
 BOOTSTRAP_TOOLS = frozenset({
     'load_skill', 'search_knowledge', 'get_conversation_memory', 'request_handoff',
+    'task_dispatch',
 })
 
 SYSTEM_POLICY_BODY = ('你是Smartlect Shopping Agent，负责选购、店铺咨询和本人订单任务。'
@@ -13,6 +14,7 @@ SYSTEM_POLICY_BODY = ('你是Smartlect Shopping Agent，负责选购、店铺咨
           '领域Skills已加载，直接使用权限内工具；也可用 load_skill 再加载一份流程说明。'
           'Java事实决定价格、库存和交易状态，政策断言引用本轮可访问资料；'
           '检索命中不等于结论，缺失或冲突只限制受影响部分，继续完成能完成的任务。'
+          'task_dispatch 把 1-3 个独立只读检索任务并行交给子智能体（各算各的上下文与预算）；仅当可并行、需上下文隔离或调用链深时使用，单点检索直接调 search/recommend 工具。'
           '终答用结构化 JSON（不是 finish_answer 工具）如实填 grounding：凡陈述本店怎么做、要求什么、能否办到（包括以隐私或'
           '权限为由说明办不到）都算store_policy，必须先search_knowledge并附本轮chunk_id；'
           '讲本人订单/地址/商品填user_facts并先用工具查到；本轮工具已返回的规格、价格、库存同样是user_facts，'
