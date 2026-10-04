@@ -155,9 +155,8 @@
           <section class="pc-panel">
             <h2 class="panel-title">支付方式</h2>
             <el-radio-group v-model="payMethod" class="pc-pay-methods">
-              <label class="pc-pay-option" :class="{ active: payMethod === PAY_METHOD_ALIPAY_PC }">
-                <el-radio :value="PAY_METHOD_ALIPAY_PC">支付宝</el-radio>
-                <span class="pay-desc">本环境为模拟付款，提交后在支付页确认即可，不会打开支付宝</span>
+              <label class="pc-pay-option active">
+                <el-radio :value="'mock'">模拟付款（本环境不接真实支付）</el-radio>
               </label>
             </el-radio-group>
           </section>
@@ -313,8 +312,7 @@ const {
   loadCoupons,
   openCouponPicker,
   selectCoupon,
-  submit,
-  PAY_METHOD_ALIPAY_PC
+  submit
 } = useCheckoutPage('desktop');
 </script>
 

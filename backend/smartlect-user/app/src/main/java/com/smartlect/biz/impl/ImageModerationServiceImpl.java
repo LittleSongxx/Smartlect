@@ -314,27 +314,6 @@ public class ImageModerationServiceImpl implements ImageModerationService {
         }
     }
 
-    @Override
-    public void validateCommentQuarantinePaths(String userId, String orderId, String commentImages) {
-        List<String> quarantinePaths = splitImagePaths(commentImages).stream()
-                .filter(FileUtils::isModerationQuarantinePath)
-                .collect(Collectors.toList());
-        if (quarantinePaths.isEmpty()) {
-            return;
-        }
-        for (String path : quarantinePaths) {
-            ImageModerationRecordQuery query = new ImageModerationRecordQuery();
-            query.setUserId(userId);
-            query.setOrderId(orderId);
-            query.setScene(ImageModerationSceneEnum.COMMENT.getCode());
-            query.setStatus(ImageModerationStatusEnum.PENDING.getStatus());
-            List<ImageModerationRecord> records = imageModerationRecordMapper.selectList(query);
-            boolean matched = records.stream().anyMatch(r -> path.equals(r.getImagePath()));
-            if (!matched) {
-                throw new BusinessException("评论图片审核状态异常，请重新上传后再试");
-            }
-        }
-    }
 
     public static List<String> splitImagePaths(String commentImages) {
         if (StringTools.isEmpty(commentImages)) {

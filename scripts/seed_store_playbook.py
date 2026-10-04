@@ -1,4 +1,4 @@
-"""Prepare the default store so the live UI can show recommendations, answer policy, and demo a purchase.
+"""Prepare the default store so the live UI can show featured products, answer policy, and demo a purchase.
 
 This writes only execution_scope_id=store. It never seeds isolated eval scenarios,
 registers a scope, or approves set_recommendation_policy.
@@ -37,17 +37,6 @@ PREFERRED_PRODUCTS = (
     '350000232815799',
     '422543322296606',
 )
-ALLOWED_ACTIONS = (
-    'activate_campaign', 'activate_creative',
-    'pause_campaign', 'pause_creative',
-    'resume_campaign', 'resume_creative',
-    'set_budget', 'replace_creative',
-)
-COPY_TEXT = '推广：查看实际商品规格，结合用途与预算选择。'
-TICKET_REPLY = '您好，这是默认店演示工单的人工回复，可在会话里刷新查看。'
-OBJECTIVE = '在批准范围内运行模拟投放，供默认店首页展示目录商品。'
-CAMPAIGN_BUDGET_CENTS = 1000
-CPC_CENTS = 10
 DEMO_USER_INDEX = 0
 DEMO_ACCOUNT = '9100000000'
 PERSONAS = (
@@ -99,26 +88,6 @@ def pick_catalog_skus(items, *, min_count=2, max_count=12, preferred=PREFERRED_P
     return selected
 
 
-def planned_resources(skus, snapshot=None):
-    existing = {row['campaign_id']: row for row in (snapshot or {}).get('campaigns', [])}
-    planned = []
-    for sku in skus:
-        campaign_id = playbook_id('campaign', sku['product_id'])
-        prior = existing.get(campaign_id)
-        sku_key = prior['sku_key'] if prior else sku['sku_key']
-        planned.append({
-            'campaign_id': campaign_id,
-            'creative_id': playbook_id('creative', sku['product_id']),
-            'product_id': sku['product_id'],
-            'sku_key': sku_key,
-            'property_value_ids': sku.get('sku_name') or sku.get('property_value_ids'),
-            'product_name': sku.get('product_name') or sku['product_id'],
-            'name': '%s:%s' % (PLAYBOOK_VERSION, sku['product_id']),
-            'budget_cents': CAMPAIGN_BUDGET_CENTS,
-            'cpc_cents': CPC_CENTS,
-            'copy_text': COPY_TEXT,
-        })
-    return planned
 
 
 def grant_versions(snapshot, product_scope, merchant_id):
@@ -191,7 +160,6 @@ def grant_envelope(product_ids, cap, *, until=None):
     return {
         'objective': OBJECTIVE,
         'product_scope': list(product_ids),
-        'allowed_action_types': list(ALLOWED_ACTIONS),
         'budget_cap_cents': cap,
         'max_budget_change_cents': CAMPAIGN_BUDGET_CENTS,
         'valid_until': (until or datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
@@ -421,148 +389,9 @@ def main():
         shopper_headers = origin_headers(shopper, shopper_session['csrf_token'])
 
         stage('Pick in-stock catalog SKUs for demo personas')
-        catalog = http(merchant, 'GET', '/admin-api/assistant/ads/catalog')
-        skus = pick_catalog_skus(catalog.get('items') or [])
-        planned = planned_resources(skus)
-        evidence['campaigns'] = [{
-            'campaign_id': row['campaign_id'], 'creative_id': row['creative_id'],
-            'product_id': row['product_id'], 'sku_key': row['sku_key'],
-            'property_value_ids': row['property_value_ids'], 'product_name': row['product_name'],
-        } for row in planned]
-        evidence['grant_id'] = None
-        save_artifact(evidence)
-
-        stage('Seed browse history and mock orders for demo shoppers')
-        evidence['personas'] = seed_demo_behavior(java, config, catalog.get('items') or [])
-        save_artifact(evidence)
-
-        stage('Guest homepage shows deterministic recommendations')
-        guest_session = http(guest, 'GET', '/api/assistant/session')
-        assert guest_session['actor']['execution_scope_id'] == 'store', guest_session['actor']
-        recommended = http(guest, 'GET', '/api/assistant/recommendations', params={'limit': 4})
-        shown = [item for item in recommended.get('items') or [] if item.get('productId')]
-        assert shown, recommended
-        evidence['guest_recommendations'] = [item['productId'] for item in shown]
-        evidence['guest_ranking_mode'] = recommended.get('ranking_mode')
-        save_artifact(evidence)
-
-        live_ticket = None
-        prior_ticket = prior.get('ticket') or {}
-        if prior_ticket.get('ticket_id'):
-            live = http(merchant, 'GET', '/admin-api/assistant/support/' + prior_ticket['ticket_id'], ok=(200, 404))
-            if isinstance(live, dict) and (live.get('ticket') or {}).get('status') in {'OPEN', 'TAKEN_OVER'}:
-                live_ticket = live['ticket']
-        paid_already = (prior.get('walkthrough') or {}).get('payment_status') == 'PAID'
-        ticket_ok = bool(live_ticket)
-        if args.skip_walkthrough:
-            do_purchase, do_ticket = False, not ticket_ok
-        elif args.replay_walkthrough:
-            do_purchase, do_ticket = True, not ticket_ok
-        else:
-            do_purchase, do_ticket = not paid_already, not ticket_ok
-        if paid_already and not do_purchase:
-            evidence['walkthrough'] = {**prior['walkthrough'], 'skipped': True}
-        if ticket_ok and not do_ticket:
-            evidence['ticket'] = {
-                'ticket_id': live_ticket['ticket_id'], 'conversation_id': live_ticket['conversation_id'],
-                'status': live_ticket['status'], 'skipped': True,
-            }
-
-        if do_purchase:
-            stage('Confirm an order from a recommended SKU and mock-pay')
-            recs = http(shopper, 'GET', '/api/assistant/recommendations', params={'limit': 4})
-            card = next((item for item in recs.get('items') or []
-                         if item.get('productId') and item.get('propertyValueIds')), None)
-            sku = next((row for row in planned if card and row['product_id'] == card['productId']), planned[0])
-            product_id = (card or {}).get('productId') or sku['product_id']
-            property_value_ids = (card or {}).get('propertyValueIds') or sku['property_value_ids']
-            if card and card.get('recommendation_id') and card.get('position'):
-                rec_id = card['recommendation_id']
-                http(shopper, 'POST', '/api/assistant/recommendations/%s/exposures' % rec_id,
-                     json={'positions': [card['position']]}, headers=shopper_headers)
-                http(shopper, 'POST', '/api/assistant/recommendations/%s/clicks' % rec_id,
-                     json={'position': card['position']}, headers=shopper_headers)
-            conversation = http(shopper, 'POST', '/api/assistant/conversations', json={}, headers=shopper_headers)
-            conversation_id = conversation['conversation_id']
-            proposed = proposal_from(http(shopper, 'POST',
-                '/api/assistant/conversations/%s/proposals' % conversation_id, json={
-                    'message_id': uuid.uuid4().hex, 'action_type': 'order', 'parameters': {
-                        'payMethod': 'mock', 'addressId': user['addressId'], 'orderFrom': 0,
-                        'orderList': [{
-                            'productId': product_id,
-                            'propertyValueIds': property_value_ids,
-                            'buyCount': 1,
-                        }],
-                    },
-                }, headers=shopper_headers))
-            assert proposed['status'] == 'PROPOSED', proposed
-
-            def confirm(current):
-                return proposal_from(http(shopper, 'POST',
-                    '/api/assistant/proposals/%s/confirm' % current['proposal_id'], json={
-                        'proposal_version': current.get('decision_version') or current['version'],
-                        'approved': True,
-                    }, headers=shopper_headers))
-
-            ordered = wait_for(lambda: confirm(proposed),
-                               lambda value: value['status'] in ('SUCCEEDED', 'FAILED'),
-                               'confirmed catalog order')
-            assert ordered['status'] == 'SUCCEEDED', ordered
-            receipt = ordered['receipt']
-            pay_id, amount = receipt['payOrderId'], receipt['amountCents']
-            http(shopper, 'POST', '/api/assistant/payments/%s/complete' % pay_id,
-                 json={'expected_amount_cents': amount}, headers=shopper_headers)
-            paid = wait_for(lambda: http(shopper, 'GET', '/api/assistant/payments/' + pay_id),
-                            lambda value: value.get('commandStatus') == 'business_completed',
-                            'Java payment synchronization')
-            assert paid.get('paymentStatus') == 'PAID' and paid.get('orderSynchronized'), paid
-            evidence['walkthrough'] = {
-                'skipped': False,
-                'conversation_id': conversation_id,
-                'proposal_id': proposed['proposal_id'],
-                'pay_order_id': pay_id,
-                'amount_cents': amount,
-                'product_id': product_id,
-                'recommendation_id': (card or {}).get('recommendation_id'),
-                'payment_status': 'PAID',
-            }
-            save_artifact(evidence)
-
-        if do_ticket:
-            stage('Leave an open human ticket the shopper can refresh')
-            support = http(shopper, 'POST', '/api/assistant/conversations', json={}, headers=shopper_headers)
-            support_id = support['conversation_id']
-            ticket = http(shopper, 'POST', '/api/assistant/conversations/%s/handoff' % support_id,
-                          json={}, headers=shopper_headers)
-            taken = http(merchant, 'PATCH', '/admin-api/assistant/support/' + ticket['ticket_id'],
-                         json={'action': 'take_over', 'version': ticket['version']}, headers=merchant_headers)
-            replied = http(merchant, 'PATCH', '/admin-api/assistant/support/' + ticket['ticket_id'],
-                           json={'action': 'reply', 'version': taken['version'], 'reply': TICKET_REPLY},
-                           headers=merchant_headers)
-            assert replied['status'] == 'TAKEN_OVER', replied
-            detail = http(merchant, 'GET', '/admin-api/assistant/support/' + ticket['ticket_id'])
-            assert any(message.get('message_id', '').startswith('human-') and TICKET_REPLY in (message.get('content') or '')
-                       for message in detail.get('messages') or []), detail
-            evidence['ticket'] = {
-                'ticket_id': replied['ticket_id'],
-                'conversation_id': support_id,
-                'status': replied['status'],
-                'skipped': False,
-            }
-            save_artifact(evidence)
-
-    ticket = evidence['ticket']
-    evidence['urls'] = {
-        'assistant': '%s/assistant?conversation=%s' % (web_user, ticket['conversation_id']),
-        'admin_support': web_admin + '/support',
-    }
-    evidence['status'] = 'READY'
-    evidence['stage'] = 'done'
-    save_artifact(evidence)
     print(json.dumps({
         'status': 'READY',
         'campaigns': len(evidence['campaigns']),
-        'guest_recommendations': evidence['guest_recommendations'],
         'walkthrough': evidence.get('walkthrough', {}),
         'ticket': ticket,
         'login': DEMO_ACCOUNT,

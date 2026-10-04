@@ -8,6 +8,7 @@ import hmac
 import json
 import logging
 import os
+import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
@@ -112,6 +113,18 @@ def health(settings, config=None):
             "model_ready": model_ready}
 
 
+def _retention_loop(connect):
+    """每日跑一次 purge_expired；连接缺失时仅休眠（无库环境不启动清理）。"""
+    from smartlect.maintenance import purge_expired
+    while True:
+        if connect is not None:
+            try:
+                purge_expired(connect)
+            except Exception:
+                log.warning("retention purge failed", exc_info=True)
+        time.sleep(86400)
+
+
 async def execute_proposal(proposal, actor, commerce):
     action = proposal["action_type"]
     if action == 'payment':
@@ -209,6 +222,17 @@ def create_app(settings=None, *, config=None, store=None, identity=None, commerc
         if store is not None:
             await db(store.initialize)
             prompt_registry.seed(store.connect)
+        # 混合检索后端（ES/Qdrant）幂等建索引；未配置环境由 hybrid_search 内部跳过。
+        try:
+            from smartlect import hybrid_search
+            await db(hybrid_search.ensure_schema)
+        except Exception:
+            log.warning("hybrid search schema bootstrap skipped", exc_info=True)
+        # 30 天数据保留任务原在 worker 进程；worker 退役后并入 API 进程（每日一跑，守护线程）。
+        retention = threading.Thread(
+            target=_retention_loop, name="smartlect-retention", daemon=True,
+            kwargs={"connect": store.connect if store is not None else None})
+        retention.start()
         if indexing is not None:
             await indexing.resume_stale()
         yield

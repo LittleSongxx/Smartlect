@@ -26,7 +26,7 @@ PROCESS_LOCK = ROOT / "run/processes.lock"
 DATABASES = ("admin", "user", "product", "stock", "cart", "order", "pay", "coupon")
 APPS = ("assistant", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
 PORTS = {"MYSQL": 13306, "POSTGRES": 15432, "REDIS": 16379, "RABBIT": 15672,
-         "RABBIT_MANAGEMENT": 15674, "NACOS": 18848, "ES": 9200, "QDRANT": 6333, "POSTGRES": 15432,
+         "RABBIT_MANAGEMENT": 15674, "NACOS": 18848, "ES": 9200, "QDRANT": 6333,
          "GATEWAY": 18080, "GROWTH": 18000, "DASHBOARD": 18501,
          "ADMIN": 18101, "USER": 18105, "PRODUCT": 18106, "STOCK": 18108,
          "CART": 18102, "ORDER": 18104, "PAY": 18103, "COUPON": 18107, "WEB_USER": 18180, "WEB_ADMIN": 18181}

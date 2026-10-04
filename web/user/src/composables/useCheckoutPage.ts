@@ -488,7 +488,5 @@ export function useCheckoutPage(mode: CheckoutPageMode = 'mobile') {
     openCouponPicker,
     selectCoupon,
     submit,
-    PAY_METHOD_ALIPAY_PC: PAY_METHOD_MOCK,
-    PAY_METHOD_ALIPAY_WAP: PAY_METHOD_MOCK
   };
 }

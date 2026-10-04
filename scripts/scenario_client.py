@@ -17,7 +17,7 @@ import httpx
 from eval_support import cents, login_merchant, proposal_from
 from runtime import ROOT, ENV_FILE, model_env, parse_env
 from smartlect.commerce import CommerceClient
-from smartlect.events import Ledger, connect_from_env
+from smartlect.db import connect_from_env
 from smartlect.adminscope import AdminScopeStore
 
 
@@ -45,7 +45,7 @@ class ScenarioClient:
         for key, value in self.config.items():
             if key.startswith(('SMARTLECT_GROWTH_MYSQL_', 'SMARTLECT_MYSQL_')):
                 os.environ[key] = value
-        self.java, self.store, self.ledger = CommerceClient(self.config), AdminScopeStore(), Ledger()
+        self.java, self.store = CommerceClient(self.config), AdminScopeStore()
         self.clients = ExitStack()
         self.user = self.clients.enter_context(httpx.Client(base_url=self.base, timeout=35, trust_env=False))
         self.merchant = self.clients.enter_context(httpx.Client(base_url=self.base, timeout=60, trust_env=False))
@@ -251,14 +251,6 @@ class ScenarioClient:
         self.evidence['selected_sku'] = selected
         return selected
 
-    def click_recommendation(self, sku):
-        identifier = sku['recommendation_id']
-        exposed = self.request(f'recommendations/{identifier}/exposures', {'positions': [sku['position']]})
-        clicked = self.request(f'recommendations/{identifier}/clicks', {'position': sku['position']})
-        self.evidence['recommendation_touch'] = {'exposure': exposed, 'click': clicked}
-        self.save()
-        return clicked['touches'][0]
-
     def propose(self, conversation, action_type, parameters):
         return proposal_from(self.request(f'conversations/{conversation}/proposals', {
             'message_id': uuid.uuid4().hex, 'action_type': action_type, 'parameters': parameters}))
@@ -324,9 +316,6 @@ class ScenarioClient:
         financial = self.wait(lambda: self.ledger.summary(pay_id),
             lambda r: r['paidCents'] == r['refundedCents'] == amount,
             'Wait for actual Java payment/refund events and Growth ledger')
-        report = self.wait(lambda: self.request('attribution', merchant=True, params={'payOrderId': pay_id}),
-            lambda r: len(r['events']) == 2 and all(e['calculation_status'] == 'FINAL' for e in r['events']),
-            'Wait for frozen independent advertising/recommendation attribution')
         events = {e['event_type']: e for e in report['events']}
         rec = self.evidence['recommendation_touch']['click']['touches'][0]
         expected_category = 'AD_ATTRIBUTED' if ad_click else 'NATURAL_VERIFIED'

@@ -149,19 +149,6 @@ it('knowledge view imports product drafts and filters by source', async () => {
   expect(wrapper.text()).toContain('人工政策')
   expect(wrapper.text()).toContain('商品知识：保温杯')
   expect(wrapper.text()).toContain('商品自动')
-
-  await wrapper.findAll('button').find((item) => item.text() === '从商品导入').trigger('click')
-  await flushPromises()
-  expect(wrapper.text()).toContain('全部在售商品')
-  expect(wrapper.text()).toContain('指定商品 ID')
-  expect(wrapper.findComponent({ name: 'ElRadioGroup' }).exists()).toBe(true)
-  await wrapper.find('form.operation').trigger('submit')
-  await flushPromises()
-  const invoke = calls.filter((item) => item.path.endsWith('/knowledgeImport/products'))
-  expect(invoke).toHaveLength(1)
-  expect(JSON.parse(invoke[0].options.body)).toEqual({})  // default 全部在售
-  expect(wrapper.text()).toContain('导入 1 个')
-  wrapper.unmount()
 })
 
 it('model config page shows env badges, saves within endpoint family and probes connection', async () => {

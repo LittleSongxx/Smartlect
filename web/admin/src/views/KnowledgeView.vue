@@ -7,7 +7,6 @@
           <el-option label="手动编写" value="MANUAL" />
           <el-option label="商品自动导入" value="PRODUCT_AUTO" />
         </el-select>
-        <el-button :disabled="busy || !canWrite" @click="importing = true">从商品导入</el-button>
         <el-button type="primary" :loading="busy" @click="refresh">刷新文档</el-button>
       </template>
     </PageHeader>
@@ -94,26 +93,10 @@
     </div>
 
     <div class="table-data-card table-gap">
-      <h4 class="card-title">商品投影与索引同步失败（自动重试 {{ opsNote }}）</h4>
+      <h4 class="card-title">知识索引失败重试</h4>
       <el-alert v-if="opsSummaryError" type="info" :title="opsSummaryError" :closable="false" />
       <template v-else>
-        <p class="muted-note">
-          投影任务失败后每 60 秒自动重投（90 秒退避，至多 {{ projectionMaxAttempts }} 次）；
-          索引任务失败需人工重试。Java 侧入队耗尽会落 MQ 补偿日志自动重放。
-        </p>
-        <el-table v-if="failedProjections.length" :data="failedProjections" stripe size="small" class="table-gap">
-          <el-table-column prop="product_id" label="商品" width="140" />
-          <el-table-column prop="attempt" label="尝试" width="70" />
-          <el-table-column prop="error_type" label="错误" width="180" show-overflow-tooltip />
-          <el-table-column prop="message" label="说明" min-width="200" show-overflow-tooltip />
-          <el-table-column prop="updated_at" label="更新时间" width="180" />
-          <el-table-column label="操作" width="110" fixed="right">
-            <template #default="{ row }">
-              <el-button size="small" @click="retryProjection(row.product_id)">重新入队</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <p v-else class="muted-note">没有失败的投影任务。</p>
+        <p class="muted-note">索引任务失败需人工重试；Java 侧入队耗尽会落 MQ 补偿日志自动重放。</p>
         <el-table v-if="failedIndexJobs.length" :data="failedIndexJobs" stripe size="small" class="table-gap">
           <el-table-column prop="doc_id" label="文档" min-width="180" show-overflow-tooltip />
           <el-table-column prop="version" label="版本" width="70" />
@@ -165,29 +148,6 @@
       </el-table>
     </div>
 
-    <div v-if="importing" class="table-data-card table-gap">
-      <h4 class="card-title">从商品导入知识草稿</h4>
-      <p class="muted-note">
-        从 Java 商品服务拉取在售商品的描述/参数/价格库存，生成「商品自动」来源的 DRAFT 文档；重复导入按商品覆盖旧草稿，
-        不碰手动文档与已发布版本。导入后请核对正文再发布。
-      </p>
-      <el-form label-width="96px" class="operation" @submit.prevent="submitImport">
-        <el-form-item label="导入范围">
-          <el-radio-group v-model="importForm.mode">
-            <el-radio value="all">全部在售商品（每次最多 200 个）</el-radio>
-            <el-radio value="ids">指定商品 ID</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="importForm.mode === 'ids'" label="商品 ID">
-          <el-input v-model="importForm.ids" placeholder="例如 12, 15, 20" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" native-type="submit" :disabled="busy || !canWrite || (importForm.mode === 'ids' && !importForm.ids.trim())">开始导入</el-button>
-          <el-button :disabled="busy" @click="importing = false">关闭</el-button>
-        </el-form-item>
-      </el-form>
-    </div>
-
     <div v-if="selected" class="table-data-card table-gap">
       <h4 class="card-title">{{ selected.action === 'publish' ? '确认发布' : '确认撤回' }}：{{ selected.title }} · v{{ selected.version }}</h4>
       <el-form class="operation" @submit.prevent="transition">
@@ -222,7 +182,7 @@ const local = time => { const date = new Date(time); date.setMinutes(date.getMin
 const form = reactive({ doc_id: crypto.randomUUID(), title: '', source_uri: '', language: 'zh-CN', acl: 'PUBLIC', acl_actor_id: '', body: '', valid_from: local(Date.now()), valid_until: local(Date.now() + 365 * 86400000) });
 const productIds = ref(''); const categoryIds = ref(''); const factsText = ref('{}');
 const documents = ref([]); const selected = ref(null); const busy = ref(false); const error = ref(''); const notice = ref(''); const uncertain = ref(false);
-const sourceFilter = ref(''); const importing = ref(false); const importForm = reactive({ mode: 'all', ids: '' });
+const sourceFilter = ref('');
 const filteredDocuments = computed(() => sourceFilter.value ? documents.value.filter(item => (item.source_type || 'MANUAL') === sourceFilter.value) : documents.value);
 const canWrite = computed(() => hasAdminPermission(session.value?.actor, 'admin:legacy'));
 async function work(task) { if (busy.value) return; busy.value = true; error.value = ''; notice.value = ''; try { await task(); } catch (reason) { error.value = errorText(reason); } finally { busy.value = false; } }
@@ -230,20 +190,11 @@ async function read() { documents.value = await aiGet('/knowledge'); }
 
 // 商品投影 / 知识索引同步失败审计（C9）：只读汇总 + 两条人工重试通道
 const opsSummary = ref(null); const opsSummaryError = ref('');
-const failedProjections = computed(() => opsSummary.value?.projection?.failed || []);
 const failedIndexJobs = computed(() => opsSummary.value?.index?.failed || []);
-const projectionMaxAttempts = computed(() => opsSummary.value?.projection?.max_attempts || 3);
 const opsNote = computed(() => opsSummary.value ? '' : '…');
 async function readOps() {
   try { opsSummary.value = await aiGet('/knowledgeOps/summary'); opsSummaryError.value = ''; }
   catch (reason) { opsSummary.value = null; opsSummaryError.value = errorText(reason); }
-}
-async function retryProjection(productId) {
-  await work(async () => {
-    await aiWrite(`/productProjection/${encodeURIComponent(productId)}/retry`);
-    notice.value = `商品 ${productId} 已重新入队`;
-    await readOps();
-  });
 }
 async function retryIndexJob(jobId) {
   await work(async () => {
@@ -253,6 +204,7 @@ async function retryIndexJob(jobId) {
   });
 }
 async function refresh() { await work(async () => { await loadSession(); await read(); await readOps(); uncertain.value = false; }); }
+onMounted(refresh);
 async function save() {
   if (uncertain.value) return;
   await work(async () => {
@@ -283,20 +235,6 @@ async function transition() { await work(async () => {
   }
   await read();
 }); }
-async function submitImport() { await work(async () => {
-  const body = importForm.mode === 'ids'
-    ? { productIds: importForm.ids.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean) }
-    : {};
-  const summary = await aiWrite('/knowledgeImport/products', body);
-  const parts = [`导入 ${summary.imported.length} 个`];
-  if (summary.skipped.length) parts.push(`跳过 ${summary.skipped.length} 个（无可引用内容）`);
-  if (summary.failed.length) parts.push(`失败 ${summary.failed.length} 个`);
-  if (summary.published_pending_review.length) parts.push(`${summary.published_pending_review.length} 个商品存在已发布旧版，重导入后请确认是否撤回旧版`);
-  if (summary.truncated) parts.push('本次已达 200 个上限，可再次执行继续导入');
-  notice.value = parts.join('；') + '。' + (summary.note || '');
-  importing.value = false; await read();
-}); }
-onMounted(refresh);
 </script>
 
 <style scoped lang="scss">
@@ -332,3 +270,4 @@ onMounted(refresh);
   }
 }
 </style>
+

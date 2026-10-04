@@ -24,7 +24,6 @@ public interface ImageModerationService {
 
     void handleReview(Integer recordId, String action, String handleRemark);
 
-    void validateCommentQuarantinePaths(String userId, String orderId, String commentImages);
 
     boolean containsQuarantinePath(String commentImages);
 

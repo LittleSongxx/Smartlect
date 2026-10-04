@@ -87,3 +87,12 @@ websockets==17.1
 wrapt==1.17.3
 xxhash==4.0.1
 zstandard==0.25.0
+
+# --- 2026-10 收敛重构：混合检索后端（ES BM25 + Qdrant dense）---
+# qdrant-client 的 grpcio/numpy/protobuf 闭包与既有 protobuf==7.36.1 对齐。
+elasticsearch==8.19.0
+elastic-transport==8.19.0
+qdrant-client==1.15.1
+portalocker==3.2.0
+grpcio==1.84.0
+numpy==2.5.3
