@@ -19,7 +19,10 @@ class StateError(RuntimeError):
 
 OUTCOMES = {"command_accepted", "business_pending", "business_completed", "rejected", "unknown"}
 EVENT_TYPES = {"message_delta", "tool_started", "tool_result", "proposal_required",
-               "operation_pending", "completed", "error"}
+               "operation_pending", "completed", "error",
+               # 可解释路由/决策事件：记录每个关键分叉（澄清闸、子智能体路由、
+               # 模板收口、修复轮）的 fork + reason，SSE 随事件流透出（ADR-0012）。
+               "decision"}
 RUN_END_STATES = {"WAIT_USER", "WAIT_OUTCOME", "COMPLETED", "FAILED", "CANCELLED"}
 
 

@@ -11,6 +11,8 @@ from hashlib import sha256
 import json
 import math
 import re
+import threading
+import time
 import unicodedata
 import uuid
 
@@ -405,32 +407,136 @@ def _mirror_vector(scope, doc_id, version, model, index_version, mapped, chunks_
         return
 
 
-def _ann_hits(scope, query_vector, embedding_model, index_version):
-    if query_vector is None or not embedding_model or not index_version:
-        return [], "unused"
-    try:
-        import asyncio
-        from smartlect import hybrid_search
-        # _search_uncached 运行在 to_thread 工作线程（无事件循环），asyncio.run 安全。
-        hits, backend = asyncio.run(hybrid_search.ann_search(
-            query_vector, scope, embedding_model, index_version, limit=FIRST_STAGE_DEPTH))
-        if hits is None:
+class BackendHealth:
+    """检索后端滑动窗口健康度（monitor→路由闭环的最小实现，ADR-0012）。
+
+    连续失败达到阈值的后端在 retry_after 窗口内被主动跳过（走既有降级路径：
+    ES→内存 BM25、Qdrant→纯词法、vendor rerank→RRF 序），窗口过后放行一次
+    真实请求作为半开探测——成功即恢复。不是熔断器：无状态机、无额外探测调用，
+    只是把「失败才回退」升级为「按健康度主动降权且跳过决策可追溯」。
+    线程安全：_search_uncached 跑在 to_thread 工作线程，用一把小锁保护。
+    """
+
+    def __init__(self, window=8, failure_threshold=3, retry_after_seconds=60.0):
+        self._lock = threading.Lock()
+        self._window = window
+        self._failure_threshold = failure_threshold
+        self._retry_after = retry_after_seconds
+        self._outcomes: dict[str, list] = {}
+        self._skipped_at: dict[str, float] = {}
+
+    def record(self, name, ok):
+        with self._lock:
+            outcomes = self._outcomes.setdefault(name, [])
+            outcomes.append(bool(ok))
+            if len(outcomes) > self._window:
+                del outcomes[:len(outcomes) - self._window]
+            if ok:
+                self._skipped_at.pop(name, None)
+
+    def should_skip(self, name, now=None):
+        now = now if now is not None else time.monotonic()
+        with self._lock:
+            outcomes = self._outcomes.get(name) or []
+            tail = outcomes[-self._failure_threshold:]
+            if not (len(tail) == self._failure_threshold and not any(tail)):
+                return False
+            last_skip = self._skipped_at.get(name)
+            if last_skip is None:
+                return True  # 首次降级：开始跳过
+            if now - last_skip < self._retry_after:
+                return True  # 跳过窗口内
+            # 窗口已过：放行一次真实请求探测（半开）。清除过期标记——若探测失败，
+            # 下一次评估重新视为「首次降级」回到跳过态，避免探测风暴（每次请求都打故障后端）。
+            self._skipped_at.pop(name, None)
+            return False
+
+    def note_skipped(self, name):
+        # 只在没有活动标记时落时间戳：调用方每次跳过决策都会调本方法，
+        # 若无条件刷新会让跳过窗口永不过期、后端永远得不到半开探测。
+        now = time.monotonic()
+        with self._lock:
+            last = self._skipped_at.get(name)
+            if last is None or now - last >= self._retry_after:
+                self._skipped_at[name] = now
+
+    def snapshot(self, names):
+        with self._lock:
+            report = {}
+            for name in names:
+                outcomes = self._outcomes.get(name) or []
+                tail = outcomes[-self._failure_threshold:]
+                degraded = (len(tail) == self._failure_threshold and not any(tail))
+                report[name] = {
+                    'recent_failures': len(outcomes) - sum(1 for item in outcomes if item),
+                    'state': 'degraded' if degraded else 'ok',
+                    'skipped': self._skipped_at.get(name) is not None,
+                }
+            return report
+
+
+_BACKEND_HEALTH = BackendHealth()
+
+
+def _recall_backends(scope, query_vector, embedding_model, index_version, query, utterance, model_query):
+    """ES BM25 与 Qdrant ANN 并行召回（单次事件循环内 asyncio.gather）+ 健康度记录。
+
+    运行在 to_thread 工作线程（无事件循环），asyncio.run 安全。健康后端并行把
+    两路召回的墙钟时间从「相加」压到「取最大」；被降权的后端直接跳过不发请求。
+    返回 ((dense_hits, vector_backend), (es_hits, es_backend), health_snapshot)。
+    """
+    import asyncio
+    from smartlect import hybrid_search
+
+    skip_ann = _BACKEND_HEALTH.should_skip('qdrant_ann')
+    skip_es = _BACKEND_HEALTH.should_skip('es_bm25')
+    if skip_ann:
+        _BACKEND_HEALTH.note_skipped('qdrant_ann')
+    if skip_es:
+        _BACKEND_HEALTH.note_skipped('es_bm25')
+    ann_usable = query_vector is not None and embedding_model and index_version
+
+    async def ann():
+        if not ann_usable:
+            return [], "unused"
+        if skip_ann:
+            return [], "skipped_degraded"
+        if hybrid_search.qdrant_client() is None:
+            return [], "unavailable"  # 未配置是部署事实，不是健康事件
+        try:
+            hits, backend = await hybrid_search.ann_search(
+                query_vector, scope, embedding_model, index_version, limit=FIRST_STAGE_DEPTH)
+            _BACKEND_HEALTH.record('qdrant_ann', hits is not None)
+            if hits is None:
+                return [], "unavailable"
+            return hits, backend
+        except Exception:
+            _BACKEND_HEALTH.record('qdrant_ann', False)
             return [], "unavailable"
-        return hits, backend
-    except Exception:
-        return [], "unavailable"
 
+    async def es_lexical():
+        if skip_es:
+            return None, "skipped_degraded"
+        if hybrid_search.es_client() is None:
+            return None, "unavailable"  # 未配置是部署事实，不是健康事件
+        try:
+            extras = [item for item in (utterance, model_query) if item and item != query]
+            hits, backend = await hybrid_search.bm25_search(query, scope, extra_queries=extras)
+            _BACKEND_HEALTH.record('es_bm25', hits is not None)
+            if hits is None:
+                return None, "unavailable"
+            return hits, backend
+        except Exception:
+            _BACKEND_HEALTH.record('es_bm25', False)
+            return None, "unavailable"
 
-def _es_lexical(scope, query, utterance, model_query):
-    """ES BM25 召回；未配置返回 None（rank_chunks 回退内存 BM25——保持语义兼容）。"""
-    try:
-        import asyncio
-        from smartlect import hybrid_search
-        extras = [item for item in (utterance, model_query) if item and item != query]
-        hits, backend = asyncio.run(hybrid_search.bm25_search(query, scope, extra_queries=extras))
-        return (hits, backend) if hits is not None else (None, "unavailable")
-    except Exception:
-        return None, "unavailable"
+    async def _both():
+        # gather 必须在协程内创建：Python 3.13 无运行循环时 gather 会先尝试
+        # get_event_loop 绑定循环而失败。
+        return await asyncio.gather(ann(), es_lexical())
+
+    dense_pair, es_pair = asyncio.run(_both())
+    return dense_pair, es_pair, _BACKEND_HEALTH.snapshot(('es_bm25', 'qdrant_ann'))
 
 
 def _vendor_rerank_order(query, rows, dense_hits):
@@ -438,10 +544,15 @@ def _vendor_rerank_order(query, rows, dense_hits):
     from smartlect.rerank_client import configured
     if not configured() or not rows:
         return None, "rrf_only"
+    if _BACKEND_HEALTH.should_skip('vendor_rerank'):
+        _BACKEND_HEALTH.note_skipped('vendor_rerank')
+        return None, "skipped_degraded"
     try:
         order_keys = _sync_vendor_keys(query, rows)
+        _BACKEND_HEALTH.record('vendor_rerank', order_keys is not None)
         return order_keys, "vendor_http"
     except Exception:
+        _BACKEND_HEALTH.record('vendor_rerank', False)
         return None, "rrf_fallback"
 
 
@@ -829,15 +940,17 @@ class KnowledgeStore(SessionStore):
             hidden_rows = list(cursor.fetchall())
             cursor.execute("SELECT revision FROM knowledge_catalog WHERE execution_scope_id=%s", (scope,))
             catalog = cursor.fetchone()
-        dense_hits, vector_backend = _ann_hits(scope, query_vector, embedding_model, index_version)
-        es_hits, es_backend = _es_lexical(scope, query, utterance, model_query)
+        (dense_hits, vector_backend), (es_hits, es_backend), backend_health = _recall_backends(
+            scope, query_vector, embedding_model, index_version, query, utterance, model_query)
         vendor_order, rerank_backend = _vendor_rerank_order(query, rows, dense_hits)
+        backend_health.update(_BACKEND_HEALTH.snapshot(('vendor_rerank',)))
         ranked, metadata = rank_chunks(
             rows, query, query_vector=query_vector, embedding_model=embedding_model,
             index_version=index_version, utterance=utterance, model_query=model_query,
             dense_hits=dense_hits, vendor_order=vendor_order, es_hits=es_hits,
             vector_backend=vector_backend, rerank_backend=rerank_backend)
         metadata["lexical_backend"] = es_backend
+        metadata["backend_health"] = backend_health
         metadata["catalog_revision"] = catalog["revision"] if catalog else 0
         metadata["parallel_queries"] = parallel_queries(utterance, model_query or raw_query)
         denied = acl_denied_documents(rows, hidden_rows, utterance, query)

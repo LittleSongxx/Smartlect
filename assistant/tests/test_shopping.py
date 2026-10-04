@@ -12,7 +12,8 @@ from smartlect.tools import tool_schema, SearchArgs, CreateOrderArgs, Preference
 
 class ShoppingBoundaryTests(unittest.TestCase):
     def test_final_answer_declares_request_kind_instead_of_status(self):
-        self.assertEqual(PROMPT_VERSION, 'shopping-react-v27')
+        # v28：系统提示加入声明式 [角色契约] 块（profiles.py），策略叙事与 v27 一致。
+        self.assertEqual(PROMPT_VERSION, 'shopping-react-v28')
         self.assertEqual(SCHEMA_VERSION, 'shopping-answer-v6')
         advice = load_skill('shopping_advice')
         self.assertEqual(advice['version'], '1.13.0')

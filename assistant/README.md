@@ -1,19 +1,40 @@
-# Smartlect Growth
+# Smartlect Assistant
 
 The installable `smartlect` package provides a FastAPI entry, trusted Java cookie
-sessions, confirmed transaction proposals and durable recovery, plus deterministic
-experiment assignment and advertising calculations. A separate `smartlect.worker`
-process consumes commerce facts into the MySQL ledger described in `LEDGER.md`.
-Shopping now runs bounded LangGraph ReAct with versioned skills, source citations,
-owned memory and human handoff. Recommendations and immutable attribution are implemented; campaign/Merchant
-execution remain F4–F5 work. No model tool can approve a transaction.
+sessions, confirmed transaction proposals and durable recovery.
+Shopping runs bounded LangGraph ReAct with versioned skills, source citations,
+owned memory and human handoff. Recommendations and immutable attribution are
+implemented; the campaign/Merchant plane was retired by ADR-0008 (no worker
+process remains). No model tool can approve a transaction.
+
+## Agent 架构（自上而下）
+
+```
+用户消息 → 准入闸 → MySQL 租约 → run_shopping（有界 ReAct 主循环）
+  ├─ 系统提示 = AgentProfile 角色契约(profiles.py) + v28 策略叙事 + Skill 预告/澄清闸注入
+  ├─ LangGraph 三节点图：model → tools → answer（ADR-0009 锁定语义）
+  │    ├─ model：trim_messages 裁剪 + 真 token 流式（message_delta 增量 + replace 收口）
+  │    ├─ tools：REGISTRY 单一注册表 → invoke() 五层设防（allowed→RBAC→Pydantic→
+  │    │         幂等台账→gen_ai_span）；诚实边界观察投影（受理≠终态、查询≠办理）
+  │    └─ answer：FinalAnswer 契约 + 守卫链 + compile_decision（模型只提议）
+  ├─ task_dispatch → route_sub_agent 确定性分型路由 → 三个子智能体 profile
+  │    （retrieval-scout / order-reader / comparator，各自收窄只读工具面）
+  │    → create_react_agent 并发 → compose_results 确定性组装（部分失败显式披露）
+  │    → 子工具调用走同一条 invoke()（无第二条更弱的路）
+  └─ 关键分叉（澄清闸/子智能体路由/模板收口/修复轮）→ decision 事件 → SSE 透出
+检索面：ES BM25 ∥ Qdrant ANN 并行召回 → RRF → vendor rerank；
+       BackendHealth 滑动窗口健康度主动降权（skipped_degraded 可追溯）
+```
+
+决策记录：`../docs/adr/`（0003 控制面 / 0007 混检 / 0009 runtime / 0010 子智能体 /
+0012 EchoMind 模式借鉴）。
 
 ```bash
 python3.11 -m venv assistant/.venv
 assistant/.venv/bin/python -m pip install -r assistant/requirements.lock
-assistant/.venv/bin/python -m pip install --no-deps --no-build-isolation ./growth
+assistant/.venv/bin/python -m pip install --no-deps --no-build-isolation ./assistant
 assistant/.venv/bin/python -m pip check
-assistant/.venv/bin/python -m unittest discover -s growth/tests -v
+assistant/.venv/bin/python -m unittest discover -s assistant/tests -v
 assistant/.venv/bin/python -m smartlect.app --check
 assistant/.venv/bin/python -m smartlect.app
 ```

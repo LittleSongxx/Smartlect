@@ -79,6 +79,24 @@ def sku_observation(data):
     return {**extra, 'items': cards}
 
 
+def order_observation(name, receipt):
+    """订单/支付/退款回执投影：把「查询时点的状态语义」显式写给模型。
+
+    诚实边界（honest boundary）：受理 ≠ 业务终态，unknown ≠ 失败，
+    查询回执不构成任何办理动作——这三句语义随观察下发，防模型把
+    部分事实叙述成已完成的交易。
+    """
+    semantics = {
+        'get_refund_status': '只读查询：REFUND 受理不是完成；办理退款必须走 propose_refund 提案，本查询不产生退款',
+        'get_payment_status': '只读查询：commandStatus=unknown 表示结果待核对，不得按成功或失败叙述，不能换幂等键重发',
+        'get_order_status': '只读查询：取消或退款须走对应提案工具，本查询不改变订单状态',
+    }.get(name)
+    payload = {'data': receipt.get('data'), 'command_status': receipt.get('command_status')}
+    if semantics:
+        payload['semantics'] = semantics
+    return payload
+
+
 def constraint_echo(request):
     """The gate the retrieve actually applied, echoed next to the filter report so
     a gap between the user's qualifiers and the declared gate is visible in situ."""

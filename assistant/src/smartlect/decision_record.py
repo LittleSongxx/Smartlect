@@ -1,11 +1,10 @@
 """Append-only audit snapshots. Never changes answer_status, tickets, or grants."""
-import os
+from smartlect.agents.shopping.policy import MODEL_CALL_LIMIT
 
-SHOPPING_MODEL_LIMIT = max(1, int(os.environ.get('SMARTLECT_MODEL_CALL_LIMIT') or 6))
+SHOPPING_MODEL_LIMIT = MODEL_CALL_LIMIT
 SHOPPING_TOOL_LIMIT = 10
 SHOPPING_RETRIEVAL_LIMIT = 2
 SHOPPING_REPAIR_LIMIT = 1
-MERCHANT_MODEL_LIMIT = 4
 
 
 def _ids(items, key):
@@ -99,52 +98,4 @@ def attach_shopping_audit(result, context):
     result['checks'] = result['audit_checks']
     return result
 
-
-def merchant_decision(result, context):
-    plan = result.get('plan') if isinstance(result.get('plan'), dict) else {}
-    spec = plan.get('spec') if isinstance(plan.get('spec'), dict) else {}
-    evidence = spec.get('evidence_ids') or plan.get('evidence_ids') or []
-    return {
-        'plane': 'merchant',
-        'prompt_version': context.get('prompt_version'),
-        'schema_version': context.get('schema_version'),
-        'skill_versions': dict(context.get('skill_versions') or result.get('skill_versions') or {}),
-        'model_mode': result.get('model_mode'),
-        'wait_reason': result.get('wait_reason'),
-        'plan_id': plan.get('plan_id') or result.get('plan_id'),
-        'plan_status': plan.get('status'),
-        'evidence_ids': list(evidence)[:20],
-        'replanned': result.get('model_mode') not in {None, 'not_called'},
-        'grant_blocking': result.get('wait_reason') == 'WAIT_MERCHANT'
-                          or plan.get('status') in {'WAIT_APPROVAL', 'WAIT_MERCHANT'},
-        'observation_watermark': context.get('observation_watermark'),
-        'budget': {
-            'model_attempts_used': int(context.get('model_calls') or result.get('model_calls') or 0),
-            'model_attempts_limit': MERCHANT_MODEL_LIMIT,
-        },
-    }
-
-
-def merchant_checks(result, context, decision=None):
-    decision = decision or merchant_decision(result, context)
-    budget = decision['budget']
-    return [
-        _check('model_has_no_tools', True),
-        _check('no_replan_on_same_watermark',
-               result.get('model_mode') == 'not_called',
-               applicable=result.get('wait_reason') == 'no_new_observation'),
-        _check('evidence_bound_or_waiting',
-               bool(decision['evidence_ids']) or decision['grant_blocking']
-               or result.get('wait_reason') in {'no_new_observation', 'new_observation_required',
-                                                'execution_outcome_pending'},
-               applicable=bool(decision['plan_id'] or decision['replanned'])),
-        _check('budget_within_limits',
-               budget['model_attempts_used'] <= budget['model_attempts_limit']),
-    ]
-
-
-def attach_merchant_audit(result, context):
-    decision = merchant_decision(result, context)
-    result['decision'] = decision
-    result['checks'] = merchant_checks(result, context, decision)
     return result

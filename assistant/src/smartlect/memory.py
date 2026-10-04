@@ -151,8 +151,10 @@ class MemoryStore(SessionStore):
             final_event = "proposal_required" if proposal else "completed"
             cursor.executemany("""INSERT INTO agent_run_event (agent_run_id,sequence,event_type,data_json,created_at)
                 VALUES (%s,%s,%s,%s,UTC_TIMESTAMP(6))""", [
+                # replace=True：权威全文收口——前端收到后重置增量游标为该全文，
+                # 与此前流式预览的增量（session.on_token）保持幂等对账。
                 (run["agent_run_id"], run["event_sequence"] + 1, "message_delta",
-                 _json({"text": result["answer"]})),
+                 _json({"text": result["answer"], "replace": True})),
                 (run["agent_run_id"], run["event_sequence"] + 2, final_event, result_json)])
             cursor.execute("""UPDATE agent_run SET context_json=%s,result_json=%s,model_mode=%s,state=%s,
                 event_sequence=%s,version=version+1,updated_at=UTC_TIMESTAMP(6)

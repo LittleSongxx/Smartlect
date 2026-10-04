@@ -93,10 +93,6 @@ public class Constants {
 
     public static final String REDIS_KEY_PAY_TRADE_INITIATED = REDIS_KEY_PREFIX + "pay:trade:initiated:";
 
-    public static final String REDIS_KEY_TOKEN_ADMIN = REDIS_KEY_PREFIX + "token:admin:";
-
-    public static final String REDIS_KEY_TOKEN_ADMIN_ACCOUNT = REDIS_KEY_PREFIX + "token:admin:account:";
-
     public static final String REDIS_KEY_ADMIN_SESSION_VERSION = REDIS_KEY_PREFIX + "admin:session-version:";
 
     public static final String REDIS_KEY_ADMIN_LOGIN_FAIL = REDIS_KEY_PREFIX + "admin:login:fail:";

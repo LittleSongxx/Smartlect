@@ -104,7 +104,6 @@ async def index_chunk(scope, doc_id, version, chunk_id, heading, content,
     es = es_client()
     if es is None:
         return False
-    from elasticsearch import helpers  # noqa: F401  (保留批量路径提示)
     body = {"scope": scope, "doc_id": doc_id, "version": int(version),
             "chunk_id": chunk_id, "heading": heading or "", "content": content}
     if index_version:

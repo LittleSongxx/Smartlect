@@ -61,13 +61,33 @@ def final_answer_response_format():
         'name': 'shopping_final_answer', 'strict': True, 'schema': schema}}
 
 
+def _decode_prefix(content: str):
+    """把已积累的 JSON 字符串内容解码为文本。
+
+    尾部若停在不完整转义（如 \\n 只到了反斜杠、\\uXXXX 只到一半）则逐字符回退到
+    最近可解码前缀——保证抽取结果永远是「最终 answer 文本的前缀」，跨 chunk
+    单调扩展（这是流式增量拼接正确性的前提，见 test_streaming_answer.py）。
+    """
+    for cut in range(0, min(8, len(content)) + 1):
+        candidate = content[:len(content) - cut] if cut else content
+        try:
+            return json.loads('"' + candidate + '"')
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
 def extract_streamed_answer(buffer):
-    """Pull the JSON `answer` field from a partial structured-output stream."""
+    """Pull the JSON `answer` field from a partial structured-output stream.
+
+    返回值语义：None=answer 字段尚未出现或尚无可解码内容；str=最终 answer
+    文本的前缀（绝不返回未解码的原始转义字节）。
+    """
     if not buffer:
         return None
-    stripped = buffer.lstrip()
+    stripped = buffer.strip()
     if not stripped.startswith('{'):
-        return stripped
+        return stripped or None
     match = re.search(r'"answer"\s*:\s*"', buffer)
     if not match:
         return None
@@ -80,13 +100,8 @@ def extract_streamed_answer(buffer):
             index += 2
             continue
         if char == '"':
-            try:
-                return json.loads('"' + ''.join(out) + '"')
-            except json.JSONDecodeError:
-                return ''.join(out).replace('\\n', '\n').replace('\\"', '"')
+            # 字符串已闭合：整体解码；异常转义回退到可解码前缀
+            return _decode_prefix(''.join(out))
         out.append(char)
         index += 1
-    try:
-        return json.loads('"' + ''.join(out) + '"')
-    except json.JSONDecodeError:
-        return ''.join(out).replace('\\n', '\n').replace('\\"', '"')
+    return _decode_prefix(''.join(out))

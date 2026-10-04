@@ -59,58 +59,45 @@ public class RedisComponent {
         return (String) redisTemplate.opsForValue().get(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey);
     }
 
-    public String saveToken4Admin(@NotNull AdminPrincipalDTO principal) {
-        if (StringTools.isEmpty(principal.getAdminId()) || principal.getSessionVersion() == null) {
-            throw new IllegalArgumentException("管理员主体缺少ID或会话版本");
-        }
-        String accountKey = Constants.REDIS_KEY_TOKEN_ADMIN_ACCOUNT + principal.getAdminId();
-        Object oldToken = redisUtils.get(accountKey);
-        if (oldToken != null && !StringTools.isEmpty(String.valueOf(oldToken))) {
-            redisTemplate.delete(Constants.REDIS_KEY_TOKEN_ADMIN + oldToken);
-        }
-        String token = UUID.randomUUID().toString().replace("-", "");
-        stringRedisTemplate.opsForValue().set(
-                Constants.REDIS_KEY_ADMIN_SESSION_VERSION + principal.getAdminId(),
-                String.valueOf(principal.getSessionVersion()));
-        redisUtils.setex(Constants.REDIS_KEY_TOKEN_ADMIN + token, principal, Constants.REDIS_KEY_EXPIRES_DAY);
-        redisUtils.setex(accountKey, token, Constants.REDIS_KEY_EXPIRES_DAY);
-        return token;
-    }
-
     public void cleanCheckCode(@NotEmpty String checkCodeKey) {
         redisTemplate.delete(Constants.REDIS_KEY_CHECK_CODE + checkCodeKey);
     }
 
-    public void cleanToken4Admin(String token) {
-        if (StringTools.isEmpty(token)) {
-            return;
-        }
-        AdminPrincipalDTO principal = parseAdminPrincipal(
-                redisTemplate.opsForValue().get(Constants.REDIS_KEY_TOKEN_ADMIN + token));
-        if (principal != null && !StringTools.isEmpty(principal.getAdminId())) {
-            Object mappedToken = redisUtils.get(
-                    Constants.REDIS_KEY_TOKEN_ADMIN_ACCOUNT + principal.getAdminId());
-            if (token.equals(String.valueOf(mappedToken))) {
-                redisUtils.delete(Constants.REDIS_KEY_TOKEN_ADMIN_ACCOUNT + principal.getAdminId());
-            }
-        }
-        redisTemplate.delete(Constants.REDIS_KEY_TOKEN_ADMIN + token);
-    }
+    // ===== 管理端 Sa-Token 会话（ADR-0011 Step 2）=====
+    // common 不引 Sa-Token SDK，按 Sa-Token 1.39 键布局裸读写：
+    //   adminToken:login:token:{token}   -> adminId 裸字符串
+    //   adminToken:login:session:{adminId} -> Account-Session JSON，dataMap.adminPrincipal 即 AdminPrincipalDTO
+
+    private static final String SA_TOKEN_ADMIN_TOKEN_PREFIX = "adminToken:login:token:";
+    private static final String SA_TOKEN_ADMIN_SESSION_PREFIX = "adminToken:login:session:";
 
     public AdminPrincipalDTO getAdminPrincipal(String token) {
         if (StringTools.isEmpty(token)) {
             return null;
         }
-        AdminPrincipalDTO principal = parseAdminPrincipal(
-                redisTemplate.opsForValue().get(Constants.REDIS_KEY_TOKEN_ADMIN + token));
+        String adminId = stringRedisTemplate.opsForValue().get(SA_TOKEN_ADMIN_TOKEN_PREFIX + token);
+        if (StringTools.isEmpty(adminId)) {
+            return null;
+        }
+        // 从 Sa-Token session JSON 的 dataMap 提取 adminPrincipal
+        Object sessionJson = redisTemplate.opsForValue().get(SA_TOKEN_ADMIN_SESSION_PREFIX + adminId);
+        if (!(sessionJson instanceof Map<?, ?> session)) {
+            return null;
+        }
+        Object dataMap = session.get("dataMap");
+        if (!(dataMap instanceof Map<?, ?> map)) {
+            return null;
+        }
+        AdminPrincipalDTO principal = parseAdminPrincipal(map.get("adminPrincipal"));
         if (principal == null || StringTools.isEmpty(principal.getAdminId())
                 || principal.getSessionVersion() == null) {
             return null;
         }
+        // 版本检查（角色变更时由 invalidateAdminSessions 升版踢人）
         String currentVersion = stringRedisTemplate.opsForValue().get(
                 Constants.REDIS_KEY_ADMIN_SESSION_VERSION + principal.getAdminId());
         if (!String.valueOf(principal.getSessionVersion()).equals(currentVersion)) {
-            redisTemplate.delete(Constants.REDIS_KEY_TOKEN_ADMIN + token);
+            stringRedisTemplate.delete(SA_TOKEN_ADMIN_TOKEN_PREFIX + token);
             return null;
         }
         return principal;
@@ -124,12 +111,9 @@ public class RedisComponent {
         if (StringTools.isEmpty(adminId)) {
             return;
         }
-        String accountKey = Constants.REDIS_KEY_TOKEN_ADMIN_ACCOUNT + adminId;
-        Object token = redisUtils.get(accountKey);
-        if (token != null && !StringTools.isEmpty(String.valueOf(token))) {
-            redisTemplate.delete(Constants.REDIS_KEY_TOKEN_ADMIN + token);
-        }
-        redisUtils.delete(accountKey);
+        // 升版踢人：token 侧由版本检查在下次 getAdminPrincipal 时失效，
+        // 同时清掉该 admin 的 Sa-Token session（即时踢出，不等下次访问）。
+        stringRedisTemplate.delete(SA_TOKEN_ADMIN_SESSION_PREFIX + adminId);
         stringRedisTemplate.opsForValue().set(
                 Constants.REDIS_KEY_ADMIN_SESSION_VERSION + adminId,
                 String.valueOf(sessionVersion));

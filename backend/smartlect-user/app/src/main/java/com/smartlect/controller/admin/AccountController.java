@@ -10,6 +10,7 @@ import com.smartlect.entity.vo.CheckCodeVO;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.security.AdminSecurityContext;
+import com.smartlect.security.StpAdminUtil;
 import com.smartlect.security.RequireAdminPermission;
 import com.smartlect.security.TrialReadable;
 import com.smartlect.utils.AuthCookieHelper;
@@ -70,9 +71,10 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
             }
             AdminPrincipalDTO principal = adminIdentityService.authenticate(account, password);
             adminLoginLockService.clearFailures(ip);
-            String token = redisComponent.saveToken4Admin(principal);
+            StpAdminUtil.stpLogic.login(principal.getAdminId());
+            StpAdminUtil.stpLogic.getSession().set("adminPrincipal", principal);
             HttpServletResponse response = currentResponse();
-            authCookieHelper.writeAdminTokenCookie(request, response, token);
+            authCookieHelper.writeAdminTokenCookie(request, response, StpAdminUtil.stpLogic.getTokenValue());
             return getSuccessResponseVO(null);
         } catch (BusinessException e) {
             adminLoginLockService.recordFailure(ip);
@@ -91,7 +93,7 @@ public class AccountController extends com.smartlect.controller.admin.ABaseContr
         HttpServletResponse response = currentResponse();
         String token = authCookieHelper.resolveAdminToken(request);
         if (!StringTools.isEmpty(token)) {
-            redisComponent.cleanToken4Admin(token);
+            StpAdminUtil.stpLogic.logoutByTokenValue(token);
         }
         authCookieHelper.clearAdminTokenCookie(request, response);
         return getSuccessResponseVO(null);

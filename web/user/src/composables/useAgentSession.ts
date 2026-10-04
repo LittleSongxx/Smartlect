@@ -40,12 +40,27 @@ function applyEvent(event: RunEvent, runId: string) {
   if (!run) return;
   if (event.event_type === 'tool_started') connection.value = '正在查询商品、知识或订单事实';
   if (event.event_type === 'tool_result') connection.value = '查询已返回，正在整理回复';
+  // 可解释路由事件（fork + reason）：把关键分叉翻译成用户可读的进度文案
+  if (event.event_type === 'decision') {
+    const fork = event.data?.fork;
+    if (fork === 'task_dispatch') connection.value = `已并行派发 ${event.data?.task_count || '多个'} 个检索子任务`;
+    else if (fork === 'catalog_template_closeout') connection.value = '已取得商品事实，正在整理推荐';
+    else if (fork === 'answer_repair') connection.value = '正在核对回答格式';
+    else if (fork === 'clarify_gate') connection.value = '需要补充信息，正在生成澄清提问';
+  }
   if (event.data?.proposal) {
     if (!run.result?.proposal) run.result = { ...run.result, proposal: event.data.proposal };
     updateProposal(event.data.proposal);
   }
   // Completed snapshots win over replayed deltas; reconnect cannot duplicate assistant text.
   if (event.event_type === 'message_delta' && ['CREATED', 'RUNNING'].includes(run.state)) {
+    // replace 事件是权威全文收口（或新一轮流式的重置）：直接覆盖增量游标，
+    // 与已收到的流式增量保持幂等——重放时同样的顺序得到同样的最终文本。
+    if (event.data?.replace) {
+      replayedDeltas.set(runId, event.data.text || '');
+      run.result = { ...run.result, answer: event.data.text || '' };
+      return;
+    }
     if (event.data?.incremental) return;
     const piece = event.data.text || event.data.delta || '';
     const shown = run.result?.answer || '';

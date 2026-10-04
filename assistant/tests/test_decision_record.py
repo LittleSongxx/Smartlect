@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from smartlect.decision_record import SHOPPING_MODEL_LIMIT, attach_merchant_audit, attach_shopping_audit
+from smartlect.decision_record import SHOPPING_MODEL_LIMIT, attach_shopping_audit
 
 
 class DecisionRecordTests(unittest.TestCase):
@@ -63,26 +63,15 @@ class DecisionRecordTests(unittest.TestCase):
         statuses = {item['id']: item['status'] for item in result['checks']}
         self.assertEqual(statuses['needs_human_has_ticket'], 'failed')
 
-    def test_merchant_audit_records_no_replan_invariant(self):
-        result = {
-            'plan': {'plan_id': 'plan1', 'status': 'WAIT_OBSERVATION', 'spec': {'evidence_ids': ['ev1']}},
-            'model_mode': 'not_called', 'wait_reason': 'no_new_observation', 'model_calls': 0,
-        }
-        attach_merchant_audit(result, {
-            'prompt_version': 'merchant-plan-v19', 'observation_watermark': 'w1',
-            'skill_versions': {'campaign_plan': '1.11.0'},
-        })
-        self.assertEqual(result['wait_reason'], 'no_new_observation')
-        self.assertFalse(result['decision']['replanned'])
-        statuses = {item['id']: item['status'] for item in result['checks']}
-        self.assertEqual(statuses['model_has_no_tools'], 'passed')
-        self.assertEqual(statuses['no_replan_on_same_watermark'], 'passed')
-        self.assertEqual(statuses['evidence_bound_or_waiting'], 'passed')
-
     def test_shopping_model_limit_follows_env(self):
+        # 单一事实源：决策记录的预算上限来自 agents.shopping.policy，
+        # 环境变量只在那一个模块读取（reload 链 policy → decision_record）。
         self.assertEqual(SHOPPING_MODEL_LIMIT, max(1, int(os.environ.get('SMARTLECT_MODEL_CALL_LIMIT') or 6)))
         with patch.dict(os.environ, {'SMARTLECT_MODEL_CALL_LIMIT': '9'}):
+            import smartlect.agents.shopping.policy as policy_module
             import smartlect.decision_record as module
+            importlib.reload(policy_module)
             reloaded = importlib.reload(module)
             self.assertEqual(reloaded.SHOPPING_MODEL_LIMIT, 9)
+        importlib.reload(policy_module)
         importlib.reload(module)
