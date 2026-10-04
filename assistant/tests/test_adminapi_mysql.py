@@ -169,7 +169,16 @@ class AdminApiMySQLTests(unittest.TestCase):
             self.assertEqual(detail["agent"], "shopping")
             self.assertIn("tool_calls", detail)
             self.assertIn("events", detail)
+            self.assertIsNone(detail["feedback"])  # no rating yet: shape is present but empty
             self.assertNotIn("content", json.dumps(detail))  # message bodies never leave this surface
+
+            # After the user rates the run, the audit detail carries the feedback verbatim.
+            seeded.save_feedback(alice, run["agent_run_id"], "down", reason_code="outdated", reason_text="政策已更新")
+            detail = (await client.get(f"/admin-api/assistant/runs/{run['agent_run_id']}")).json()
+            self.assertEqual(detail["feedback"]["rating"], "down")
+            self.assertEqual(detail["feedback"]["reason_code"], "outdated")
+            self.assertEqual(detail["feedback"]["reason_text"], "政策已更新")
+            self.assertIn("updated_at", detail["feedback"])
 
             catalog = (await client.get("/admin-api/assistant/tools/catalog")).json()
             self.assertTrue(all("name" in item for item in catalog["tools"]))

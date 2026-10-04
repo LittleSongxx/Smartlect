@@ -24,6 +24,7 @@ EVENT_TYPES = {"message_delta", "tool_started", "tool_result", "proposal_require
                # 模板收口、修复轮）的 fork + reason，SSE 随事件流透出（ADR-0012）。
                "decision"}
 RUN_END_STATES = {"WAIT_USER", "WAIT_OUTCOME", "COMPLETED", "FAILED", "CANCELLED"}
+FEEDBACK_REASONS = {"irrelevant", "outdated", "citation_mismatch", "fabricated", "other"}
 
 
 def _text(value, name, limit=128):
@@ -267,6 +268,28 @@ class SessionStore:
                 cursor.execute('SELECT * FROM agent_run WHERE agent_run_id=%s', (run_id,))
                 run = cursor.fetchone()
             return _public(run)
+
+    def save_feedback(self, actor, run_id, rating, *, reason_code=None, reason_text=None):
+        """Idempotent per (agent_run_id, actor_id) answer rating; resubmission updates in place."""
+        owner = _actor(actor)
+        if rating not in {"up", "down"}:
+            raise StateError("invalid_rating", 422)
+        if reason_code is not None and reason_code not in FEEDBACK_REASONS:
+            raise StateError("invalid_reason_code", 422)
+        if reason_code is not None:
+            reason_code = _text(reason_code, "reason_code", 32)
+        if reason_text is not None:
+            reason_text = _text(reason_text, "reason_text", 2000)
+        with self._transaction() as cursor:
+            run = self._owned_record(cursor, actor, run_id, "run")
+            cursor.execute("""INSERT INTO answer_feedback
+                (id,agent_run_id,subject_type,actor_id,execution_scope_id,rating,reason_code,reason_text,created_at,updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6)) AS incoming
+                ON DUPLICATE KEY UPDATE rating=incoming.rating,reason_code=incoming.reason_code,
+                reason_text=incoming.reason_text,updated_at=UTC_TIMESTAMP(6)""",
+                (uuid.uuid4().hex, run["agent_run_id"], *owner, rating, reason_code, reason_text))
+            # MySQL reports 1 for a fresh insert and 2 when an existing row changed.
+            return {"agent_run_id": run["agent_run_id"], "rating": rating, "updated": cursor.rowcount == 2}
 
     def claim_run(self, actor, run_id, *, owner, ttl_seconds=30):
         owner = _text(owner, "lease_owner")

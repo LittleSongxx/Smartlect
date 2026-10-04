@@ -49,6 +49,7 @@ const descriptions: Record<string, string> = {
   tool_call_not_found: '对应的执行记录已不存在，请刷新查看。',
   tool_call_already_terminal: '该执行已经结束，不能重复提交。',
   run_deadline_exceeded: '本次运行超时，请重新发起。',
+  run_not_found: '该回答已不存在，请刷新会话。',
   run_not_running: '本次运行已结束，请刷新查看结果。',
   human_control_active: '会话已转人工，自动回复暂停。',
   handoff_state_changed: '转人工状态已变化，请刷新会话。',
@@ -128,6 +129,10 @@ export async function aiWrite<T = any>(path: string, body: unknown, method = 'PO
   });
 }
 export const aiPost = <T = any>(path: string, body: unknown, signal?: AbortSignal) => aiWrite<T>(path, body, 'POST', signal);
+export const sendFeedback = (runId: string, rating: 'up' | 'down', reasonCode?: string, reasonText?: string, signal?: AbortSignal) =>
+  aiPost<{ agent_run_id: string; rating: 'up' | 'down'; updated: boolean }>(
+    `/runs/${runId}/feedback`,
+    { rating, reason_code: reasonCode, reason_text: reasonText }, signal);
 export function ownerKey(actor: Actor) {
   return `${actor.subject_type}:${actor.actor_id}:${actor.execution_scope_id}`;
 }

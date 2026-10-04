@@ -33,6 +33,8 @@ from smartlect.agents.shopping.policy import SEMANTIC_RERANK_PROMPT as HOMEPAGE_
 
 RUN_ADMISSION_REJECTIONS = prometheus_counter("assistant_run_admission_rejections_total",
                                               "New runs rejected by the concurrency admission gates", ["gate"])
+FEEDBACK_SUBMISSIONS = prometheus_counter("assistant_feedback_total",
+                                          "Answer feedback submissions per rating", ["rating"])
 from smartlect import mcp
 from smartlect.state import SessionStore, StateError
 from smartlect.tools import Arguments, invoke
@@ -99,6 +101,12 @@ class KnowledgeRequest(Arguments):
     product_ids: list[str] = Field(default_factory=list, max_length=100)
     category_ids: list[str] = Field(default_factory=list, max_length=100)
     facts: dict[str, str] = Field(default_factory=dict)
+
+
+class FeedbackRequest(Arguments):
+    rating: Literal["up", "down"]
+    reason_code: Literal["irrelevant", "outdated", "citation_mismatch", "fabricated", "other"] | None = None
+    reason_text: str | None = Field(default=None, max_length=2000)
 
 
 def health(settings, config=None):
@@ -756,6 +764,14 @@ def create_app(settings=None, *, config=None, store=None, identity=None, commerc
     @app.get("/api/assistant/runs/{run_id}")
     async def run_status(run_id: str, request: Request, response: Response):
         return await db(store.get_run, await actor_for(request, response), run_id)
+
+    @app.post("/api/assistant/runs/{run_id}/feedback")
+    async def run_feedback(run_id: str, payload: FeedbackRequest, request: Request, response: Response):
+        actor = await actor_for(request, response, write=True)
+        result = await db(store.save_feedback, actor, run_id, payload.rating,
+                          reason_code=payload.reason_code, reason_text=payload.reason_text)
+        FEEDBACK_SUBMISSIONS.labels(payload.rating).inc()
+        return result
 
     async def event_records(run_id: str, request: Request, response: Response):
         actor = await actor_for(request, response)

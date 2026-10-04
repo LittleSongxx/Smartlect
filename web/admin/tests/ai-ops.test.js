@@ -21,6 +21,7 @@ const detail = {
   ...run, tool_calls: [{ tool_name: 'search_knowledge', outcome: 'business_completed', arguments: { query: '退款' }, receipt: { data: {} } }],
   events: [{ sequence: 1, event_type: 'tool_started', data: { name: 'search_knowledge' }, created_at: '2026-09-16T10:00:00Z' }],
   model_attempts: [{ model_id: 'qwen3.7-plus', usage: { input_tokens: 30, output_tokens: 12 }, cost_estimate_cny: 0.01 }],
+  feedback: null,
 }
 const catalog = { tools: [
   { name: 'catalog_search', description: '调试专用检索', permission: 'admin:legacy', kind: 'read', debuggable: true, debug_only: true },
@@ -73,6 +74,36 @@ it('runs browser lists runs with usage and opens the audit detail', async () => 
   expect(dialog).toContain('search_knowledge')
   expect(dialog).toContain('shopping-react-v24')
   expect(dialog).toContain('出于隐私未展示')
+})
+
+it('runs detail shows the user feedback section for rated and unrated runs', async () => {
+  let withFeedback = true
+  handler = (path) => {
+    if (/\/runs\/[a1]+$/.test(path)) {
+      return response(withFeedback
+        ? { ...detail, feedback: { id: 'f1', rating: 'down', reason_code: 'outdated', reason_text: '政策已经改了', created_at: '2026-09-16T10:00:01Z', updated_at: '2026-09-16T10:00:01Z' } }
+        : detail)
+    }
+    return null
+  }
+  const wrapper = await mountView(AgentRunsView)
+  await wrapper.findAll('button').find((item) => item.text() === '详情').trigger('click')
+  await flushPromises()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flushPromises()
+  let dialog = document.body.textContent || ''
+  expect(dialog).toContain('用户反馈')
+  expect(dialog).toContain('没用')
+  expect(dialog).toContain('信息过时')
+  expect(dialog).toContain('政策已经改了')
+  withFeedback = false
+  await wrapper.findAll('button').find((item) => item.text() === '详情').trigger('click')
+  await flushPromises()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flushPromises()
+  dialog = document.body.textContent || ''
+  expect(dialog).toContain('未评价')
+  wrapper.unmount()
 })
 
 it('tool debug lists catalog, blocks non-debuggable tools and posts only filled arguments', async () => {

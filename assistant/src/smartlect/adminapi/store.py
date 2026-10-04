@@ -98,9 +98,17 @@ class AdminRunStore(SessionStore):
                 (row["agent_run_id"],),
             )
             events = [_public(event) for event in cursor.fetchall()]
+            cursor.execute(
+                "SELECT id, rating, reason_code, reason_text, created_at, updated_at FROM answer_feedback "
+                "WHERE agent_run_id=%s",
+                (row["agent_run_id"],),
+            )
+            feedback = cursor.fetchone()
         detail = self._row(row)
         detail["tool_calls"] = tool_calls
         detail["events"] = events
+        # Directly attached to the run, not part of the context whitelist above.
+        detail["feedback"] = _public(feedback) if feedback else None
         context = row.get("context") or {}
         detail["model_attempts"] = context.get("model_attempts") or []
         return detail

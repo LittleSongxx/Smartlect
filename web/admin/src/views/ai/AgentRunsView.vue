@@ -141,6 +141,23 @@
           </el-timeline>
         </div>
 
+        <div class="detail-section">
+          <h4>用户反馈</h4>
+          <template v-if="detail.feedback">
+            <p class="feedback-line">
+              <el-tag size="small" :type="detail.feedback.rating === 'up' ? 'success' : 'danger'">
+                {{ detail.feedback.rating === 'up' ? '👍 有用' : '👎 没用' }}
+              </el-tag>
+              <span v-if="detail.feedback.rating === 'down' && detail.feedback.reason_code">
+                理由：{{ feedbackReason(detail.feedback.reason_code) }}
+              </span>
+            </p>
+            <p v-if="detail.feedback.reason_text" class="muted-note">{{ detail.feedback.reason_text }}</p>
+            <p class="muted-note">反馈时间：{{ timestamp(detail.feedback.updated_at) }}</p>
+          </template>
+          <p v-else class="muted-note">未评价</p>
+        </div>
+
         <DetailText title="决策记录" :text="detail.result.decision" empty-text="该运行没有决策记录" />
         <DetailText title="检查结果" :text="detail.result.checks" empty-text="该运行没有检查记录" />
         <p v-if="detail.context_hidden_keys && detail.context_hidden_keys.length" class="muted-note">
@@ -175,6 +192,7 @@ const detail = ref(null)
 
 const agentLabel = (value) => ({ shopping: '导购', merchant: '经营', mcp: 'MCP', debug: '调试' }[value] || value)
 const agentTagType = (value) => ({ shopping: 'success', merchant: 'warning', mcp: 'info', debug: 'primary' }[value] || 'info')
+const feedbackReason = (value) => ({ irrelevant: '答非所问', outdated: '信息过时', citation_mismatch: '引用不符', fabricated: '像是编造', other: '其他' }[value] || value)
 
 const load = async () => {
   busy.value = true
@@ -216,6 +234,14 @@ onMounted(load)
       font-weight: 600;
       color: var(--text2);
     }
+  }
+
+  .feedback-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 13px;
   }
 }
 </style>

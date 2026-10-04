@@ -26,11 +26,26 @@
         </li>
       </ol>
       <p v-if="data.state === 'FAILED'" class="interrupt-tip" role="alert">{{ data.result?.proposal ? '本次助手运行中断，已保存的交易提案仍按上方状态处理。' : errorText(new Error(data.result?.error || '本次处理未完成，请补充问题或稍后重试。')) }}</p>
+      <div v-if="feedbackEnabled" class="feedback-bar" role="group" aria-label="回答反馈">
+        <span v-if="feedbackRating" class="feedback-note">已收到反馈</span>
+        <button type="button" class="feedback-btn up" :class="{ active: feedbackRating === 'up' }" :disabled="feedbackBusy" @click="rate('up')">👍 有用</button>
+        <button type="button" class="feedback-btn down" :class="{ active: feedbackRating === 'down' }" :disabled="feedbackBusy" @click="rate('down')">👎 没用</button>
+        <div v-if="reasonOpen" class="feedback-reasons">
+          <label v-for="reason in FEEDBACK_REASONS" :key="reason.value" class="feedback-reason">
+            <input v-model="reasonCode" type="radio" name="feedback-reason" :value="reason.value" />
+            <span>{{ reason.label }}</span>
+          </label>
+          <textarea v-if="reasonCode === 'other'" v-model="reasonText" class="feedback-text" rows="2" maxlength="2000"
+            placeholder="可补充具体问题（选填，最多 2000 字）" aria-label="反馈补充说明" />
+          <button type="button" class="feedback-submit" :disabled="feedbackBusy || !reasonCode" @click="submitDown">提交</button>
+        </div>
+        <p v-if="feedbackError" class="feedback-error" role="alert">{{ feedbackError }}</p>
+      </div>
     </div>
   </div>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Service } from '@element-plus/icons-vue';
 import MarkdownContent from '@/components/common/MarkdownContent.vue';
@@ -39,7 +54,7 @@ import AgentProductList from '@/components/agent/AgentProductList.vue';
 import AgentOrderList from '@/components/agent/AgentOrderList.vue';
 import AgentConfirmCard from '@/components/agent/AgentConfirmCard.vue';
 import AgentDecisionCard from '@/components/agent/AgentDecisionCard.vue';
-import { errorText, type Proposal, type Run } from '@/api/client';
+import { errorText, sendFeedback, type Proposal, type Run } from '@/api/client';
 import { useAgentFocus } from '@/composables/useAgentFocus';
 import { useAgentSession } from '@/composables/useAgentSession';
 import { annotateAnswerWithCitations, displayCitations } from '@/utils/citations';
@@ -56,6 +71,45 @@ const selectProduct = (item: Record<string, any>) => {
   const query: Record<string, string> = {};
   if (item.propertyValueIds) query.sku = String(item.propertyValueIds);
   router.push({ path: `/product/${item.productId}`, query });
+};
+const FEEDBACK_REASONS = [
+  { value: 'irrelevant', label: '答非所问' },
+  { value: 'outdated', label: '信息过时' },
+  { value: 'citation_mismatch', label: '引用不符' },
+  { value: 'fabricated', label: '像是编造' },
+  { value: 'other', label: '其他' },
+];
+const feedbackRating = ref<'up' | 'down' | null>(null);
+const reasonOpen = ref(false);
+const reasonCode = ref('');
+const reasonText = ref('');
+const feedbackBusy = ref(false);
+const feedbackError = ref('');
+const feedbackEnabled = computed(() => !props.waiting && props.data.state !== 'FAILED' && Boolean(props.data.agent_run_id));
+const rate = (rating: 'up' | 'down') => {
+  // 差评先展开理由面板再提交；好评直接提交。已评后按钮仍可点击改评。
+  if (rating === 'down') {
+    reasonOpen.value = true;
+    return;
+  }
+  reasonOpen.value = false;
+  void submitFeedback('up');
+};
+const submitDown = () => {
+  void submitFeedback('down', reasonCode.value || undefined, reasonText.value.trim() || undefined);
+};
+const submitFeedback = async (rating: 'up' | 'down', code?: string, text?: string) => {
+  feedbackBusy.value = true;
+  feedbackError.value = '';
+  try {
+    await sendFeedback(props.data.agent_run_id, rating, code, text);
+    feedbackRating.value = rating;
+    reasonOpen.value = false;
+  } catch (error) {
+    feedbackError.value = errorText(error);
+  } finally {
+    feedbackBusy.value = false;
+  }
 };
 </script>
 
@@ -159,6 +213,95 @@ const selectProduct = (item: Record<string, any>) => {
   color: #7a4b00;
   font: inherit;
   font-size: 12px;
+}
+
+.feedback-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid $color-border-light;
+  font-size: 12px;
+}
+
+.feedback-note {
+  color: $color-text-muted;
+}
+
+.feedback-btn {
+  padding: 4px 10px;
+  border: 1px solid $color-border-light;
+  border-radius: 999px;
+  background: transparent;
+  color: $color-text-muted;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:active:not(:disabled),
+  &.active {
+    border-color: $color-primary;
+    color: $color-primary;
+    background: rgba(64, 158, 255, 0.08);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.feedback-reasons {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.feedback-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: $color-text-body;
+  cursor: pointer;
+}
+
+.feedback-text {
+  flex-basis: 100%;
+  padding: 6px 8px;
+  border: 1px solid $color-border-light;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  color: $color-text-body;
+  resize: vertical;
+}
+
+.feedback-submit {
+  padding: 4px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: $color-primary;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+.feedback-error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  color: $color-error;
 }
 
 .cite-list {
