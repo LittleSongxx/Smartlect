@@ -7,6 +7,7 @@ import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.service.PasswordService;
 import com.smartlect.utils.StringTools;
+import cn.dev33.satoken.stp.StpUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -95,8 +96,11 @@ public class DemoFixtureController extends ABaseController {
         session.setUserId(id);
         session.setEmail(id + "@demo.smartlect.local");
         session.setNickName("Smartlect用户" + userIndex);
+        // createLoginSession 不经过 Cookie/header 读写，服务端直接造 Sa-Token web 会话
+        String token = StpUtil.createLoginSession(id);
+        StpUtil.getSessionByLoginId(id).set("userInfo", session);
         return getSuccessResponseVO(Map.of("userId", id, "addressId", "SD" + id,
-                "token", redis.saveTokenUserInfo(session)));
+                "token", token));
     }
 
     private static String userId(int index) {

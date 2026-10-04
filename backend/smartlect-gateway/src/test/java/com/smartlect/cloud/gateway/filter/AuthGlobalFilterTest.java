@@ -48,8 +48,9 @@ class AuthGlobalFilterTest {
     @Test
     void authenticatedRequestOverwritesSpoofedUserIdentityHeaders() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("smartlect:token:web:valid-token"))
-                .thenReturn(Mono.just("{\"userId\":\"trusted-user\"}"));
+        // Sa-Token 键：token:login:token:{token} -> loginId 裸字符串
+        when(valueOperations.get("token:login:token:valid-token"))
+                .thenReturn(Mono.just("trusted-user"));
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/orders")
                         .header("token", "valid-token")
@@ -71,8 +72,9 @@ class AuthGlobalFilterTest {
     @Test
     void missingOrInvalidSessionNeverCallsDownstream() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        for (Mono<String> session : List.of(Mono.<String>empty(), Mono.just("{}"), Mono.just("invalid"))) {
-            when(valueOperations.get("smartlect:token:web:expired")).thenReturn(session);
+        // 键缺失或值为空白 loginId 均视为未登录
+        for (Mono<String> loginId : List.of(Mono.<String>empty(), Mono.just(""), Mono.just("  "))) {
+            when(valueOperations.get("token:login:token:expired")).thenReturn(loginId);
             MockServerWebExchange exchange = MockServerWebExchange.from(
                     MockServerHttpRequest.get("/api/orders").header("token", "expired").build());
             AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();

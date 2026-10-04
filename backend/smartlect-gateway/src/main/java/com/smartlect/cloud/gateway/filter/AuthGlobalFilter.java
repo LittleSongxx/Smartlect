@@ -1,7 +1,6 @@
 package com.smartlect.cloud.gateway.filter;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartlect.cloud.gateway.config.GatewayAuthProperties;
 import com.smartlect.cloud.gateway.support.GatewayTokenResolver;
@@ -28,7 +27,8 @@ import java.util.Map;
 @Component
 public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
-    private static final String REDIS_KEY_TOKEN_WEB = "smartlect:token:web:";
+    // Sa-Token 用户端会话键（ADR-0011 Step 1）：值是 loginId 裸字符串，无需解析 JSON
+    private static final String REDIS_KEY_TOKEN_WEB = "token:login:token:";
     private static final String REDIS_KEY_TOKEN_ADMIN = "smartlect:token:admin:";
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String USER_VERIFIED_HEADER = "X-User-Token-Verified";
@@ -104,19 +104,13 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
             }
             return reactiveStringRedisTemplate.opsForValue().get(REDIS_KEY_TOKEN_WEB + token)
                     .defaultIfEmpty("")
-                    .flatMap(sessionJson -> {
-                        if (!StringUtils.hasText(sessionJson)) {
-                            return unauthorized(sanitizedExchange, "登录超时");
-                        }
-                        String userId = extractUserId(sessionJson);
-                        if (!StringUtils.hasText(userId)) {
+                    .flatMap(loginId -> {
+                        if (!StringUtils.hasText(loginId)) {
                             return unauthorized(sanitizedExchange, "登录超时");
                         }
                         ServerHttpRequest.Builder builder = request.mutate()
                                 .headers(headers -> headers.set(USER_VERIFIED_HEADER, "1"));
-                        if (StringUtils.hasText(userId)) {
-                            builder.headers(headers -> headers.set(USER_ID_HEADER, userId));
-                        }
+                        builder.headers(headers -> headers.set(USER_ID_HEADER, loginId));
                         return chain.filter(sanitizedExchange.mutate().request(builder.build()).build());
                     });
         }
@@ -162,16 +156,6 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
             }
         }
         return false;
-    }
-
-    private String extractUserId(String sessionJson) {
-        try {
-            JsonNode node = objectMapper.readTree(sessionJson);
-            JsonNode userId = node.get("userId");
-            return userId == null || userId.isNull() ? null : userId.asText();
-        } catch (Exception ex) {
-            return null;
-        }
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange, String msg) {

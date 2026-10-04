@@ -1,7 +1,7 @@
 # ADR-0011: Sa-Token 迁移方案（已勘察，待实施）
 
 日期：2026-10-04
-状态：已批准，待实施（独立提交）
+状态：已批准，待实施（独立提交）；Step 1 已实施（见文末实施记录）
 
 ## 勘察结论
 
@@ -47,3 +47,40 @@
 - Redis 键格式变更 = 已登录用户全部掉线（可接受：演示系统 + 发布窗口）
 - Sa-Token 的 cookie 名默认 `satoken`——需配置 `sa-token.token-name=token`（与现有 cookie 名一致）
 - admin 与 user 同 cookie 名双 token 并存——Sa-Token 多账号模式下 StpLogic("admin") 用独立 cookie 名 `adminToken`（`sa-token.admin.token-name`）
+
+## Step 1 实施记录（2026-10-04）
+
+**关键偏差：键前缀不是 `satoken:`，而是 `token:`。** Sa-Token 1.39.0 的
+`StpLogic.splicingKey*` 用 `tokenName` 同时充当 Redis 键前缀与 Cookie/header 名
+（1.45.0 亦然，实测反编译确认）。二者无法分别配置，而 cookie 名必须保持 `token`
+（前端契约），因此实际键布局为：
+
+- `token:login:token:{token}` → loginId 裸字符串（StringRedisTemplate 直写，无 JSON 包装）
+- `token:login:session:{loginId}` → Account-Session JSON（GenericJackson2JsonRedisSerializer，
+  含 `@class` 类型标记；`dataMap.userInfo` 即 TokenUserInfoDTO，`tokenSignList` 为
+  `["java.util.Vector",[...]]` 包装数组）——以上格式均经 sa-token-redis-jackson 1.39.0 实测确认
+
+Step 2 的 admin 键相应为 `adminToken:admin:token:`（StpLogic("admin") 配独立 tokenName）。
+
+**落地清单（相对勘察计划的增补）：**
+
+- user 服务引入 starter + redis-jackson；`sa-token.token-name=token`、timeout=86400、
+  is-concurrent=true、is-share=false（等价旧"多端共存、每次登录新 token"语义）；
+  Cookie 由 Sa-Token 下发（HttpOnly + SameSite=Lax + Path=/ + Max-Age=86400）
+- AccountController：login → `StpUtil.login + getSession().set("userInfo")`；
+  logout → `StpUtil.logoutByTokenValue(token)`（注意 `StpUtil.logout(Object)` 是按
+  loginId 登出，勿混用）；autoLogin → `StpUtil.isLogin()` + session 覆盖 + Cookie 续期；
+  TTL 续期由 autoRenew 自动完成（实测访问后 token 与 session 双键均续满）
+- common 不引 Sa-Token SDK：RedisComponent 的 getTokenUserInfo / getTokenUserInfoByUserId /
+  getUserIdByToken / updateUser / cleanAllToken 按上述键布局裸读写（Jackson tree 解析）；
+  删除 saveTokenUserInfo / cleanTokenUserInfo / slideTokenTtl / REDIS_KEY_TOKEN_USERID_WEB；
+  cleanAllToken 升级为按 tokenSignList 踢全部设备（旧实现只踢最新 token）
+- 网关 web 分支读 `token:login:token:{token}` 裸值即 X-User-Id；admin 分支暂不动
+- admin 服务两个 demo 端点（DemoFixtureController / DemoScenarioController 的 /session）
+  改 `StpUtil.createLoginSession + getSessionByLoginId().set()`（无 HTTP 上下文依赖，
+  单测用内存 dao 即可验证）；admin 服务因此提前引入 sa-token 依赖（Step 2 反正需要）
+- assistant IdentityBridge 无需改动：勘察后已先行迁移到 `/internal/identity/introspect`，
+  该端点经 RedisComponent 自动适配新键
+- 测试：AccountControllerSaTokenTest（login/autoLogin/logout 全链路，内存 dao）、
+  RedisComponentSaTokenSessionTest（裸读契约）、AuthGlobalFilterTest 更新键格式、
+  两个 demo 控制器测试改断言 StpUtil 会话

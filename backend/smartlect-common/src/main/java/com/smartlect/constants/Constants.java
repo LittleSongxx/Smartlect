@@ -105,9 +105,11 @@ public class Constants {
 
     public static final String REDIS_KEY_CHECK_CODE = REDIS_KEY_PREFIX + "checkcode:";
 
-    public static final String REDIS_KEY_TOKEN_WEB = REDIS_KEY_PREFIX + "token:web:";
+    // Sa-Token 用户端会话键（ADR-0011 Step 1）。1.39 的 token-name=token 同时是键前缀：
+    // token:login:token:{token} -> loginId（裸字符串）；token:login:session:{loginId} -> Account-Session JSON。
+    public static final String REDIS_KEY_TOKEN_WEB = "token:login:token:";
 
-    public static final String REDIS_KEY_TOKEN_USERID_WEB = REDIS_KEY_PREFIX + "token:web:userId:";
+    public static final String REDIS_KEY_TOKEN_WEB_SESSION = "token:login:session:";
 
     public static final String REDIS_KEY_SIGN = REDIS_KEY_PREFIX + "sign:userId:";
 

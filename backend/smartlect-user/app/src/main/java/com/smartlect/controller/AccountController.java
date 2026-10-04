@@ -25,6 +25,7 @@ import com.smartlect.utils.CheckCodeGenerator;
 import com.smartlect.utils.DateUtil;
 import com.smartlect.utils.StringTools;
 import com.smartlect.service.PasswordService;
+import cn.dev33.satoken.stp.StpUtil;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -93,26 +94,16 @@ public class AccountController extends ABaseController{
     // 自动登录，检验当前token是否有效
     @GetMapping("/autoLogin")
     public ResponseVO autoLogin(){
-        // 从请求头中获取token
-        TokenUserInfoDTO tokenUserInfoDTO = getTokenUserInfo();
-        // 如果token不存在，则返回null
-        if(tokenUserInfoDTO == null || StringTools.isEmpty(tokenUserInfoDTO.getToken()) ){
+        // Sa-Token 从 Cookie/header "token" 读取并校验，校验通过会自动续期 token 与账号会话
+        if (!StpUtil.isLogin()) {
             return getSuccessResponseVO(null);
         }
-        // 从redis验证token是否有效
-        TokenUserInfoDTO validUserInfo = redisComponent.getTokenUserInfo(tokenUserInfoDTO.getToken());
-        if (validUserInfo == null){
-            // token无效，返回null
+        TokenUserInfoDTO validUserInfo = (TokenUserInfoDTO) StpUtil.getSession().get("userInfo");
+        if (validUserInfo == null) {
             return getSuccessResponseVO(null);
         }
         // 判断当前用户是否被封禁：status=0为封禁
-        // 根据userId查询用户（Redis 残留 token / 库重导后用户不存在时勿 NPE）
         UserInfo userInfo = userInfoService.getUserInfoByUserId(validUserInfo.getUserId());
-        if (userInfo != null
-                && Objects.equals(userInfo.getStatus(), UserStatusEnum.DISABLE.getStatus())
-                && userTempBanService.getUnbanAtMs(userInfo.getUserId()) == null) {
-            userInfo = userInfoService.getUserInfoByUserId(validUserInfo.getUserId());
-        }
         if (userInfo == null
                 || Objects.equals(userInfo.getStatus(), UserStatusEnum.DISABLE.getStatus())){
             return getSuccessResponseVO(null);
@@ -121,10 +112,10 @@ public class AccountController extends ABaseController{
         validUserInfo.setNickName(userInfo.getNickName());
         validUserInfo.setAvatar(userInfo.getAvatar());
         validUserInfo.setTrial(TrialIdentities.isTrialUser(userInfo.getUserId(), userInfo.getEmail()));
-        redisComponent.slideTokenTtl(validUserInfo.getToken());
+        StpUtil.getSession().set("userInfo", validUserInfo);
         HttpServletRequest request = currentRequest();
         HttpServletResponse response = currentResponse();
-        authCookieHelper.writeWebTokenCookie(request, response, validUserInfo.getToken());
+        authCookieHelper.writeWebTokenCookie(request, response, StpUtil.getTokenValue());
         validUserInfo.setToken(null);
         return getSuccessResponseVO(validUserInfo);
     }
@@ -187,17 +178,15 @@ public class AccountController extends ABaseController{
             if (UserStatusEnum.DISABLE.getStatus().equals(userInfo.getStatus())){
                 userInfo = refreshDisabledAccount(userInfo);
             }
-            // 登录成功，返回userId,nickName,avatar,token:TokenUserInfoDTO
+            // 登录成功，返回userId,nickName,avatar；token 写入 Sa-Token 会话并由其下发 Cookie
             TokenUserInfoDTO tokenUserInfoDTO = new TokenUserInfoDTO();
             tokenUserInfoDTO.setUserId(userInfo.getUserId());
             tokenUserInfoDTO.setEmail(userInfo.getEmail());
             tokenUserInfoDTO.setNickName(userInfo.getNickName());
             tokenUserInfoDTO.setAvatar(userInfo.getAvatar());
             tokenUserInfoDTO.setTrial(TrialIdentities.isTrialUser(userInfo.getUserId(), userInfo.getEmail()));
-            tokenUserInfoDTO.setToken(redisComponent.saveTokenUserInfo(tokenUserInfoDTO));
-            HttpServletRequest request = currentRequest();
-            HttpServletResponse response = currentResponse();
-            authCookieHelper.writeWebTokenCookie(request, response, tokenUserInfoDTO.getToken());
+            StpUtil.login(userInfo.getUserId());
+            StpUtil.getSession().set("userInfo", tokenUserInfoDTO);
             tokenUserInfoDTO.setToken(null);
             // 更新最近登录时间和ip
             Date now = DateUtil.parse(DateUtil.getTimeOnParttern(0, DateTimePatternEnum.YYYY_MM_DD_HH_MM_SS.getPattern()), DateTimePatternEnum.YYYY_MM_DD_HH_MM_SS.getPattern());
@@ -222,7 +211,8 @@ public class AccountController extends ABaseController{
         HttpServletResponse response = currentResponse();
         String token = authCookieHelper.resolveWebToken(request);
         if (!StringTools.isEmpty(token)){
-            redisComponent.cleanTokenUserInfo(token);
+            // StpUtil.logout(Object) 是按 loginId 登出；按 token 登出必须用 logoutByTokenValue
+            StpUtil.logoutByTokenValue(token);
         }
         authCookieHelper.clearWebTokenCookie(request, response);
         return getSuccessResponseVO(null);

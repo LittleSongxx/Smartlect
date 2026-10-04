@@ -8,6 +8,8 @@ import com.smartlect.redis.RedisUtils;
 import com.smartlect.utils.DateUtil;
 import com.smartlect.utils.JsonUtils;
 import com.smartlect.utils.StringTools;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.Resource;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -17,6 +19,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -35,6 +38,9 @@ public class RedisComponent {
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private AppConfig appConfig;
+
+    @Resource
+    private ObjectMapper objectMapper;
 
     public void saveCategory2Redis(List<?> list) {
         redisUtils.set(Constants.REDIS_KEY_CATEGORY_LIST, list);
@@ -177,72 +183,134 @@ public class RedisComponent {
         return list == null ? null : list;
     }
 
-    public void slideTokenTtl(String token) {
-        TokenUserInfoDTO userInfo = getTokenUserInfo(token);
-        if (userInfo == null) {
-            return;
-        }
-        redisUtils.setex(Constants.REDIS_KEY_TOKEN_USERID_WEB + userInfo.getUserId(), userInfo, Constants.REDIS_KEY_EXPIRES_DAY);
-        redisUtils.setex(Constants.REDIS_KEY_TOKEN_WEB + token, userInfo, Constants.REDIS_KEY_EXPIRES_DAY);
-    }
-
-    // 从TokenUserInfoDTO中获取token，并存入redis，清除旧token,返回新token
-    public String saveTokenUserInfo(TokenUserInfoDTO tokenUserInfoDTO) {
-        // 从TokenUserInfoDTO中获取token
-        String oldtoken = tokenUserInfoDTO.getToken();
-        // 如果有旧token，则清除旧token
-        if (oldtoken != null) {
-            cleanTokenUserInfo(oldtoken);
-        }
-        // 存入redis
-        // 生成新token,去除UUID中间的横线
-        String token = UUID.randomUUID().toString().replace("-", "");
-        tokenUserInfoDTO.setToken(token);
-        // 1.userId -> token
-        redisUtils.setex(Constants.REDIS_KEY_TOKEN_USERID_WEB + tokenUserInfoDTO.getUserId(), tokenUserInfoDTO, Constants.REDIS_KEY_EXPIRES_DAY);
-        // 2.token -> userId
-        redisUtils.setex(Constants.REDIS_KEY_TOKEN_WEB + token, tokenUserInfoDTO, Constants.REDIS_KEY_EXPIRES_DAY);
-        // 返回新token
-        return token;
-    }
-
-    // 清除旧的1.userId -> token；2.token -> userId
-    public void cleanTokenUserInfo(String token) {
-        // 根据旧token获取用户信息对象
-        TokenUserInfoDTO userInfo = (TokenUserInfoDTO) redisUtils.get(Constants.REDIS_KEY_TOKEN_WEB + token);
-        if (userInfo != null) {
-            // 1.清除userId -> TokenUserInfoDTO
-            redisUtils.delete(Constants.REDIS_KEY_TOKEN_USERID_WEB + userInfo.getUserId());
-            // 2.清除token -> TokenUserInfoDTO
-            redisUtils.delete(Constants.REDIS_KEY_TOKEN_WEB + token);
-        }
-    }
+    // ===== 用户端 web 会话（Sa-Token 键布局，ADR-0011 Step 1）=====
+    // 登录态由 user 服务 StpUtil 写入；common 不依赖 Sa-Token SDK，按下述格式裸读写：
+    //   token:login:token:{token}     -> loginId 裸字符串
+    //   token:login:session:{loginId} -> Account-Session JSON，dataMap.userInfo 即 TokenUserInfoDTO
 
     // 根据token获取TokenUserInfoDTO
     public TokenUserInfoDTO getTokenUserInfo(String token) {
-        // 查询TokenUserInfoDTO
-        TokenUserInfoDTO tokenUserInfoDTO = (TokenUserInfoDTO) redisUtils.get(Constants.REDIS_KEY_TOKEN_WEB + token);
-        // 判断是否存在
-        // 若不存在则返回null
-        return tokenUserInfoDTO == null ? null : tokenUserInfoDTO;
+        String loginId = getUserIdByToken(token);
+        if (loginId == null) {
+            return null;
+        }
+        String sessionJson = stringRedisTemplate.opsForValue()
+                .get(Constants.REDIS_KEY_TOKEN_WEB_SESSION + loginId);
+        TokenUserInfoDTO tokenUserInfoDTO = parseSessionUserInfo(sessionJson);
+        if (tokenUserInfoDTO == null) {
+            return null;
+        }
+        tokenUserInfoDTO.setToken(token);
+        return tokenUserInfoDTO;
     }
 
-    // 根据userId获取TokenUserInfoDTO
+    // 根据userId获取TokenUserInfoDTO（取账号会话里登记的任一有效token）
     public TokenUserInfoDTO getTokenUserInfoByUserId(String userId) {
-        TokenUserInfoDTO tokenUserInfoDTO = (TokenUserInfoDTO) redisUtils.get(Constants.REDIS_KEY_TOKEN_USERID_WEB + userId);
-        // 存在则返回
-        return tokenUserInfoDTO == null ? null : tokenUserInfoDTO;
+        String sessionJson = stringRedisTemplate.opsForValue()
+                .get(Constants.REDIS_KEY_TOKEN_WEB_SESSION + userId);
+        TokenUserInfoDTO tokenUserInfoDTO = parseSessionUserInfo(sessionJson);
+        if (tokenUserInfoDTO != null) {
+            tokenUserInfoDTO.setToken(parseFirstTokenSign(sessionJson));
+        }
+        return tokenUserInfoDTO;
     }
 
     public String getUserIdByToken(String token) {
-        // 根据token获取用户信息
-        TokenUserInfoDTO userInfo = getTokenUserInfo(token);
-        // 判断是否存在
-        if (userInfo == null || StringTools.isEmpty(userInfo.getUserId())){
+        if (StringTools.isEmpty(token)) {
             return null;
         }
-        // 返回userId
-        return userInfo.getUserId();
+        String loginId = stringRedisTemplate.opsForValue().get(Constants.REDIS_KEY_TOKEN_WEB + token);
+        return StringTools.isEmpty(loginId) ? null : loginId;
+    }
+
+    // 修改个人资料后无需重新登录：资料字段以库为准（autoLogin 每次用库值覆盖会话），
+    // 这里只把 token 与账号会话续期一天，等价旧实现的"改资料不掉线"。
+    public void updateUser(String userId) {
+        TokenUserInfoDTO tokenUserInfoDTO = getTokenUserInfoByUserId(userId);
+        if (tokenUserInfoDTO == null || StringTools.isEmpty(tokenUserInfoDTO.getToken())) {
+            return;
+        }
+        stringRedisTemplate.expire(Constants.REDIS_KEY_TOKEN_WEB + tokenUserInfoDTO.getToken(),
+                Duration.ofSeconds(Constants.REDIS_KEY_EXPIRES_DAY));
+        stringRedisTemplate.expire(Constants.REDIS_KEY_TOKEN_WEB_SESSION + userId,
+                Duration.ofSeconds(Constants.REDIS_KEY_EXPIRES_DAY));
+    }
+
+    // 踢掉 userId 的全部登录设备（Sa-Token 账号会话的 tokenSignList 覆盖所有在线 token）
+    public void cleanAllToken(@NotNull String userId) {
+        String sessionKey = Constants.REDIS_KEY_TOKEN_WEB_SESSION + userId;
+        String sessionJson = stringRedisTemplate.opsForValue().get(sessionKey);
+        if (StringTools.isEmpty(sessionJson)) {
+            return;
+        }
+        for (String token : parseAllTokenSigns(sessionJson)) {
+            stringRedisTemplate.delete(Constants.REDIS_KEY_TOKEN_WEB + token);
+        }
+        stringRedisTemplate.delete(sessionKey);
+    }
+
+    private TokenUserInfoDTO parseSessionUserInfo(String sessionJson) {
+        if (StringTools.isEmpty(sessionJson)) {
+            return null;
+        }
+        try {
+            JsonNode userInfo = objectMapper.readTree(sessionJson).path("dataMap").path("userInfo");
+            if (!userInfo.isObject() || StringTools.isEmpty(userInfo.path("userId").asText(null))) {
+                return null;
+            }
+            TokenUserInfoDTO dto = new TokenUserInfoDTO();
+            dto.setUserId(userInfo.path("userId").asText());
+            dto.setEmail(textOrNull(userInfo, "email"));
+            dto.setNickName(textOrNull(userInfo, "nickName"));
+            dto.setAvatar(textOrNull(userInfo, "avatar"));
+            JsonNode trial = userInfo.path("trial");
+            dto.setTrial(trial.isBoolean() ? trial.asBoolean() : null);
+            return dto;
+        } catch (Exception e) {
+            log.warn("解析 Sa-Token 账号会话失败：{}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String parseFirstTokenSign(String sessionJson) {
+        JsonNode signs = tokenSignArray(sessionJson);
+        return signs == null || signs.isEmpty() ? null : signs.get(0).path("value").asText(null);
+    }
+
+    private List<String> parseAllTokenSigns(String sessionJson) {
+        JsonNode signs = tokenSignArray(sessionJson);
+        if (signs == null) {
+            return Collections.emptyList();
+        }
+        List<String> tokens = new ArrayList<>();
+        for (JsonNode sign : signs) {
+            String token = sign.path("value").asText(null);
+            if (!StringTools.isEmpty(token)) {
+                tokens.add(token);
+            }
+        }
+        return tokens;
+    }
+
+    // tokenSignList 由 GenericJackson2JsonRedisSerializer 序列化为 ["java.util.Vector",[{...}]]
+    private JsonNode tokenSignArray(String sessionJson) {
+        if (StringTools.isEmpty(sessionJson)) {
+            return null;
+        }
+        try {
+            JsonNode list = objectMapper.readTree(sessionJson).path("tokenSignList");
+            if (list.isArray() && list.size() == 2 && list.get(0).isTextual()) {
+                list = list.get(1);
+            }
+            return list.isArray() ? list : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String textOrNull(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? null : value.asText();
     }
 
     // 添加到延时队列
@@ -300,24 +368,6 @@ public class RedisComponent {
             return null;
         }
         return (UserLocationCoordsDTO) redisUtils.get(Constants.REDIS_KEY_USER_LOCATION + userId);
-    }
-
-    public void updateUser(String userId) {
-        // 修改个人资料后无需重新登录
-        // 只需修改token对应的用户信息
-        TokenUserInfoDTO tokenUserInfoDTO = getTokenUserInfoByUserId(userId);
-        // 获取原token
-        String token = tokenUserInfoDTO.getToken();
-        // 不改变token，只修改用户信息
-        redisUtils.set(Constants.REDIS_KEY_TOKEN_USERID_WEB + userId, tokenUserInfoDTO);
-        redisUtils.set(Constants.REDIS_KEY_TOKEN_WEB + token, tokenUserInfoDTO);
-    }
-
-    public void cleanAllToken(@NotNull String userId) {
-        TokenUserInfoDTO tokenUserInfoDTO = getTokenUserInfoByUserId(userId);
-        if (tokenUserInfoDTO != null) {
-            cleanTokenUserInfo(tokenUserInfoDTO.getToken());
-        }
     }
 
     // 支付单生命周期的锁与一次性标记搬到 PayOrderRedisComponent。

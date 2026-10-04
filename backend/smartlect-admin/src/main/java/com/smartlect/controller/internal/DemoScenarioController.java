@@ -12,6 +12,7 @@ import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.exception.HttpBusinessException;
 import com.smartlect.service.PasswordService;
 import com.smartlect.utils.StringTools;
+import cn.dev33.satoken.stp.StpUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DuplicateKeyException;
@@ -131,8 +132,11 @@ public class DemoScenarioController extends ABaseController {
         session.setUserId(user.userId());
         session.setEmail((String) row.get("email"));
         session.setNickName((String) row.get("nick_name"));
+        // createLoginSession 不经过 Cookie/header 读写，服务端直接造 Sa-Token web 会话
+        String token = StpUtil.createLoginSession(user.userId());
+        StpUtil.getSessionByLoginId(user.userId()).set("userInfo", session);
         return getSuccessResponseVO(Map.of("executionScopeId", scope, "userId", user.userId(),
-                "addressId", user.addressId(), "userIndex", index, "token", redis.saveTokenUserInfo(session)));
+                "addressId", user.addressId(), "userIndex", index, "token", token));
     }
 
     @PostMapping("/inspect-run")

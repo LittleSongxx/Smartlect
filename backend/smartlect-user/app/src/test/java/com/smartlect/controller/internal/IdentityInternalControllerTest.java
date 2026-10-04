@@ -94,7 +94,6 @@ class IdentityInternalControllerTest {
                 .andExpect(jsonPath("$.data.permissions").value(contains("shopping:read", "orders:read", "orders:write")))
                 .andExpect(jsonPath("$.data.sessionId").value(DigestUtils.sha256Hex("user:user-session")))
                 .andExpect(header().doesNotExist("Set-Cookie"));
-        verify(sessions, never()).saveTokenUserInfo(any());
         verifyNoInteractions(administrators);
     }
 

@@ -2,8 +2,10 @@ package com.smartlect.controller.internal;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import cn.dev33.satoken.stp.StpUtil;
 import com.smartlect.component.RedisComponent;
 import com.smartlect.controller.AGlobalExceptionHandlerController;
+import com.smartlect.entity.dto.TokenUserInfoDTO;
 import com.smartlect.exception.HttpBusinessException;
 import com.smartlect.service.PasswordService;
 import com.smartlect.web.InternalApiAuthFilter;
@@ -92,16 +94,17 @@ class DemoScenarioControllerTest {
         when(jdbc.queryForList(startsWith("SELECT u.user_id"), eq(user.userId()), eq(user.addressId())))
                 .thenReturn(List.of(Map.of("user_id", user.userId(), "password", "stored-hash", "email", "synthetic@example.test", "nick_name", "synthetic-user")));
         when(passwords.matches(PASSWORD, "stored-hash")).thenReturn(true);
-        when(redis.saveTokenUserInfo(any())).thenReturn("real-redis-session-api-result");
         JsonNode body = JSON.valueToTree(Map.of("executionScopeId", manifest.executionScopeId(), "userIndex", 0, "password", PASSWORD));
         assertEquals(user.userId(), controller.session(body).getData().get("userId"));
-        verify(redis).saveTokenUserInfo(argThat(value -> user.userId().equals(value.getUserId())
-                && "synthetic@example.test".equals(value.getEmail())));
+        // 会话改由 StpUtil.createLoginSession 写入（内存 dao 即可验证），不再走 RedisComponent
+        String token = (String) controller.session(body).getData().get("token");
+        assertEquals(user.userId(), StpUtil.getLoginIdByToken(token));
+        TokenUserInfoDTO stored = (TokenUserInfoDTO) StpUtil.getSessionByLoginId(user.userId()).get("userInfo");
+        assertEquals("synthetic@example.test", stored.getEmail());
         JsonNode wrong = JSON.valueToTree(Map.of("executionScopeId", manifest.executionScopeId(), "userIndex", 0, "password", "wrong"));
         assertEquals(401, assertThrows(HttpBusinessException.class, () -> controller.session(wrong)).getHttpStatus());
         JsonNode missing = JSON.valueToTree(Map.of("executionScopeId", manifest.executionScopeId(), "userIndex", 1, "password", PASSWORD));
         assertEquals(404, assertThrows(HttpBusinessException.class, () -> controller.session(missing)).getHttpStatus());
-        verify(redis, times(1)).saveTokenUserInfo(any());
         assertThrows(IllegalStateException.class, () -> new DemoScenarioController(jdbc, passwords, redis, PASSWORD, "live"));
     }
 

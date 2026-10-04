@@ -83,6 +83,20 @@ mybatis:
   configuration:
     map-underscore-to-camel-case: true
 
+# Sa-Token 1.39：token-name 同时充当 Redis 键前缀与 Cookie/header 名，
+# 因此会话键为 token:login:token:{token} / token:login:session:{loginId}（见 ADR-0011）。
+sa-token:
+  token-name: token
+  timeout: 86400
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  is-log: false
+  cookie:
+    path: /
+    http-only: true
+    same-site: Lax
+
 management:
   endpoints:
     web:

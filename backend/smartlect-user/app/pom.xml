@@ -13,6 +13,14 @@
   <name>smartlect-user</name>
   <dependencies>
     <dependency>
+      <groupId>cn.dev33</groupId>
+      <artifactId>sa-token-spring-boot3-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>cn.dev33</groupId>
+      <artifactId>sa-token-redis-jackson</artifactId>
+    </dependency>
+    <dependency>
       <groupId>com.aliyun</groupId>
       <artifactId>aliyun-java-sdk-core</artifactId>
       <exclusions>
