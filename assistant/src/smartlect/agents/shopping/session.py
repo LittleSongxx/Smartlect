@@ -753,7 +753,15 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                     return {'result': handoff_result}
                 raw=calls[0]['function']['arguments']
                 context.setdefault('final_decision_call_ids',[]).append(calls[0]['id'])
-                final = FinalAnswer.model_validate_json(raw)
+                from .contract import coerce_finish_payload
+                try:
+                    payload = json.loads(raw)
+                    payload, coerced_marks = coerce_finish_payload(payload)
+                    if coerced_marks:
+                        context['finish_payload_coerced'] = coerced_marks
+                    final = FinalAnswer.model_validate(payload)
+                except (ValueError, TypeError):
+                    final = FinalAnswer.model_validate_json(raw)
                 context['final_output_channel'] = (
                     'legacy_finish_answer_tool' if calls[0]['function']['name'] == 'finish_answer'
                     else 'structured_outputs')
@@ -764,7 +772,15 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                     context['final_output_channel'] = 'salvaged_unstructured'
                     context['grounding_compiled_from_observation'] = True
                 else:
-                    final = FinalAnswer.model_validate_json(raw)
+                    from .contract import coerce_finish_payload
+                    try:
+                        payload = json.loads(raw)
+                        payload, coerced_marks = coerce_finish_payload(payload)
+                        if coerced_marks:
+                            context['finish_payload_coerced'] = coerced_marks
+                        final = FinalAnswer.model_validate(payload)
+                    except (ValueError, TypeError):
+                        final = FinalAnswer.model_validate_json(raw)
                     context['final_output_channel'] = 'structured_outputs'
             coerce_observed_fact_grounding(final, context)
             bind_sole_observed_sku(final, products, context)
@@ -857,6 +873,13 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             if final.grounding == 'no_business_claim' and no_business_claim_has_store_conclusion(final.answer):
                 raise ValueError('no_business_claim_cannot_state_store_facts')
             request_kind = final.request_kind
+            from smartlect.shopping_mission import looks_like_exception_request
+            if (request_kind == 'inquire_fact' and not proposal
+                    and looks_like_exception_request(question)):
+                # 破例问句帧命中而模型声明成了 inquire_fact：按 request_exception
+                # 编译（开单收口）。帧为闭环判据，模型自证 DEFEAT 的例外不变。
+                request_kind = 'request_exception'
+                context['exception_frame_compiled'] = True
             # Option A (user decision 2026-09-13): a service-request turn whose own
             # answer concedes human verification compiles into an actual ticket —
             # asking "需要我帮您转人工吗?" defers an action store policy performs

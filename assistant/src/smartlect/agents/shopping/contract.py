@@ -39,6 +39,40 @@ class BudgetExceeded(RuntimeError):
     pass
 
 
+def coerce_finish_payload(payload):
+    """终答 JSON 常见类型滑误的确定性归一（2026-10-05）。
+
+    provider 的工具参数 schema 强制并不完全可靠：布尔写成 "true"、
+    数组写成字符串/逗号串仍会出现，直接 model_validate 即拒——
+    两次同因拒绝烧掉修复配额后整轮 BudgetExceeded（sup-d-80 形状）。
+    仅做无损归一：字符串布尔、单值→列表、列表元素字符串化；
+    归一不了的仍交给 pydantic 报原错误。返回 (payload, coerced标记)。
+    """
+    if not isinstance(payload, dict):
+        return payload, False
+    coerced = {}
+    for key in ('handoff_requested', 'requires_clarification'):
+        value = payload.get(key)
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text in ('true', 'yes', '是'):
+                payload[key] = True; coerced[key] = True
+            elif text in ('false', 'no', '否'):
+                payload[key] = False; coerced[key] = False
+    for key in ('citation_chunk_ids', 'selected_sku_keys'):
+        value = payload.get(key)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            items = [part.strip() for part in value.split(',') if part.strip()]
+            payload[key] = items; coerced[key] = items
+        elif isinstance(value, list):
+            items = [str(item).strip() for item in value if str(item).strip()]
+            if items != value:
+                payload[key] = items; coerced[key] = items
+    return payload, bool(coerced)
+
+
 class GuardViolation(ValueError):
     # A deterministic guard rejection with its own single repair round. Budgeted
     # apart from answer_repairs so a guard trigger cannot spend the one schema

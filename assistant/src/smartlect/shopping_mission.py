@@ -465,6 +465,20 @@ def retrieval_variants(request, mission):
     return variants[:3]
 
 
+def looks_like_exception_request(utterance):
+    """闭环帧的破例/绕过请求探测（与 clarify_gate 同哲学：确定性判据，
+    仅在终答编译时矫正模型声明的 request_kind，不强制改轮、不新增往返）。
+    售后变更动词×直接、绕过确认/审核/流程、明示破例——订单类动词（下单/买）
+    不在内：它们走 propose 提案路径，提案即合法收口。holdout-3 sup-h3-06
+    根因：模型把破例软问法声明成 inquire_fact，口头指路工单而不开单。
+    """
+    text = str(utterance or '')
+    return bool(
+        re.search(r'(?:能不能|可以|能|帮我|给我|想要?|想)?\s*直接\s*(?:换|退|改|取消|补发|退款|退货|折|办了|处理)', text)
+        or re.search(r'(?:绕过|跳过|不用|不需要|不走)\s*(?:确认|审核|验证|流程|人工|客服)', text)
+        or re.search(r'破例|通融|特批|特殊照顾|变通一下', text))
+
+
 def looks_like_product_request(utterance):
     """Narrow shopping-intent probe for the selection closeout gate: a price
     phrase, an exclusion in either word order, a buy/order verb, or count+

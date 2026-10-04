@@ -211,11 +211,20 @@ def misses_utterance_constraints(items, utterance, model_query=''):
 
 
 def hidden_document_covers(item, text):
-    """True when the hidden passage covers the question, or the question names its title."""
+    """True when the hidden passage covers the question, or the question names its title.
+
+    2026-10-05：标题命中阈值从「标题词的50%出现在问句」降为「问句与标题
+    共享任一显著词」。内部资料标题多为概括性短语（内部直播排期/内部毛利），
+    问句口语化（你们最近有直播活动吗）——50% 标题覆盖几乎不可达，acl_denied
+    因此永不浮现，内部资料存在的「让步即转人工」合同形同虚设（holdout-3
+    sup-h3-04 根因）。tokens 已滤停用词，单词命中即有指向性；误报面由
+    上层「仅浮出标题不浮出正文」+转人工兜底承接。
+    """
     if not misses_utterance_constraints([item], text):
         return True
+    question_terms = set(tokens(text))
     title_terms = set(tokens((item.get('title') or '') + ' ' + (item.get('heading') or '')))
-    return bool(title_terms) and constraint_coverage([text], title_terms) >= 0.5
+    return bool(question_terms & title_terms)
 
 
 def acl_denied_documents(visible_rows, hidden_rows, utterance, query=''):
