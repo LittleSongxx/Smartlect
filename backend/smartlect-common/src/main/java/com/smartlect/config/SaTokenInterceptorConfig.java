@@ -4,6 +4,7 @@ import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.stp.StpUtil;
 import com.smartlect.constants.AdminPermissions;
 import com.smartlect.security.StpAdminLogic;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -21,6 +22,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class SaTokenInterceptorConfig implements WebMvcConfigurer {
 
+    @Autowired
+    private AdminContextCleanupInterceptor cleanupInterceptor;
+
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         // 用户端：@SaCheckLogin 注解驱动
@@ -37,13 +41,32 @@ public class SaTokenInterceptorConfig implements WebMvcConfigurer {
                         "/api/discountCoupon/loadDiscountCoupon",
                         "/api/file/getResource");
 
-        // 管理端：统一 admin 登录校验 + 注解级权限
+        // 管理端：统一 admin 登录校验 + AdminSecurityContext 注入 + 注解级权限
         registry.addInterceptor(new SaInterceptor(handle -> {
                     StpAdminLogic.LOGIC.checkLogin();
+                    // AppInterceptor 退役后由这里接替：从 Sa-Token session 加载 AdminPrincipalDTO
+                    // 注入 AdminSecurityContext（ThreadLocal），供 controller / TrialOrderPrivacy 使用。
+                    Object loginId = StpAdminLogic.LOGIC.getLoginId();
+                    if (loginId != null) {
+                        try {
+                            cn.dev33.satoken.session.SaSession session =
+                                    StpAdminLogic.LOGIC.getSessionByLoginId(loginId, false);
+                            Object principal = session == null ? null : session.get("adminPrincipal");
+                            if (principal instanceof com.smartlect.entity.dto.AdminPrincipalDTO dto) {
+                                com.smartlect.security.AdminSecurityContext.set(dto);
+                            }
+                        } catch (Exception ignored) {
+                            // session 不可达时 @SaCheckPermission 自然会拒——这里不额外抛错
+                        }
+                    }
                 }))
                 .addPathPatterns("/admin/**")
                 .excludePathPatterns(
                         "/admin/account/checkCode", "/admin/account/login",
                         "/admin/file/getResource", "/admin/file/getResource/**");
+
+        // ThreadLocal 清理（原 AppInterceptor.afterCompletion 职责）
+        registry.addInterceptor(cleanupInterceptor)
+                .addPathPatterns("/admin/**");
     }
 }

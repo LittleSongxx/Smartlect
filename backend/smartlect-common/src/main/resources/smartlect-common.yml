@@ -117,3 +117,17 @@ management:
     metrics:
       export:
         enabled: true
+
+# Sa-Token 1.39：tokenName 同时充当 Redis 键前缀（token:login:token:{t}）与 Cookie/header 名。
+# 所有业务服务共用此配置——各服务不得覆写 token-name（键格式会不一致导致互读不到会话）。
+sa-token:
+  token-name: token
+  timeout: 86400
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  is-log: false
+  cookie:
+    path: /
+    http-only: true
+    same-site: Lax
