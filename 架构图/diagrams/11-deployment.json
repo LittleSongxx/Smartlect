@@ -1,0 +1,481 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "部署拓扑",
+    "locale": "zh-CN",
+    "subtitle": "宿主机 systemd 进程 + Docker Compose 基础设施 · 全部绑定 127.0.0.1",
+    "output": "架构图/diagrams/11-deployment.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/LittleSongxx/Smartlect.git",
+      "provider": "github",
+      "revision": "2c8e46eef0b279ed3c6eee2d297b79dd2cf553db",
+      "link_mode": "web"
+    }
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "互联网用户",
+      "sublabel": "smartlect.cn",
+      "pos": [
+        30,
+        134
+      ],
+      "size": [
+        110,
+        56
+      ],
+      "sources": [
+        {
+          "path": "deploy/nginx.smartlect.conf",
+          "line": 13,
+          "end_line": 23,
+          "label": "TLS 主站"
+        }
+      ]
+    },
+    {
+      "id": "nginx",
+      "type": "cloud",
+      "label": "Nginx",
+      "sublabel": "宿主机 :443 · Let's Encrypt",
+      "pos": [
+        190,
+        132
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "deploy/nginx.smartlect.conf",
+          "line": 3,
+          "end_line": 6,
+          "label": "upstream"
+        }
+      ]
+    },
+    {
+      "id": "webuser",
+      "type": "frontend",
+      "label": "用户端 Web",
+      "sublabel": "Vue 3 静态 :18180",
+      "pos": [
+        400,
+        44
+      ],
+      "size": [
+        150,
+        58
+      ],
+      "sources": [
+        {
+          "path": "web/user/vite.config.ts",
+          "line": 5,
+          "label": "端口"
+        }
+      ]
+    },
+    {
+      "id": "webadmin",
+      "type": "frontend",
+      "label": "管理端 Web",
+      "sublabel": "/admin/ 静态 :18181",
+      "pos": [
+        400,
+        214
+      ],
+      "size": [
+        150,
+        58
+      ],
+      "sources": [
+        {
+          "path": "web/admin/vite.config.js",
+          "line": 5,
+          "label": "端口"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "gateway",
+      "sublabel": "Java :18080",
+      "pos": [
+        620,
+        129
+      ],
+      "size": [
+        170,
+        78
+      ],
+      "sources": [
+        {
+          "path": "backend/smartlect-gateway/src/main/resources/application.yml",
+          "line": 2,
+          "label": "端口"
+        }
+      ]
+    },
+    {
+      "id": "javas",
+      "type": "backend",
+      "label": "Java ×8 服务",
+      "sublabel": ":18081-18088（systemd 进程）",
+      "pos": [
+        850,
+        129
+      ],
+      "size": [
+        210,
+        84
+      ],
+      "sources": [
+        {
+          "path": "README.md",
+          "line": 131,
+          "end_line": 137,
+          "label": "服务清单"
+        }
+      ]
+    },
+    {
+      "id": "assistant",
+      "type": "backend",
+      "label": "AI 助手",
+      "sublabel": "uvicorn :18000",
+      "pos": [
+        140,
+        304
+      ],
+      "size": [
+        180,
+        72
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/config.py",
+          "line": 9,
+          "end_line": 17,
+          "label": "绑定配置"
+        }
+      ]
+    },
+    {
+      "id": "es",
+      "type": "database",
+      "label": "Elasticsearch",
+      "sublabel": "8.19.0 · 1G",
+      "pos": [
+        60,
+        454
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "sources": [
+        {
+          "path": "deploy/compose.yaml",
+          "line": 93,
+          "end_line": 103,
+          "label": "容器"
+        }
+      ]
+    },
+    {
+      "id": "qdrant",
+      "type": "database",
+      "label": "Qdrant",
+      "sublabel": "v1.15.1 · 512M",
+      "pos": [
+        230,
+        454
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "sources": [
+        {
+          "path": "deploy/compose.yaml",
+          "line": 110,
+          "end_line": 116,
+          "label": "容器"
+        }
+      ]
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL",
+      "sublabel": "8.4.11 · 2G",
+      "pos": [
+        450,
+        454
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "sources": [
+        {
+          "path": "deploy/compose.yaml",
+          "line": 4,
+          "end_line": 21,
+          "label": "容器"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "7.4.7 · 384M",
+      "pos": [
+        620,
+        454
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "sources": [
+        {
+          "path": "deploy/compose.yaml",
+          "line": 28,
+          "end_line": 35,
+          "label": "容器"
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq",
+      "type": "messagebus",
+      "label": "RabbitMQ",
+      "sublabel": "4.2.9 · 768M",
+      "pos": [
+        780,
+        454
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "sources": [
+        {
+          "path": "deploy/compose.yaml",
+          "line": 42,
+          "end_line": 54,
+          "label": "容器"
+        }
+      ]
+    },
+    {
+      "id": "nacos",
+      "type": "cloud",
+      "label": "Nacos",
+      "sublabel": "v2.5.3 · 768M",
+      "pos": [
+        950,
+        454
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "sources": [
+        {
+          "path": "deploy/compose.yaml",
+          "line": 61,
+          "end_line": 85,
+          "label": "容器"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "宿主机（systemd 进程 + Docker）",
+      "wraps": [
+        "nginx",
+        "webuser",
+        "webadmin",
+        "gateway",
+        "javas",
+        "assistant",
+        "es",
+        "qdrant",
+        "mysql",
+        "redis",
+        "rabbitmq",
+        "nacos"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Docker Compose · 端口仅发布到 127.0.0.1",
+      "wraps": [
+        "es",
+        "qdrant",
+        "mysql",
+        "redis",
+        "rabbitmq",
+        "nacos"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "d1",
+      "from": "users",
+      "to": "nginx",
+      "label": "HTTPS"
+    },
+    {
+      "id": "d2",
+      "from": "nginx",
+      "to": "webuser",
+      "label": "静态 /"
+    },
+    {
+      "id": "d3",
+      "from": "nginx",
+      "to": "webadmin",
+      "label": "/admin/"
+    },
+    {
+      "id": "d4",
+      "from": "nginx",
+      "to": "gateway",
+      "label": "/api/ 反代",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "d5",
+      "from": "gateway",
+      "to": "javas",
+      "label": "lb://",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d6",
+      "from": "gateway",
+      "to": "assistant",
+      "label": "反代 :18000"
+    },
+    {
+      "id": "d11",
+      "from": "assistant",
+      "to": "es"
+    },
+    {
+      "id": "d12",
+      "from": "assistant",
+      "to": "qdrant"
+    },
+    {
+      "id": "d10",
+      "from": "javas",
+      "to": "nacos",
+      "toSide": "top",
+      "via": [
+        [
+          955,
+          330
+        ],
+        [
+          1025,
+          330
+        ]
+      ]
+    },
+    {
+      "id": "d9",
+      "from": "javas",
+      "to": "rabbitmq",
+      "variant": "dashed",
+      "via": [
+        [
+          955,
+          360
+        ],
+        [
+          855,
+          360
+        ]
+      ],
+      "toSide": "top"
+    },
+    {
+      "id": "d8",
+      "from": "javas",
+      "to": "redis",
+      "via": [
+        [
+          955,
+          390
+        ],
+        [
+          695,
+          390
+        ]
+      ],
+      "toSide": "top"
+    },
+    {
+      "id": "d7",
+      "from": "javas",
+      "to": "mysql",
+      "via": [
+        [
+          955,
+          420
+        ],
+        [
+          525,
+          420
+        ]
+      ],
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "端口与隔离",
+      "items": [
+        "所有容器端口仅发布到 127.0.0.1（dev 映射 Redis 16379 / Nacos 18848）",
+        "Nginx 是唯一公网入口，HTTP 全部 301 到 HTTPS",
+        "MySQL/Redis/RabbitMQ/Nacos 均设 mem_limit 与 healthcheck"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "进程形态",
+      "items": [
+        "Web 双应用与 Java 8 服务、Python 助手都是宿主机进程",
+        "数据库账号分库分账号（含 flyway、nacos、growth 专用）",
+        "可选 Postgres 16 容器（profile）作为 LangGraph checkpointer"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "运维",
+      "items": [
+        "GitHub Actions CI：lint + 测试 + 构建检查",
+        "证书由 certbot.timer 自动续期",
+        "compose 卷持久化 mysql/redis/rabbit/es/qdrant 数据"
+      ]
+    }
+  ]
+}

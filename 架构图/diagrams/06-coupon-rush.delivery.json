@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "73fa20d7-7b73-449f-874f-9f7f53afdb19",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/home/song/code/Smartlect/架构图/diagrams/06-coupon-rush.json",
+  "output": "/home/song/code/Smartlect/架构图/diagrams/06-coupon-rush.html",
+  "specification": {
+    "sha256": "b6d6b94102b89d023769c8a092589c430e516bad11bd39b514dd287591e90aed",
+    "bytes": 7598
+  },
+  "artifact": {
+    "sha256": "526cfc0b0b82b097f575879ccb8f6849d1455621fea1107b8aa99f0f7134b206",
+    "bytes": 767258
+  }
+}

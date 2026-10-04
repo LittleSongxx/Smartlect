@@ -733,6 +733,9 @@ def main():
     if args.split == 'holdout3':
         from quality_v2 import holdout3_ready
         holdout3_ready(() if args.line == 'all' else (args.line,))
+    if args.split == 'holdout4':
+        from quality_v2 import holdout4_ready
+        holdout4_ready(() if args.line == 'all' else (args.line,))
     run_id = args.run_id or (args.command + '-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
     output = Path(args.output) if args.output else ARTIFACT / run_id
     lines = ('shopping', 'support') if args.line == 'all' else (args.line,)

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "6e6dd5d9-8428-431b-924d-95865ecd9878",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/song/code/Smartlect/架构图/diagrams/03-auth-boundaries.json",
+  "output": "/home/song/code/Smartlect/架构图/diagrams/review-2/03-auth-boundaries.html",
+  "specification": {
+    "sha256": "d78137574284e6bb83eef98f841794ec735ddf8dd4df0a6aee80a639e12a5fd6",
+    "bytes": 7886
+  },
+  "artifact": {
+    "sha256": "eea105e24d03c8d07f07aa76a40ce32823d518ba82659ae9f85cbcaeeec6e0ea",
+    "bytes": 767765
+  }
+}

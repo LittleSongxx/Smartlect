@@ -8,7 +8,7 @@ from eval_quality_v2 import business_closeout_after_budget, handoff_ends_convers
 import quality_v2
 from quality_v2 import (CONTRACT_JSON, SHOPPING_CATALOG, SHOPPING_DEV, SUPPORT_DEV,
                         AnnotationError, aggregate_line, append_rerun_ledger,
-                        campaign_rates, catalog_index, catalog_overlay_plan, context_precision_at_k,
+                        catalog_index, catalog_overlay_plan, context_precision_at_k,
                         handoff_f1, last_real_search, live_support_cases, load_json, load_jsonl,
                         mrr_at_k, recall_at_1_strict, recall_at_k, refuse_holdout, remap_observation,
                         score_faithfulness, score_shopping, score_support,
@@ -425,17 +425,17 @@ class ReportTests(unittest.TestCase):
 
     def test_self_check_passes_and_has_no_total(self):
         shopping, support = self_check_scores()
-        self.assertEqual(len(shopping), 65)
-        self.assertEqual(len(support), 63)
+        self.assertEqual(len(shopping), 87)
+        self.assertEqual(len(support), 83)
         self.assertTrue(all(row['outcome'] == 'pass' for row in shopping + support))
         with tempfile.TemporaryDirectory() as folder:
-            report = write_report(folder, shopping, support, ads, official=False)
+            report = write_report(folder, shopping, support, official=False)
         self.assertIsNone(report['composite_score'])
         self.assertFalse(report['official'])
         self.assertIn('Precision@4', report['shopping'])
         self.assertIn('Recall@8', report['support'])
-        self.assertIn('CTR', report['ads'])
         self.assertNotIn('total', report['shopping'])
+        self.assertNotIn('ads', report)
         self.assertEqual(report['support']['denominators']['Faithfulness'],
                          sum(1 for row in support if row.get('Faithfulness') is not None))
 
@@ -456,16 +456,15 @@ class ReportTests(unittest.TestCase):
             report = {'cases': {'shopping': [{'case_id': 'shop-d-01', 'line': 'shopping',
                                               'outcome': 'setup_failed',
                                               'reason': 'provider_fault'}],
-                                'support': [], 'ads': []}}
-            write_report(first, [], [], [], official=False)
+                                'support': []}}
+            write_report(first, [], [], official=False)
             from quality_v2 import _iter_case_rows
-            report['cases'] = {'shopping': list(report['cases']['shopping']), 'support': [], 'ads': []}
+            report['cases'] = {'shopping': list(report['cases']['shopping']), 'support': []}
             # write summary via write_report shape then append ledger
             report2 = {'schema_version': 'quality-v2-report-v1', 'official': False, 'partial': False,
                        'composite_score': None, 'note': 'x', 'provenance': {},
                        'shopping': aggregate_line('shopping', report['cases']['shopping'], ('Precision@4',)),
                        'support': aggregate_line('support', [], ()),
-                       'ads': aggregate_line('ads', [], ()),
                        'cases': report['cases']}
             (first / 'summary.json').write_text(json.dumps(report2))
             copy = first.parent / 'artifacts-copy'
@@ -482,9 +481,8 @@ class ReportTests(unittest.TestCase):
                         'shopping': aggregate_line('shopping', [{'case_id': 'shop-d-01', 'line': 'shopping',
                                                                  'outcome': 'pass', 'Pass@1': 1}], ('Pass@1',)),
                         'support': aggregate_line('support', [], ()),
-                        'ads': aggregate_line('ads', [], ()),
                         'cases': {'shopping': [{'case_id': 'shop-d-01', 'line': 'shopping',
-                                                'outcome': 'pass', 'Pass@1': 1}], 'support': [], 'ads': []}}
+                                                'outcome': 'pass', 'Pass@1': 1}], 'support': []}}
             (second / 'summary.json').write_text(json.dumps(resolved))
             shutil.copytree(first, artifacts / 'run-a')
             entries2 = append_rerun_ledger(second, resolved, artifacts_dir=artifacts)
@@ -497,13 +495,8 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(contract['shopping']['score_surface'], 'agent_selected_sku_keys')
         self.assertTrue(contract['no_composite_score'])
         self.assertEqual(contract['public_headers_only'],
-                         ['Pass@1', 'Precision@4/ceiling', 'Recall@8', 'Faithfulness',
-                          'Attribution_integrity'])
-        self.assertEqual(len(contract['ads']['attribution_integrity']['assertions']), 8)
-        self.assertTrue(contract['ads']['ctr_cvr_are_diagnostics'])
-        self.assertEqual(contract['ads']['clicks_without_payment_cvr'], 0.0)
-        self.assertTrue(contract['ads']['unknown_payments_counted'])
-        self.assertFalse(contract['ads']['unknown_payments_enter_cvr'])
+                         ['Pass@1', 'Precision@4/ceiling', 'Recall@8', 'Faithfulness'])
+        self.assertNotIn('ads', contract)  # 广告线已退役（v7），合同仅存证于 artifacts
         self.assertTrue(contract['support']['faithfulness_requires_answer_side_and_citation_side'])
         self.assertTrue(contract['support']['llm_judge']['development_only'])
         self.assertTrue(contract['support']['llm_judge']['enters_public_score'])
@@ -546,7 +539,7 @@ class TrialsAndCITests(unittest.TestCase):
 
     def test_k1_report_has_no_trial_blocks(self):
         with tempfile.TemporaryDirectory() as folder:
-            report = write_report(folder, [], [], [], official=False)
+            report = write_report(folder, [], [], official=False)
         self.assertEqual(report['trials'], 1)
         self.assertNotIn('per_case_trials', report)
         self.assertNotIn('trials', report['shopping'])
@@ -575,7 +568,7 @@ class TrialsAndCITests(unittest.TestCase):
         self.assertEqual(entry['pass_rate'], 2 / 3)
         self.assertTrue(entry['flipped'])
         with tempfile.TemporaryDirectory() as folder:
-            report = write_report(folder, rows, [], [], official=False, trials=3)
+            report = write_report(folder, rows, [], official=False, trials=3)
         self.assertEqual(report['trials'], 3)
         self.assertIn('case-b', report['per_case_trials']['shopping']['cases'][1]['case_id'])
         self.assertNotIn('support', report['per_case_trials'])
@@ -590,7 +583,7 @@ class TrialsAndCITests(unittest.TestCase):
                 {'case_id': 'shop-d-01', 'line': 'shopping', 'trial': 2, 'outcome': 'pass', 'Pass@1': 1},
                 {'case_id': 'shop-d-01', 'line': 'shopping', 'trial': 3, 'outcome': 'pass', 'Pass@1': 1},
                 {'case_id': 'shop-d-02', 'line': 'shopping', 'trial': 1, 'outcome': 'fail', 'Pass@1': 0}],
-                'support': [], 'ads': []}}
+                'support': []}}
             entries = append_rerun_ledger(artifacts / 'run-t', report, artifacts_dir=artifacts)
             self.assertEqual(len(entries), 1)  # one entry per case, not per trial
             self.assertEqual(entries[0]['case_id'], 'shop-d-01')
@@ -755,9 +748,9 @@ class Tier1DiagnosticTests(unittest.TestCase):
         self.assertIn('violation_free@1', summary['ci95_wilson'])
 
     def test_self_check_synthetic_tier1_values(self):
-        shopping, support, _ = self_check_scores()
+        shopping, support = self_check_scores()
         with tempfile.TemporaryDirectory() as folder:
-            report = write_report(folder, shopping, support, [], official=False, synthetic=True)
+            report = write_report(folder, shopping, support, official=False, synthetic=True)
         # synthetic retrieval ranks gold docs in gold order: MRR = mean(1/i over gold positions)
         eligible = [case for case in load_jsonl(SUPPORT_DEV)
                     if case.get('relevant_doc_ids') and case.get('expected_retrieval') is not False]
@@ -895,6 +888,72 @@ class Holdout3SealTests(unittest.TestCase):
             quality_v2.validate_dev_sets(split='holdout3')
 
 
+class Holdout4SealTests(unittest.TestCase):
+    def test_run_gate_flips_with_manifest_presence(self):
+        import tempfile
+        import quality_v2
+        original = dict(quality_v2.HOLDOUT4_MANIFESTS)
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                for line, path in original.items():
+                    quality_v2.HOLDOUT4_MANIFESTS[line] = Path(folder) / (line + '.json')
+                with self.assertRaisesRegex(ValueError, 'holdout4_seal_pending'):
+                    quality_v2.holdout4_ready()
+                for path in quality_v2.HOLDOUT4_MANIFESTS.values():
+                    path.write_text('{}')
+                self.assertTrue(quality_v2.holdout4_ready())
+                self.assertTrue(quality_v2.holdout4_ready(('shopping',)))
+        finally:
+            quality_v2.HOLDOUT4_MANIFESTS = original
+
+    def test_holdout4_draft_validates_offline_when_authored(self):
+        # Draft stage: questions may not exist yet; once they do they must validate
+        # offline. Running is refused until the user stamps every line's manifest.
+        from quality_v2 import SHOPPING_HOLDOUT4
+        if SHOPPING_HOLDOUT4.exists():
+            quality_v2.validate_dev_sets(split='holdout4')
+
+    def test_holdout4_not_duplicated(self):
+        """字面 + 2-gram Jaccard 双查重：holdout-4 题面与 dev/holdout1-3 不得重复。
+
+        字面：任一既有题的 user_turns 拼接串不得等于 holdout-4 题的拼接串。
+        模糊：字符 2-gram Jaccard >= 0.6 视为近似重复（复用 check_support_eval.py 口径）。
+        """
+        from quality_v2 import load_jsonl, SHOPPING_DEV, SUPPORT_DEV
+        def turns_text(case):
+            return ' '.join(case.get('user_turns') or [])
+
+        def bigrams(text):
+            folded = ''.join(text.split())
+            return {folded[i:i + 2] for i in range(len(folded) - 1)}
+
+        existing = [turns_text(c) for c in load_jsonl(SHOPPING_DEV) + load_jsonl(SUPPORT_DEV)]
+        for split in ('holdout', 'holdout2', 'holdout3'):
+            paths = quality_v2.dataset_paths(split)
+            for path in paths.values():
+                if path.exists():
+                    existing += [turns_text(c) for c in load_jsonl(path)]
+        existing_set = set(existing)
+        paths = quality_v2.dataset_paths('holdout4')
+        for path in paths.values():
+            if not path.exists():
+                continue
+            for case in load_jsonl(path):
+                text = turns_text(case)
+                self.assertNotIn(text, existing_set,
+                                 'holdout4 literal duplicate: ' + case['case_id'])
+                text_grams = bigrams(text)
+                for prior in existing:
+                    prior_grams = bigrams(prior)
+                    union = len(text_grams | prior_grams)
+                    if union:
+                        jaccard = len(text_grams & prior_grams) / union
+                        self.assertLess(jaccard, 0.6,
+                                        'holdout4 near-duplicate (%.2f): %s vs %r'
+                                        % (jaccard, case['case_id'], prior[:60]))
+
+
+
 class FrozenReportTests(unittest.TestCase):
     def test_report_frozen_sections_and_no_composite(self):
         import tempfile
@@ -909,12 +968,12 @@ class FrozenReportTests(unittest.TestCase):
                    'provenance': {'git_head': 'deadbeef', 'contract_sha256': 'c0ffee'},
                    'shopping': {**block, 'Precision@4/ceiling': 1.0, 'Precision@4': 0.5,
                                 'denominators': {'Pass@1': 3, 'Precision@4': 3, 'Precision@4/ceiling': 3}},
-                   'support': {**block}, 'ads': {**block, 'Attribution_integrity': 1.0},
+                   'support': {**block},
                    'cases': {'shopping': [
                        {'case_id': 'shop-x', 'trial': 1, 'outcome': 'fail',
                         'selected': ['a', 'b'], 'hits': 1},
                        {'case_id': 'shop-x', 'trial': 2, 'outcome': 'pass', 'selected': ['a'], 'hits': 1}],
-                       'support': [], 'ads': []},
+                       'support': []},
                    'per_case_trials': {}}
         with tempfile.TemporaryDirectory() as folder:
             run_dir = Path(folder) / 'run-x'

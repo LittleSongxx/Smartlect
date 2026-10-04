@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/home/song/code/Smartlect/架构图/diagrams/03-auth-boundaries.json",
+    "sha256": "c4d8c4badd3381036d80e799c36ed00bdb7230e0679fcb691efc55762d35e0ce",
+    "bytes": 5786
+  },
+  "artifact": {
+    "path": "/home/song/code/Smartlect/架构图/diagrams/03-auth-boundaries.html",
+    "sha256": "660989e3aa63793e78854baf198930a9bf746fa702426bdb2fcd215882c737db",
+    "bytes": 767960
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/home/song/code/Smartlect/架构图/diagrams/03-auth-boundaries.finalize.json",
+    "summaryReceipt": "/home/song/code/Smartlect/架构图/diagrams/03-auth-boundaries.finalize-summary.json",
+    "browserCheckReceipt": "/home/song/code/Smartlect/架构图/diagrams/03-auth-boundaries.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-04T11:20:21.564Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 1827,
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 1,
+      "routesOverSuggestedBends": 5
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "a5",
+            "from": "satoken",
+            "to": "redis",
+            "label": "会话读写",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "right": {
+            "id": "a7",
+            "from": "gateway",
+            "to": "javacore",
+            "label": "身份头透传",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "point": [
+            385.79999999999995,
+            476
+          ]
+        }
+      ],
+      "detours": [
+        {
+          "relationship": {
+            "id": "a3",
+            "from": "gateway",
+            "to": "usersvc",
+            "label": "登录/账号路由",
+            "collectionIndex": 2,
+            "artifactIndex": 3
+          },
+          "bends": 4,
+          "stretch": 1.129
+        },
+        {
+          "relationship": {
+            "id": "a4",
+            "from": "usersvc",
+            "to": "satoken",
+            "label": "双账号 login",
+            "collectionIndex": 3,
+            "artifactIndex": 4
+          },
+          "bends": 4,
+          "stretch": 1.183
+        },
+        {
+          "relationship": {
+            "id": "a5",
+            "from": "satoken",
+            "to": "redis",
+            "label": "会话读写",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "bends": 4,
+          "stretch": 1.108
+        },
+        {
+          "relationship": {
+            "id": "a7",
+            "from": "gateway",
+            "to": "javacore",
+            "label": "身份头透传",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "bends": 4,
+          "stretch": 1
+        },
+        {
+          "relationship": {
+            "id": "a9",
+            "from": "assistant",
+            "to": "javacore",
+            "label": "X-Internal-Token",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "bends": 4,
+          "stretch": 1.143
+        }
+      ],
+      "truncated": false
+    },
+    "hints": [
+      "satoken → redis crosses gateway → javacore: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "gateway → usersvc needs 4 bends: move node gateway or usersvc so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "usersvc → satoken needs 4 bends: move node usersvc or satoken so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "satoken → redis needs 4 bends: move node satoken or redis so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "gateway → javacore needs 4 bends: move node gateway or javacore so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "assistant → javacore needs 4 bends: move node assistant or javacore so they share a row or column with matching centers, or sit diagonally with a clear corner."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

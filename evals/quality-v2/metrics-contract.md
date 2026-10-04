@@ -1,6 +1,6 @@
 # Smartlect 质量评测合同（quality-v2）
 
-日期：2026-09-18（**v7 修订：广告投放线退役**——ads 服务与剧本随经营线整体删除，公开表头移除 `Attribution_integrity`，历史成绩见 artifacts 存证；导购/客服两线定义不变。原 v6.2 及更早修订：P3 仲裁落地**——claims 分级判级原则成文（见"政策客服"节：essential=删去后被问出的问题落空或被误导性部分回答，附两条操作款），`allow_handoff` 新增（曾发布现已失效资料的双诚实收口），禁句否定提示词集扩为 不/没/未/非/别/无/勿/莫，客服 dev 62→63 题（软问法 MERCHANT sup-d-63）。**v6.1 修订：广告 script 剧本增补**。**v6 修订：公开表头名实对齐**——导购第二公开指标从 `Precision@4` 改为 `Precision@4/ceiling` 贴满率（NDCG/IDCG 式对可达上限的正规化：同槽位、同分母，只除以本题满分；raw `Precision@4` 与 `Precision@4_ceiling` 保留为诊断列，demand-fill 超顶截断在 1.0）；广告公开分从模拟 `CTR`/`CVR`（确定性校验伪装成效果比率）改为单指标 `Attribution_integrity` 归因完整性（断言级分母：四桶计数+两率算术+禁捷径共 8 条断言/剧本；`CTR`/`CVR` 降诊断列）。理由是名实对齐与正规化先例，非刷分——新指标只会更严。v5：多次试验与置信区间。v4：claims 分级 essential/peripheral。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。三条主线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
+日期：2026-10-04（**v8 修订：评测集扩容与难负例**——导购 dev 65→87 题（新维度：灰色空集/RGB/网布/无线/头戴单轮/`excluded_sku_keys` 首用/双边价格窗 ×2/类目排除/多数量；新多轮 4；新对抗 3：角色扮演注入/分隔符注入/工具参数伪造；金标全部由 scorer 侧 `sku_satisfies` 脚本推导），客服 dev 63→83 题（大可见池判别 8：visible 6-10 篇 fixtures + 注入 3-5 篇难负例，恢复 Recall@K/@1/MRR 判别力；负向陷阱 5；多文档合成 3；ACL/生命周期 2；多轮 2），新增难负例语料 `evals/quality-v2/support/extra/eval-hn-*.md` 40 篇（邻主题干扰/限定范围变体/数字近邻冲突对/时段渠道对立/生命周期 ACL）。指标定义全部不变；预期公开分会因口径变严而下降，v15→v16 不可直接混比，旧 65/63 子集成绩可从 artifacts 逐题复算。检索深度正名：实际为 `FIRST_STAGE_DEPTH=50 / FUSED_DEPTH=24 / FINAL_DEPTH=8`，此前文档误写 20-12-8，以 `assistant/src/smartlect/knowledge.py` 为准，深度实现从未变更。v7 修订：广告投放线退役——ads 服务与剧本随经营线整体删除，公开表头移除 `Attribution_integrity`，历史成绩见 artifacts 存证；导购/客服两线定义不变。原 v6.2 及更早修订：P3 仲裁落地**——claims 分级判级原则成文（见"政策客服"节：essential=删去后被问出的问题落空或被误导性部分回答，附两条操作款），`allow_handoff` 新增（曾发布现已失效资料的双诚实收口），禁句否定提示词集扩为 不/没/未/非/别/无/勿/莫，客服 dev 62→63 题（软问法 MERCHANT sup-d-63）。**v6.1 修订：广告 script 剧本增补**。**v6 修订：公开表头名实对齐**——导购第二公开指标从 `Precision@4` 改为 `Precision@4/ceiling` 贴满率（NDCG/IDCG 式对可达上限的正规化：同槽位、同分母，只除以本题满分；raw `Precision@4` 与 `Precision@4_ceiling` 保留为诊断列，demand-fill 超顶截断在 1.0）；广告公开分从模拟 `CTR`/`CVR`（确定性校验伪装成效果比率）改为单指标 `Attribution_integrity` 归因完整性（断言级分母：四桶计数+两率算术+禁捷径共 8 条断言/剧本；`CTR`/`CVR` 降诊断列）。理由是名实对齐与正规化先例，非刷分——新指标只会更严。v5：多次试验与置信区间。v4：claims 分级 essential/peripheral。v3：Faithfulness 公开分为 DeepSeek judge 判分）。本文件是公开指标的操作定义。表头只用公开名。两线分开展示，不合成总分。旧 `evals/rag_cases.jsonl`、`tool_tasks.jsonl` 与 F6/F7 产物不是本轮基线。
 
 一题三种结局：`pass` / `unscored`（分母缺失记 `null`）/ `setup_failed`。`setup_failed` 不进均值，仅限 provider/预算/基础设施故障，禁止重采样刷绿；每次复跑记入 `artifacts/quality-v2/rerun-ledger.jsonl`。
 
@@ -78,7 +78,7 @@
 
 公开主报：`Recall@8`、`Faithfulness`。转人工并进该题 `Pass@1`，不新开主线。
 
-检索深度：`FIRST_STAGE_DEPTH=20`，`FUSED_DEPTH=12`，`FINAL_DEPTH=8`，展示引用最多 4。
+检索深度：`FIRST_STAGE_DEPTH=50`，`FUSED_DEPTH=24`，`FINAL_DEPTH=8`，展示引用最多 4。（v8 正名：此前文档误写 20-12-8，以 assistant/src/smartlect/knowledge.py 代码为准，深度实现从未变更）
 
 ### Recall@8
 

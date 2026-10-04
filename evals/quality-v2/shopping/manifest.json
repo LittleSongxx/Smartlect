@@ -1,5 +1,5 @@
 {
-  "dataset_id": "quality-v2-shopping-v4-dev",
+  "dataset_id": "quality-v2-shopping-v4-v16-dev",
   "schema_version": "quality-v2-shopping-v4",
   "split": "development",
   "holdout": {
@@ -9,15 +9,15 @@
     "freeze_command": "scripts/eval_quality_v2.py freeze"
   },
   "checksums": {
-    "evals/quality-v2/shopping/dev.jsonl": "2fa1bd99db69305b1f414205f745cc1f9bd40e2e8681098204487dedd3eb0c27",
+    "evals/quality-v2/shopping/dev.jsonl": "7799db9074737d8f083dfb06fbdc7f9dea152b7669f0ffc3869152b976078508",
     "evals/quality-v2/shopping/catalog-snapshot.json": "c6c5d26130758bd48173a38b75084be232b0e3a2579e71654f20ea15ef643583",
-    "evals/quality-v2/metrics-contract.json": "30eda529892fbe4a462f79f281536a17c00f0f75c3ea75a864f436205001429a"
+    "evals/quality-v2/metrics-contract.json": "4f84e8768af4d96fc4c53bd85201594c0f83abf79d8c8916db51d17fc174d6a5"
   },
   "metrics": [
     "Pass@1",
     "Precision@4/ceiling"
   ],
-  "case_count": 65,
+  "case_count": 87,
   "case_ids": [
     "shop-d-01",
     "shop-d-02",
@@ -83,6 +83,29 @@
     "shop-d-62",
     "shop-d-63",
     "shop-d-64",
-    "shop-d-65"
-  ]
+    "shop-d-65",
+    "shop-d-66",
+    "shop-d-67",
+    "shop-d-68",
+    "shop-d-69",
+    "shop-d-70",
+    "shop-d-71",
+    "shop-d-72",
+    "shop-d-73",
+    "shop-d-74",
+    "shop-d-75",
+    "shop-d-76",
+    "shop-d-77",
+    "shop-d-78",
+    "shop-d-79",
+    "shop-d-80",
+    "shop-d-81",
+    "shop-d-82",
+    "shop-d-83",
+    "shop-d-84",
+    "shop-d-85",
+    "shop-d-86",
+    "shop-d-87"
+  ],
+  "note": "v16 扩容（2026-10-04）：+22 题（新维度/多轮/对抗/excluded_sku_keys 首用），金标由 sku_satisfies 脚本推导"
 }

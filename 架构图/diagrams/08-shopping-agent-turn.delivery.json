@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d857f449-0d6a-482d-a5c0-27a77c0eef41",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/home/song/code/Smartlect/架构图/diagrams/08-shopping-agent-turn.json",
+  "output": "/home/song/code/Smartlect/架构图/diagrams/08-shopping-agent-turn.html",
+  "specification": {
+    "sha256": "649af788ab7f15b571d651e8758b98898de26842bc9fc0a0f38c443e65e5c8fc",
+    "bytes": 7553
+  },
+  "artifact": {
+    "sha256": "802ee436f7345072df7e12019757c7e6621083f6b69ca52d07d7f8f6ad3f8f3a",
+    "bytes": 766107
+  }
+}

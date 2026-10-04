@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "1955754d-7954-4635-b517-e39206102072",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/song/code/Smartlect/架构图/diagrams/01-system-overview.json",
+  "output": "/home/song/code/Smartlect/架构图/diagrams/01-system-overview.html",
+  "specification": {
+    "sha256": "717614184ddd2e87532ef78a88ffcab918d5c68f07b86619dd36c1618a9c5728",
+    "bytes": 8376
+  },
+  "artifact": {
+    "sha256": "55a27517f93d79573a295498c715fcf77d0791bbeeb4674d9f8bb3b21010de62",
+    "bytes": 786915
+  }
+}

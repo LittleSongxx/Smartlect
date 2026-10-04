@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "73b054d9-2e73-4964-a4d3-04d315033e9b",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/song/code/Smartlect/架构图/diagrams/12-frontend-apps.json",
+  "output": "/home/song/code/Smartlect/架构图/diagrams/12-frontend-apps.html",
+  "specification": {
+    "sha256": "bf5e7346ca90f2f8cf868548a566bc93535e1d683c1b6a092b658b85f44b2846",
+    "bytes": 5798
+  },
+  "artifact": {
+    "sha256": "824fa3ef31c66694741899389654e93e6238f40f1d92a5bf7186f5a9228e2c32",
+    "bytes": 770126
+  }
+}

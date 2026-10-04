@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "88cc652e-aade-4334-a807-3db5d087fc95",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/home/song/code/Smartlect/架构图/diagrams/05-refund-saga.json",
+  "output": "/home/song/code/Smartlect/架构图/diagrams/05-refund-saga.html",
+  "specification": {
+    "sha256": "e8ea1c54b33e5c6c1d7c065d9b07e4bbc6eb32779c476be1b7624483c96c457c",
+    "bytes": 5218
+  },
+  "artifact": {
+    "sha256": "e4644e647877b9ac6871ff287b29a61e8f0d4f600af4816852a818a1d3f8d4b9",
+    "bytes": 757125
+  }
+}

@@ -1,0 +1,558 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Smartlect 系统总览",
+    "locale": "zh-CN",
+    "subtitle": "浏览器画状态 · Python 决定问什么 · Java 落交易",
+    "output": "架构图/diagrams/01-system-overview.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/LittleSongxx/Smartlect.git",
+      "provider": "github",
+      "revision": "2c8e46eef0b279ed3c6eee2d297b79dd2cf553db",
+      "link_mode": "web"
+    }
+  },
+  "components": [
+    {
+      "id": "shopper",
+      "type": "external",
+      "label": "顾客浏览器",
+      "sublabel": "用户端访客/演示号",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "README.md",
+          "line": 36,
+          "end_line": 41,
+          "label": "演示账号"
+        }
+      ]
+    },
+    {
+      "id": "merchant",
+      "type": "external",
+      "label": "商家浏览器",
+      "sublabel": "管理端 gallery 号",
+      "pos": [
+        40,
+        180
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "README.md",
+          "line": 36,
+          "end_line": 41,
+          "label": "演示账号"
+        }
+      ]
+    },
+    {
+      "id": "nginx",
+      "type": "cloud",
+      "label": "Nginx",
+      "sublabel": "smartlect.cn :443",
+      "tag": "Let's Encrypt",
+      "pos": [
+        240,
+        118
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "deploy/nginx.smartlect.conf",
+          "line": 13,
+          "end_line": 57,
+          "label": "TLS 与路径分流"
+        }
+      ]
+    },
+    {
+      "id": "webuser",
+      "type": "frontend",
+      "label": "用户端 Web",
+      "sublabel": "Vue 3 · Vite :18180",
+      "pos": [
+        470,
+        30
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/user/vite.config.ts",
+          "line": 5,
+          "end_line": 16,
+          "label": "端口与代理"
+        }
+      ]
+    },
+    {
+      "id": "webadmin",
+      "type": "frontend",
+      "label": "管理端 Web",
+      "sublabel": "Vue 3 · /admin/ :18181",
+      "pos": [
+        470,
+        190
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/admin/vite.config.js",
+          "line": 4,
+          "end_line": 14,
+          "label": "base 与代理"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "API 网关",
+      "sublabel": "Spring Cloud Gateway :18080",
+      "tag": "Sa-Token 校验 · Sentinel 限流",
+      "pos": [
+        710,
+        110
+      ],
+      "size": [
+        180,
+        86
+      ],
+      "sources": [
+        {
+          "path": "backend/smartlect-gateway/src/main/resources/application.yml",
+          "line": 91,
+          "end_line": 186,
+          "label": "路由表"
+        },
+        {
+          "path": "backend/smartlect-gateway/src/main/java/com/smartlect/cloud/gateway/filter/AuthGlobalFilter.java",
+          "line": 27,
+          "end_line": 41,
+          "label": "会话过滤器"
+        }
+      ]
+    },
+    {
+      "id": "assistant",
+      "type": "backend",
+      "label": "AI 助手",
+      "sublabel": "FastAPI + LangGraph :18000",
+      "tag": "有界 ReAct · 只提案",
+      "pos": [
+        710,
+        290
+      ],
+      "size": [
+        180,
+        80
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/config.py",
+          "line": 9,
+          "end_line": 23,
+          "label": "端口与模式"
+        },
+        {
+          "path": "assistant/src/smartlect/app.py",
+          "line": 179,
+          "label": "create_app"
+        }
+      ]
+    },
+    {
+      "id": "javacore",
+      "type": "backend",
+      "label": "Java 交易权威",
+      "sublabel": "Spring Boot 3.5 · 8 服务",
+      "tag": "价格/库存/订单唯一可写",
+      "pos": [
+        960,
+        110
+      ],
+      "size": [
+        190,
+        86
+      ],
+      "sources": [
+        {
+          "path": "README.md",
+          "line": 131,
+          "end_line": 137,
+          "label": "服务清单"
+        },
+        {
+          "path": "backend/smartlect-order/app/src/main/resources/application.yml",
+          "line": 48,
+          "label": "order 分库"
+        }
+      ]
+    },
+    {
+      "id": "thirdparty",
+      "type": "external",
+      "label": "第三方 API",
+      "sublabel": "高德地图 · 百度审核",
+      "pos": [
+        1260,
+        20
+      ],
+      "size": [
+        120,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/smartlect-common/src/main/resources/smartlect-common.yml",
+          "line": 27,
+          "end_line": 28,
+          "label": "amap key"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM 提供方",
+      "sublabel": "百炼 / 智谱（白名单）",
+      "pos": [
+        230,
+        275
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/provider.py",
+          "line": 168,
+          "label": "模型白名单"
+        }
+      ]
+    },
+    {
+      "id": "knowledgeidx",
+      "type": "database",
+      "label": "知识检索索引",
+      "sublabel": "ES BM25 + Qdrant 向量",
+      "pos": [
+        440,
+        310
+      ],
+      "size": [
+        170,
+        70
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/hybrid_search.py",
+          "line": 8,
+          "end_line": 17,
+          "label": "双后端"
+        }
+      ]
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL 8",
+      "sublabel": "业务分库 ×8 + growth",
+      "pos": [
+        960,
+        440
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "deploy/compose.yaml",
+          "line": 4,
+          "end_line": 21,
+          "label": "容器"
+        },
+        {
+          "path": "assistant/src/smartlect/db.py",
+          "line": 25,
+          "end_line": 37,
+          "label": "growth 库"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "缓存 · 分布式锁 · Lua",
+      "pos": [
+        1260,
+        130
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "deploy/compose.yaml",
+          "line": 28,
+          "end_line": 35,
+          "label": "容器"
+        },
+        {
+          "path": "backend/smartlect-common/src/main/resources/smartlect-common.yml",
+          "line": 121,
+          "end_line": 133,
+          "label": "Sa-Token 存储"
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq",
+      "type": "messagebus",
+      "label": "RabbitMQ",
+      "sublabel": "延时 / 死信 / 重试",
+      "pos": [
+        1260,
+        210
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "deploy/compose.yaml",
+          "line": 42,
+          "end_line": 54,
+          "label": "容器"
+        },
+        {
+          "path": "backend/smartlect-common/src/main/java/com/smartlect/constants/RabbitMQConfig.java",
+          "line": 44,
+          "end_line": 108,
+          "label": "拓扑声明"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "单机部署 · 服务绑定 127.0.0.1",
+      "wraps": [
+        "nginx",
+        "webuser",
+        "webadmin",
+        "gateway",
+        "assistant",
+        "javacore",
+        "knowledgeidx",
+        "mysql",
+        "rabbitmq",
+        "redis"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "交易权威边界：只有 Java 写交易状态",
+      "wraps": [
+        "javacore"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "e1",
+      "from": "shopper",
+      "to": "nginx",
+      "label": "HTTPS"
+    },
+    {
+      "id": "e2",
+      "from": "merchant",
+      "to": "nginx",
+      "label": "HTTPS"
+    },
+    {
+      "id": "e3",
+      "from": "nginx",
+      "to": "webuser",
+      "label": "静态 /"
+    },
+    {
+      "id": "e4",
+      "from": "nginx",
+      "to": "webadmin",
+      "label": "/admin/ 静态"
+    },
+    {
+      "id": "e5",
+      "from": "nginx",
+      "to": "gateway",
+      "label": "/api/ 反代",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e6",
+      "from": "webuser",
+      "to": "gateway",
+      "label": "/api/**",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "e7",
+      "from": "webadmin",
+      "to": "gateway",
+      "label": "/admin-api/**",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "e8",
+      "from": "gateway",
+      "to": "assistant",
+      "label": "/api/assistant",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 55
+    },
+    {
+      "id": "e9",
+      "from": "gateway",
+      "to": "javacore",
+      "label": "lb://",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e10",
+      "from": "assistant",
+      "to": "javacore",
+      "label": "X-Internal-Token /internal/*",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "variant": "security"
+    },
+    {
+      "id": "e11",
+      "from": "assistant",
+      "to": "llm",
+      "label": "OpenAI 兼容",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "e12",
+      "from": "assistant",
+      "to": "knowledgeidx",
+      "label": "混合检索",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "e13",
+      "from": "assistant",
+      "to": "mysql",
+      "label": "growth 库",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "e14",
+      "from": "javacore",
+      "to": "mysql",
+      "label": "业务分库 ×8",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e15",
+      "from": "javacore",
+      "to": "rabbitmq",
+      "fromSide": "right",
+      "toSide": "left",
+      "variant": "dashed"
+    },
+    {
+      "id": "e16",
+      "from": "javacore",
+      "to": "redis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e17",
+      "from": "javacore",
+      "to": "thirdparty",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "入口与前端",
+      "items": [
+        "Nginx 终结 TLS，按路径分流到两个 SPA 与网关",
+        "用户端 / 管理端均为 Vue 3 + Vite，会话走 Cookie",
+        "网关统一做 Sa-Token 会话校验与 Sentinel 限流"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Java 交易权威",
+      "items": [
+        "user·product·stock·cart·order·pay·coupon·admin 八服务 + 网关",
+        "每个服务独立 MySQL 分库（smartlect_user 等）",
+        "RabbitMQ 延时/死信驱动超时取消、模拟发货、自动确认"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "AI 助手",
+      "items": [
+        "FastAPI :18000，LangGraph 三节点有界 ReAct",
+        "工具五层设防：allowed→RBAC→校验→幂等→追踪",
+        "知识混合检索：ES BM25 ∥ Qdrant ANN → RRF → 重排"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "信任边界",
+      "items": [
+        "模型只能生成待确认提案，不能直接成交",
+        "人点确认后才由 Java 落单 / 退款 / 支付",
+        "服务间内部接口统一校验 X-Internal-Token"
+      ]
+    }
+  ]
+}

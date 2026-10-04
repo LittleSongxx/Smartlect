@@ -1,0 +1,533 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AI 助手内部架构",
+    "locale": "zh-CN",
+    "subtitle": "FastAPI 组合根 · LangGraph 有界会话 · 工具五层设防 · 混合检索",
+    "output": "架构图/diagrams/07-assistant-internals.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/LittleSongxx/Smartlect.git",
+      "provider": "github",
+      "revision": "2c8e46eef0b279ed3c6eee2d297b79dd2cf553db",
+      "link_mode": "web"
+    }
+  },
+  "components": [
+    {
+      "id": "gwin",
+      "type": "backend",
+      "label": "Spring 网关",
+      "sublabel": "/api/assistant 反代",
+      "pos": [
+        490,
+        30
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "backend/smartlect-gateway/src/main/resources/application.yml",
+          "line": 127,
+          "end_line": 132,
+          "label": "assistant 路由"
+        }
+      ]
+    },
+    {
+      "id": "app",
+      "type": "backend",
+      "label": "FastAPI 应用",
+      "sublabel": "对话/runs-SSE/提案/MCP/管理面",
+      "tag": "准入闸 actor≤3 · 全局≤24",
+      "pos": [
+        470,
+        140
+      ],
+      "size": [
+        210,
+        80
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/app.py",
+          "line": 179,
+          "label": "create_app"
+        },
+        {
+          "path": "assistant/src/smartlect/app.py",
+          "line": 245,
+          "end_line": 254,
+          "label": "admit_runs"
+        }
+      ]
+    },
+    {
+      "id": "idbridge",
+      "type": "security",
+      "label": "IdentityBridge",
+      "sublabel": "cookie → Java 内省",
+      "pos": [
+        760,
+        140
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/auth.py",
+          "line": 42,
+          "end_line": 93,
+          "label": "身份桥"
+        }
+      ]
+    },
+    {
+      "id": "provider",
+      "type": "backend",
+      "label": "模型 Provider",
+      "sublabel": "白名单 · 2 并发槽 · 5s TTL",
+      "pos": [
+        150,
+        300
+      ],
+      "size": [
+        170,
+        70
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/provider.py",
+          "line": 168,
+          "end_line": 227,
+          "label": "白名单与切换"
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "LangGraph 会话运行时",
+      "sublabel": "model/tools/answer 三节点",
+      "tag": "模型≤6 · 工具≤10 · 90s",
+      "pos": [
+        440,
+        290
+      ],
+      "size": [
+        210,
+        86
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/graph_runtime.py",
+          "line": 61,
+          "end_line": 76,
+          "label": "编译与预算"
+        },
+        {
+          "path": "assistant/src/smartlect/agents/shopping/policy.py",
+          "line": 53,
+          "end_line": 56,
+          "label": "预算常量"
+        }
+      ]
+    },
+    {
+      "id": "dispatch",
+      "type": "backend",
+      "label": "子智能体派发",
+      "sublabel": "task_dispatch ×3 并发",
+      "pos": [
+        760,
+        290
+      ],
+      "size": [
+        170,
+        70
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/agents/shopping/dispatch.py",
+          "line": 61,
+          "end_line": 125,
+          "label": "ReAct 子代理"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM 提供方",
+      "sublabel": "百炼 / 智谱",
+      "pos": [
+        150,
+        440
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/provider.py",
+          "line": 194,
+          "end_line": 211,
+          "label": "端点约束"
+        }
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "security",
+      "label": "工具注册表 REGISTRY",
+      "sublabel": "allowed→RBAC→校验→幂等→追踪",
+      "tag": "15 个工具 · 无成交权限",
+      "pos": [
+        500,
+        450
+      ],
+      "size": [
+        210,
+        70
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/tools.py",
+          "line": 139,
+          "end_line": 249,
+          "label": "注册与设防"
+        }
+      ]
+    },
+    {
+      "id": "knowledge",
+      "type": "backend",
+      "label": "知识混检",
+      "sublabel": "BM25 ∥ ANN → RRF → 重排",
+      "tag": "仅已发布可见",
+      "pos": [
+        950,
+        450
+      ],
+      "size": [
+        170,
+        70
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/knowledge.py",
+          "line": 337,
+          "end_line": 383,
+          "label": "rank_chunks"
+        }
+      ]
+    },
+    {
+      "id": "growthdb",
+      "type": "database",
+      "label": "MySQL growth 库",
+      "sublabel": "会话/提案/台账/知识目录",
+      "pos": [
+        150,
+        590
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/db.py",
+          "line": 25,
+          "end_line": 42,
+          "label": "线程本地连接"
+        }
+      ]
+    },
+    {
+      "id": "commerce",
+      "type": "backend",
+      "label": "AsyncCommerceClient",
+      "sublabel": "X-Internal-Token · 幂等键",
+      "pos": [
+        400,
+        590
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/commerce.py",
+          "line": 28,
+          "end_line": 47,
+          "label": "有界 HTTP"
+        }
+      ]
+    },
+    {
+      "id": "es",
+      "type": "database",
+      "label": "Elasticsearch",
+      "sublabel": "smartcn BM25",
+      "pos": [
+        620,
+        590
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/hybrid_search.py",
+          "line": 66,
+          "end_line": 86,
+          "label": "ES 后端"
+        }
+      ]
+    },
+    {
+      "id": "qdrant",
+      "type": "database",
+      "label": "Qdrant",
+      "sublabel": "1024 维 ANN",
+      "pos": [
+        780,
+        590
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/hybrid_search.py",
+          "line": 46,
+          "end_line": 58,
+          "label": "Qdrant 后端"
+        }
+      ]
+    },
+    {
+      "id": "javainternal",
+      "type": "external",
+      "label": "Java /internal 接口面",
+      "sublabel": "order/product/stock/coupon/user",
+      "pos": [
+        950,
+        590
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "assistant/src/smartlect/tools.py",
+          "line": 321,
+          "end_line": 386,
+          "label": "工具→后端映射"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Python 助手子系统（smartlect 包）",
+      "wraps": [
+        "app",
+        "idbridge",
+        "runtime",
+        "dispatch",
+        "registry",
+        "commerce",
+        "knowledge",
+        "provider",
+        "growthdb"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "uvicorn 进程 :18000",
+      "wraps": [
+        "app",
+        "idbridge",
+        "runtime",
+        "dispatch",
+        "registry",
+        "commerce",
+        "knowledge",
+        "provider"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "b1",
+      "from": "gwin",
+      "to": "app",
+      "label": "HTTP/SSE",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "b2",
+      "from": "app",
+      "to": "idbridge",
+      "label": "每请求鉴权",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b3",
+      "from": "app",
+      "to": "runtime",
+      "label": "创建 run + 租约",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "b4",
+      "from": "app",
+      "to": "growthdb",
+      "label": "会话/提案状态",
+      "fromSide": "left",
+      "toSide": "left"
+    },
+    {
+      "id": "b5",
+      "from": "runtime",
+      "to": "provider",
+      "label": "chat/embedding",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "b6",
+      "from": "provider",
+      "to": "llm",
+      "label": "OpenAI 兼容",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "b7",
+      "from": "runtime",
+      "to": "registry",
+      "label": "tool_node 调用",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "b8",
+      "from": "runtime",
+      "to": "dispatch",
+      "label": "task_dispatch",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b9",
+      "from": "dispatch",
+      "to": "registry",
+      "label": "子工具同路径"
+    },
+    {
+      "id": "b10",
+      "from": "registry",
+      "to": "commerce",
+      "label": "Java 工具执行",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "b11",
+      "from": "registry",
+      "to": "knowledge",
+      "label": "混检",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "b12",
+      "from": "knowledge",
+      "to": "es"
+    },
+    {
+      "id": "b13",
+      "from": "knowledge",
+      "to": "qdrant"
+    },
+    {
+      "id": "b14",
+      "from": "commerce",
+      "to": "javainternal",
+      "label": "/internal/*",
+      "via": [
+        [
+          580,
+          690
+        ],
+        [
+          950,
+          690
+        ]
+      ],
+      "variant": "security"
+    },
+    {
+      "id": "b15",
+      "from": "idbridge",
+      "to": "javainternal",
+      "label": "introspect",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "端点面",
+      "items": [
+        "用户面 /api/assistant：对话、SSE 事件重放、提案、支付查询",
+        "管理面 /admin-api/assistant：知识发布、模型配置、提示词、run 浏览",
+        "MCP JSON-RPC 只读工具面与 Prometheus /metrics"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "有界会话",
+      "items": [
+        "MySQL 租约互斥（claim_run + 心跳续期）",
+        "预算：模型 ≤6、工具 ≤10、检索 ≤2、90 秒硬界",
+        "checkpointer 内存或 Postgres，图状态与租约分离"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "工具五层设防",
+      "items": [
+        "allowed → RBAC → Pydantic strict → 幂等台账 → gen_ai_span",
+        "写类工具仅生成提案，无任何 approve/execute 权限",
+        "观察投影上限 6500 字节，防上下文膨胀"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "检索与模型",
+      "items": [
+        "候选仅 status=PUBLISHED 且 ACL 可见；缓存键含目录 revision",
+        "rerank 走供应商 gte-rerank-v2，后端故障滑动窗口降权",
+        "模型白名单 qwen3.7-plus / glm-5.3，端点限百炼与智谱"
+      ]
+    }
+  ]
+}

@@ -25,6 +25,10 @@ SUPPORT_HOLDOUT2 = CONTRACT_DIR / 'support/holdout2.jsonl'
 # holdout-3：v15 基线后的下一份密封留出（holdout-1/2 均已烧毁）。
 SHOPPING_HOLDOUT3 = CONTRACT_DIR / 'shopping/holdout3.jsonl'
 SUPPORT_HOLDOUT3 = CONTRACT_DIR / 'support/holdout3.jsonl'
+# holdout-4：v16 扩容（87+83、难负例语料）后的密封留出；12+12 题，规模较前代翻半，
+# 覆盖面映射 dev 未饱和维度。首测即终测纪律与前代一致。
+SHOPPING_HOLDOUT4 = CONTRACT_DIR / 'shopping/holdout4.jsonl'
+SUPPORT_HOLDOUT4 = CONTRACT_DIR / 'support/holdout4.jsonl'
 HOLDOUT_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout-manifest.json',
                      'support': CONTRACT_DIR / 'support/holdout-manifest.json'}
 ARTIFACTS_DIR = ROOT / 'artifacts/quality-v2'
@@ -62,7 +66,7 @@ def freeze_manifest():
 
 
 def refuse_holdout(split):
-    if split not in ('holdout', 'holdout2', 'holdout3'):
+    if split not in ('holdout', 'holdout2', 'holdout3', 'holdout4'):
         return
     # Both sealed splits ride on the same dev-freeze artifact; per-line seals
     # are additionally enforced by holdout_ready/holdout2_ready at run time.
@@ -597,6 +601,8 @@ def dataset_paths(split='development'):
         return {'shopping': SHOPPING_HOLDOUT2, 'support': SUPPORT_HOLDOUT2}
     if split == 'holdout3':
         return {'shopping': SHOPPING_HOLDOUT3, 'support': SUPPORT_HOLDOUT3}
+    if split == 'holdout4':
+        return {'shopping': SHOPPING_HOLDOUT4, 'support': SUPPORT_HOLDOUT4}
     raise ValueError('unknown_split:' + split)
 
 
@@ -629,6 +635,19 @@ HOLDOUT2_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout2-manifest.jso
 
 HOLDOUT3_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout3-manifest.json',
                       'support': CONTRACT_DIR / 'support/holdout3-manifest.json'}
+
+
+HOLDOUT4_MANIFESTS = {'shopping': CONTRACT_DIR / 'shopping/holdout4-manifest.json',
+                      'support': CONTRACT_DIR / 'support/holdout4-manifest.json'}
+
+
+def holdout4_ready(lines=('shopping', 'support')):
+    """Seal gate for holdout-4: runable only after every line's manifest is stamped.
+    Draft stage validates offline but never runs — first test is final test."""
+    missing = [line for line in lines if not HOLDOUT4_MANIFESTS[line].exists()]
+    if missing:
+        raise ValueError('holdout4_seal_pending_user_approval:' + ','.join(missing))
+    return True
 
 
 def holdout3_ready(lines=('shopping', 'support')):

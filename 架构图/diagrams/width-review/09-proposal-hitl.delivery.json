@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f7e4359d-f840-4bde-9465-e78669f6706a",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/home/song/code/Smartlect/架构图/diagrams/09-proposal-hitl.json",
+  "output": "/home/song/code/Smartlect/架构图/diagrams/width-review/09-proposal-hitl.html",
+  "specification": {
+    "sha256": "7bf6d69c01bc2eb4d3060b9be9a5b355430b9f00872741dffb7d8d0506c74bad",
+    "bytes": 6525
+  },
+  "artifact": {
+    "sha256": "a105302e7207a734904cc6b544732e2de3c1d0baf2818bdd9da956f0c1802de3",
+    "bytes": 761325
+  }
+}

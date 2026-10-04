@@ -1,0 +1,334 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "秒杀抢券流程",
+    "locale": "zh-CN",
+    "subtitle": "Redis Lua 原子预占 → Feign 秒杀单 → 延时死信兜底释放",
+    "output": "架构图/diagrams/06-coupon-rush.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/LittleSongxx/Smartlect.git",
+      "provider": "github",
+      "revision": "2c8e46eef0b279ed3c6eee2d297b79dd2cf553db",
+      "link_mode": "web"
+    }
+  },
+  "lanes": [
+    {
+      "id": "ui",
+      "label": "用户端"
+    },
+    {
+      "id": "coupon",
+      "label": "coupon 券服务"
+    },
+    {
+      "id": "order",
+      "label": "order 订单"
+    },
+    {
+      "id": "mq",
+      "label": "RabbitMQ",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "p1",
+      "label": "预占",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "p2",
+      "label": "秒杀落单",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "p3",
+      "label": "结局",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "rush",
+    "gate",
+    "post",
+    "paypage",
+    "paysuccess"
+  ],
+  "nodes": [
+    {
+      "id": "rush",
+      "lane": "ui",
+      "col": 0,
+      "type": "external",
+      "label": "抢券入口",
+      "sublabel": "POST rushCoupon",
+      "width": 165,
+      "sources": [
+        {
+          "path": "backend/smartlect-coupon/app/src/main/java/com/smartlect/controller/DiscountCouponController.java",
+          "line": 41,
+          "end_line": 92,
+          "label": "rushCoupon"
+        }
+      ]
+    },
+    {
+      "id": "fail",
+      "lane": "ui",
+      "col": 2,
+      "type": "external",
+      "label": "已抢完 / 限流",
+      "sublabel": "Lua 原子拒绝",
+      "width": 165
+    },
+    {
+      "id": "paypage",
+      "lane": "ui",
+      "col": 4,
+      "type": "frontend",
+      "label": "支付页",
+      "sublabel": "mock 支付",
+      "width": 175
+    },
+    {
+      "id": "timeout",
+      "lane": "mq",
+      "col": 5,
+      "type": "messagebus",
+      "label": "订单超时取消",
+      "sublabel": "15 分钟未付",
+      "width": 175
+    },
+    {
+      "id": "gate",
+      "lane": "coupon",
+      "col": 1,
+      "type": "security",
+      "label": "Redis Lua 预占",
+      "sublabel": "reserve_v1 原子扣减",
+      "tag": "库存 + 用户限购",
+      "width": 185,
+      "sources": [
+        {
+          "path": "backend/smartlect-coupon/app/src/main/java/com/smartlect/component/CouponRushStockService.java",
+          "line": 35,
+          "end_line": 43,
+          "label": "Lua 键位"
+        },
+        {
+          "path": "backend/smartlect-common/src/main/resources/lua/coupon_rush_reserve_v1.lua",
+          "line": 1,
+          "label": "预占脚本"
+        }
+      ]
+    },
+    {
+      "id": "release",
+      "lane": "coupon",
+      "col": 4,
+      "type": "backend",
+      "label": "释放 Redis 预占",
+      "sublabel": "rollback_v1",
+      "width": 175,
+      "sources": [
+        {
+          "path": "backend/smartlect-coupon/app/src/main/java/com/smartlect/component/RabbitMQOrderDeadListListenerComponent.java",
+          "line": 35,
+          "label": "死信监听"
+        }
+      ]
+    },
+    {
+      "id": "post",
+      "lane": "order",
+      "col": 2,
+      "type": "backend",
+      "label": "秒杀单落单",
+      "sublabel": "postCouponRushOrder",
+      "width": 185,
+      "sources": [
+        {
+          "path": "backend/smartlect-order/app/src/main/java/com/smartlect/biz/impl/CouponRushOrderServiceImpl.java",
+          "line": 67,
+          "end_line": 70,
+          "label": "秒杀单"
+        }
+      ]
+    },
+    {
+      "id": "paysuccess",
+      "lane": "order",
+      "col": 5,
+      "type": "backend",
+      "label": "paySuccess 落单",
+      "sublabel": "订单生效 · 券核销",
+      "width": 175
+    },
+    {
+      "id": "dead",
+      "lane": "mq",
+      "col": 4,
+      "type": "messagebus",
+      "label": "rushing.dead 死信",
+      "sublabel": "pay.timeout TTL 到期",
+      "width": 175,
+      "sources": [
+        {
+          "path": "backend/smartlect-common/src/main/java/com/smartlect/constants/RabbitMQConfig.java",
+          "line": 131,
+          "end_line": 369,
+          "label": "TTL/DLX 绑定"
+        }
+      ]
+    },
+    {
+      "id": "warmup",
+      "lane": "coupon",
+      "col": 0,
+      "type": "backend",
+      "label": "warmupRushStock",
+      "sublabel": "预热库存进 Redis",
+      "width": 175,
+      "sources": [
+        {
+          "path": "backend/smartlect-coupon/app/src/main/java/com/smartlect/controller/admin/DiscountCouponController.java",
+          "line": 19,
+          "end_line": 73,
+          "label": "运营端点"
+        }
+      ]
+    },
+    {
+      "id": "reconcile",
+      "lane": "coupon",
+      "col": 0,
+      "type": "backend",
+      "label": "reconcileRushStock",
+      "sublabel": "对账修正",
+      "width": 175,
+      "yOffset": 64
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "rush",
+      "to": "gate",
+      "label": "抢购请求",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e2",
+      "from": "gate",
+      "to": "fail",
+      "label": "无余量/超限",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e3",
+      "from": "gate",
+      "to": "post",
+      "label": "预占成功",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e4",
+      "from": "post",
+      "to": "paypage",
+      "label": "待支付",
+      "variant": "default",
+      "role": "main"
+    },
+    {
+      "id": "e5",
+      "from": "paypage",
+      "to": "paysuccess",
+      "label": "pay.success",
+      "variant": "default",
+      "role": "main",
+      "fromSide": "right",
+      "toSide": "right",
+      "route": "outside-right"
+    },
+    {
+      "id": "e7",
+      "from": "post",
+      "to": "dead",
+      "label": "发 pay.timeout 延时",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "e8",
+      "from": "dead",
+      "to": "release",
+      "label": "超时未付",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "e9",
+      "from": "dead",
+      "to": "timeout",
+      "label": "取消未付单",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "e10",
+      "from": "warmup",
+      "to": "gate",
+      "label": "预热",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e11",
+      "from": "reconcile",
+      "to": "gate",
+      "label": "对账",
+      "variant": "dashed",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "为什么用 Lua",
+      "items": [
+        "库存余量与用户限购在同一脚本内原子判定",
+        "超卖不可能：reserve_v1 失败即整体回滚",
+        "抢购 QPS 另有 Redis 计数限流兜底"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "两条出路",
+      "items": [
+        "支付成功 → pay.success 队列核销，占位转正式",
+        "15 分钟未付 → pay.timeout 死信 → rollback_v1 释放占位",
+        "订单取消与券释放解耦在两个监听器"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "运营工具",
+      "items": [
+        "warmupRushStock 活动前把库存同步进 Redis",
+        "reconcileRushStock 事后对账修正漂移",
+        "sweep_dangling 清理悬挂占位"
+      ]
+    }
+  ]
+}
