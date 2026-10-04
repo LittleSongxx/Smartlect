@@ -56,7 +56,6 @@ private CouponRushRedisComponent couponRushRedisComponent;
 	private DiscountCouponCacheComponent discountCouponCacheComponent;
 	@Resource
 	private CouponRushStockService couponRushStockService;
-	@Resource
 
 	@Override
 	public List<DiscountCoupon> findListByParam(DiscountCouponQuery param) {

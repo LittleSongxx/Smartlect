@@ -65,11 +65,12 @@ public class RedisComponent {
 
     // ===== 管理端 Sa-Token 会话（ADR-0011 Step 2）=====
     // common 不引 Sa-Token SDK，按 Sa-Token 1.39 键布局裸读写：
-    //   adminToken:login:token:{token}   -> adminId 裸字符串
-    //   adminToken:login:session:{adminId} -> Account-Session JSON，dataMap.adminPrincipal 即 AdminPrincipalDTO
-
-    private static final String SA_TOKEN_ADMIN_TOKEN_PREFIX = "adminToken:login:token:";
-    private static final String SA_TOKEN_ADMIN_SESSION_PREFIX = "adminToken:login:session:";
+    //   {tokenName}:{loginType}:token:{token}     -> adminId 裸字符串
+    //   {tokenName}:{loginType}:session:{adminId} -> Account-Session JSON，dataMap.adminPrincipal 即 AdminPrincipalDTO
+    // 管理端 loginType=admin、tokenName=adminToken（StpAdminLogic），实测键为 adminToken:admin:*；
+    // 2026-10-04 修正：此前误写 login 段（adminToken:login:*）导致跨服务内省永远 401。
+    private static final String SA_TOKEN_ADMIN_TOKEN_PREFIX = "adminToken:admin:token:";
+    private static final String SA_TOKEN_ADMIN_SESSION_PREFIX = "adminToken:admin:session:";
 
     public AdminPrincipalDTO getAdminPrincipal(String token) {
         if (StringTools.isEmpty(token)) {
@@ -79,9 +80,18 @@ public class RedisComponent {
         if (StringTools.isEmpty(adminId)) {
             return null;
         }
-        // 从 Sa-Token session JSON 的 dataMap 提取 adminPrincipal
-        Object sessionJson = redisTemplate.opsForValue().get(SA_TOKEN_ADMIN_SESSION_PREFIX + adminId);
-        if (!(sessionJson instanceof Map<?, ?> session)) {
+        // 从 Sa-Token session JSON 的 dataMap 提取 adminPrincipal。
+        // Sa-Token redis-jackson 写入的是带 @class 元数据的纯 JSON 字符串；本类的
+        // redisTemplate 值序列化器会按 @class 还原成 SaSession 对象（不是 Map），
+        // 所以必须走 stringRedisTemplate 取原始 JSON 再解析，不能依赖模板反序列化。
+        String sessionRaw = stringRedisTemplate.opsForValue().get(SA_TOKEN_ADMIN_SESSION_PREFIX + adminId);
+        if (StringTools.isEmpty(sessionRaw)) {
+            return null;
+        }
+        Map<?, ?> session;
+        try {
+            session = JsonUtils.mapper().readValue(sessionRaw, Map.class);
+        } catch (Exception e) {
             return null;
         }
         Object dataMap = session.get("dataMap");

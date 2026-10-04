@@ -2,6 +2,7 @@ package com.smartlect.component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartlect.constants.Constants;
+import com.smartlect.entity.dto.AdminPrincipalDTO;
 import com.smartlect.entity.dto.TokenUserInfoDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** Sa-Token 键布局（token:login:*）裸读契约，格式与 sa-token-redis-jackson 1.39.0 实测输出一致。 */
+/**
+ * Sa-Token 键布局裸读契约，格式与 sa-token-redis-jackson 1.39.0 实测输出一致。
+ * 用户端 token:login:*；管理端 tokenName=adminToken、loginType=admin，实键 adminToken:admin:*。
+ */
 class RedisComponentSaTokenSessionTest {
 
     private static final String SESSION_JSON = """
@@ -30,6 +34,19 @@ class RedisComponentSaTokenSessionTest {
              "tokenSignList":["java.util.Vector",[
                {"@class":"cn.dev33.satoken.session.TokenSign","value":"token-a","device":"default-device","tag":null},
                {"@class":"cn.dev33.satoken.session.TokenSign","value":"token-b","device":"default-device","tag":null}]]}
+            """;
+
+    // 管理端 Account-Session：dataMap.adminPrincipal 即 AdminPrincipalDTO；loginType=admin
+    private static final String ADMIN_SESSION_JSON = """
+            {"@class":"cn.dev33.satoken.dao.SaSessionForJacksonCustomized",
+             "id":"adminToken:admin:session:a1","type":"Account-Session","loginType":"admin","loginId":"a1",
+             "token":null,"createTime":1791106553744,
+             "dataMap":{"@class":"java.util.concurrent.ConcurrentHashMap",
+               "adminPrincipal":{"@class":"com.smartlect.entity.dto.AdminPrincipalDTO",
+                 "adminId":"a1","account":"gallery","displayName":"馆长",
+                 "roles":["gallery"],"permissions":["knowledge:publish"],"sessionVersion":7}},
+             "tokenSignList":["java.util.Vector",[
+               {"@class":"cn.dev33.satoken.session.TokenSign","value":"admin-tok","device":"default-device","tag":null}]]}
             """;
 
     private final StringRedisTemplate redis = mock(StringRedisTemplate.class);
@@ -85,6 +102,32 @@ class RedisComponentSaTokenSessionTest {
 
         assertEquals("u1", dto.getUserId());
         assertEquals("token-a", dto.getToken());
+    }
+
+    @Test
+    void adminTokenResolvesViaAdminLoginTypeKeysAndRawSessionJson() {
+        when(values.get("adminToken:admin:token:admin-tok")).thenReturn("a1");
+        when(values.get("adminToken:admin:session:a1")).thenReturn(ADMIN_SESSION_JSON);
+        when(values.get(Constants.REDIS_KEY_ADMIN_SESSION_VERSION + "a1")).thenReturn("7");
+
+        AdminPrincipalDTO principal = component.getAdminPrincipal("admin-tok");
+
+        assertEquals("a1", principal.getAdminId());
+        assertEquals("gallery", principal.getAccount());
+        assertEquals("馆长", principal.getDisplayName());
+        assertEquals(Long.valueOf(7L), principal.getSessionVersion());
+        assertEquals(java.util.Set.of("gallery"), principal.getRoles());
+        assertEquals(java.util.Set.of("knowledge:publish"), principal.getPermissions());
+    }
+
+    @Test
+    void adminSessionVersionMismatchDeletesTokenAndYieldsNull() {
+        when(values.get("adminToken:admin:token:admin-tok")).thenReturn("a1");
+        when(values.get("adminToken:admin:session:a1")).thenReturn(ADMIN_SESSION_JSON);
+        when(values.get(Constants.REDIS_KEY_ADMIN_SESSION_VERSION + "a1")).thenReturn("8");
+
+        assertNull(component.getAdminPrincipal("admin-tok"));
+        verify(redis).delete("adminToken:admin:token:admin-tok");
     }
 
     @Test

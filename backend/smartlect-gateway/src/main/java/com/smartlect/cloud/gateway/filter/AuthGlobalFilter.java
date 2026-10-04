@@ -29,7 +29,8 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
     // Sa-Token 用户端会话键（ADR-0011 Step 1）：值是 loginId 裸字符串，无需解析 JSON
     private static final String REDIS_KEY_TOKEN_WEB = "token:login:token:";
-    private static final String REDIS_KEY_TOKEN_ADMIN = "adminToken:login:token:";
+    // 管理端 loginType=admin（StpAdminLogic），Sa-Token 1.39 实键为 adminToken:admin:token:*
+    private static final String REDIS_KEY_TOKEN_ADMIN = "adminToken:admin:token:";
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String USER_VERIFIED_HEADER = "X-User-Token-Verified";
     private static final String ADMIN_VERIFIED_HEADER = "X-Admin-Token-Verified";

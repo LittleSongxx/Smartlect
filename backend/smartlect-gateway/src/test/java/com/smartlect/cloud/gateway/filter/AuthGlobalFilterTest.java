@@ -136,6 +136,30 @@ class AuthGlobalFilterTest {
     }
 
     @Test
+    void adminRoutesCheckAdminLoginTypeKeyPrefix() {
+        when(redisTemplate.hasKey("adminToken:admin:token:valid-admin")).thenReturn(Mono.just(true));
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/admin-api/order/loadDataList")
+                        .header("adminToken", "valid-admin").build());
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+
+        filter.filter(exchange, capture(forwarded)).block();
+
+        assertEquals(List.of("1"), forwarded.get().getRequest().getHeaders().get("X-Admin-Token-Verified"));
+        assertNull(forwarded.get().getRequest().getHeaders().getFirst("X-User-Id"));
+
+        // 键不存在（旧前缀/过期/伪造）一律 401，不透传任何已验证标记
+        when(redisTemplate.hasKey("adminToken:admin:token:stale-admin")).thenReturn(Mono.just(false));
+        MockServerWebExchange stale = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/admin-api/order/loadDataList")
+                        .header("adminToken", "stale-admin").build());
+        AtomicReference<ServerWebExchange> staleForwarded = new AtomicReference<>();
+        filter.filter(stale, capture(staleForwarded)).block();
+        assertNull(staleForwarded.get());
+        assertEquals(HttpStatus.UNAUTHORIZED, stale.getResponse().getStatusCode());
+    }
+
+    @Test
     void traditionalOrdersAndSimilarButDifferentPrefixesStillRequireLogin() {
         for (String path : List.of("/api/order/loadMyOrder", "/admin-api/order/loadDataList",
                 "/api/assistant-other/session", "/admin-api/assistant-other/session")) {
