@@ -16,7 +16,8 @@ from smartlect.provider import Provider
 async def seed(live):
     config = {**parse_env(ENV_FILE), **model_env()}
     os.environ.update(config)
-    knowledge = KnowledgeStore()
+    from smartlect.db import connect_from_env
+    knowledge = KnowledgeStore(connect_from_env)
     knowledge.initialize()
     publisher = ActorContext(subject_type='merchant', actor_id='fixture-publisher',
                              permissions=('admin:legacy',), session_id='local-fixture-installer')
