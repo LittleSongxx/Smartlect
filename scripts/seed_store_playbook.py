@@ -393,11 +393,11 @@ def main():
         'status': 'READY',
         'campaigns': len(evidence.get('campaigns', [])),  # 广告线 v7 退役，保留字段兼容输出
         'walkthrough': evidence.get('walkthrough', {}),
-        'ticket': ticket,
+        'ticket': evidence.get('ticket', {}),  # 退役收口：ticket 不再是局部变量
         'login': DEMO_ACCOUNT,
         'password': 'see SMARTLECT_DEMO_PASSWORD in run/runtime.env',
-        'open_ticket_as_shopper': evidence['urls']['assistant'],
-        'open_ticket_as_merchant': evidence['urls']['admin_support'],
+        'open_ticket_as_shopper': (evidence.get('urls') or {}).get('assistant'),
+        'open_ticket_as_merchant': (evidence.get('urls') or {}).get('admin_support'),
         'artifact': str(ARTIFACT.relative_to(ROOT)),
     }, ensure_ascii=False, indent=2))
 
