@@ -137,6 +137,7 @@ backend/   gateway · user · product · stock · cart · order · pay · coupon
 assistant/ Shopping Agent · RAG（ES+Qdrant 混检）· 提案确认 · 子智能体派发
 web/       用户端与管理端（Vue 3）
 evals/     quality-v2（导购 / 客服）
+eval/verification/  评测与发布的原始证据库（按日期归档）
 docs/      设计说明与 ADR，给想往下翻的人
 ```
 
@@ -181,6 +182,7 @@ docs/      设计说明与 ADR，给想往下翻的人
 | [0009](docs/adr/0009-agent-runtime-choices.md) | Agent runtime 选型（openai SDK · 手写 ReAct 暂缓迁移） |
 | [0010](docs/adr/0010-subagent-dispatch.md) | 并行子智能体（SubAgent-as-Tool + create_react_agent） |
 | [0011](docs/adr/0011-sa-token-migration-plan.md) | Sa-Token 替换自研鉴权三件套 |
+| [0012](docs/adr/0012-echomind-patterns.md) | 借鉴 EchoMind 模式的 Agent 架构清晰化重构 |
 
 ---
 
