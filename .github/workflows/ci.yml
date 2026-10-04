@@ -105,12 +105,12 @@ jobs:
           echo "${{ secrets.ECS_HOST_KEY }}" >> ~/.ssh/known_hosts
       - name: 回滚（inputs.rollback=true 时）
         if: ${{ inputs.rollback }}
-        run: $SSH_CMD root@39.107.102.244 rollback
+        run: $SSH_CMD root@39.96.202.14 rollback
       - name: 打 bundle 并上传
         if: ${{ !inputs.rollback }}
         run: |
           git bundle create deploy.bundle HEAD
-          $SSH_CMD root@39.107.102.244 upload < deploy.bundle
+          $SSH_CMD root@39.96.202.14 upload < deploy.bundle
       - uses: actions/download-artifact@v4
         if: ${{ !inputs.rollback }}
         with:
@@ -126,10 +126,10 @@ jobs:
         run: |
           tar czf web-dist.tar.gz web/user/dist web/admin/dist
           ls -la web-dist.tar.gz
-          $SSH_CMD root@39.107.102.244 upload-dist < web-dist.tar.gz
+          $SSH_CMD root@39.96.202.14 upload-dist < web-dist.tar.gz
       - name: 部署 + 健康门禁（失败即 exit 1）
         if: ${{ !inputs.rollback }}
-        run: $SSH_CMD root@39.107.102.244 deploy
+        run: $SSH_CMD root@39.96.202.14 deploy
       - name: 部署后状态
         if: always()
-        run: $SSH_CMD root@39.107.102.244 status || true
+        run: $SSH_CMD root@39.96.202.14 status || true
