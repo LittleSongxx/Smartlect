@@ -3,31 +3,28 @@
     <div v-if="hasTranscript" class="quick-tips">
       <button v-for="tip in tips" :key="tip" type="button" class="tip-chip" :disabled="busy" @click="input = tip">{{ tip }}</button>
     </div>
+    <div v-if="productId" class="composer-row" role="group" aria-label="提问范围">
+      <button
+        type="button"
+        class="focus-chip"
+        :class="{ active: focused }"
+        :disabled="busy"
+        @click="setProduct"
+      >
+        <span class="focus-dot" />
+        问这件{{ productName ? ` · ${shortName}` : '' }}
+      </button>
+      <button
+        type="button"
+        class="focus-escape"
+        :class="{ active: !focused }"
+        :disabled="busy"
+        @click="setGlobal"
+      >
+        {{ focused ? '改问全店' : '正在问全店' }}
+      </button>
+    </div>
     <div class="composer-box">
-      <div class="composer-top" role="group" aria-label="提问范围">
-        <button
-          v-if="productId"
-          type="button"
-          class="focus-chip"
-          :class="{ active: focused }"
-          :disabled="busy"
-          @click="setProduct"
-        >
-          <span class="focus-dot" />
-          问这件{{ productName ? ` · ${shortName}` : '' }}
-        </button>
-        <button
-          v-if="productId"
-          type="button"
-          class="focus-escape"
-          :class="{ active: !focused }"
-          :disabled="busy"
-          @click="setGlobal"
-        >
-          {{ focused ? '改问全店' : '正在问全店' }}
-        </button>
-        <p class="focus-hint">{{ focusHint }}</p>
-      </div>
       <textarea
         ref="textarea"
         v-model="input"
@@ -67,15 +64,8 @@ const shortName = computed(() => {
   const name = productName.value || '';
   return name.length > 12 ? `${name.slice(0, 12)}…` : name;
 });
-const focusHint = computed(() => {
-  if (!productId.value) return '当前按全店政策回答';
-  if (focused.value) return '当前只回答这件商品和适用店规。想问其他请点「改问全店」。';
-  return '已切换为全店，可问选品、其他商品和订单。点「问这件」可回到本商品。';
-});
 const composerHint = computed(() => (
-  focused.value
-    ? '下单和退款都会先确认。想问其他商品或订单，请先改成「全店」。'
-    : '下单和退款都会先确认，事实只依据当前可见资料。'
+  focused.value ? '下单和退款都会先确认。' : '下单和退款都会先确认，事实只依据当前可见资料。'
 ));
 const composerPlaceholder = computed(() => {
   if (handoff.value) return '本会话已转人工，可刷新查看回复';
@@ -120,12 +110,12 @@ function keydown(event: KeyboardEvent) {
   background: $color-card;
 }
 
-.composer-top {
+.composer-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 10px 12px 0;
+  padding: 0 2px 8px;
 }
 
 .focus-chip {
@@ -171,14 +161,6 @@ function keydown(event: KeyboardEvent) {
   flex-shrink: 0;
 }
 
-.focus-hint {
-  flex: 1 1 100%;
-  margin: 0 0 2px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: $color-text-muted;
-}
-
 .quick-tips {
   display: flex;
   align-items: center;
@@ -206,6 +188,7 @@ function keydown(event: KeyboardEvent) {
   border: 1px solid $color-border;
   border-radius: 16px;
   background: $color-card;
+  box-shadow: 0 1px 4px rgba(60, 40, 20, 0.05);
   transition: border-color $transition-fast, box-shadow $transition-fast;
 
   &:focus-within {
@@ -231,6 +214,11 @@ function keydown(event: KeyboardEvent) {
 
   &:focus {
     outline: none;
+  }
+
+  &::placeholder {
+    color: $color-text-muted;
+    opacity: 0.75;
   }
 }
 
