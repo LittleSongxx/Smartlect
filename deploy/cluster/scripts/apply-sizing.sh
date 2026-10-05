@@ -16,7 +16,14 @@ set -euo pipefail
 RT="${RUNTIME_ENV:-/opt/smartlect/run/runtime.env}"
 DRY="${1:-}"
 
-POOL=8   # 17 个 Java 实例 × 8 = 136 + nacos/assistant ≈ 20，仍在 MySQL max_connections=200 内
+# 连接池：实测 1200 并发下 product 池 8 条被打满——active 7/8、185 个请求排队、
+# 等连接最长 1494ms，这正是单机天花板的约束（同一形态 2026-09 出现过：池 4→12 让
+# 真极限从 605 涨到 815）。提到 16。
+#
+# 预算：node1 跑 9 个 Java 服务，9 × 16 = 144，加 nacos/assistant ≈ 20 → 164 < 200 ✓
+# 注意：若恢复三节点（node2/3 各再跑 4 个服务），17 × 16 = 272 会超过 max_connections=200，
+# 那时候要么把池降到 11，要么把 MySQL 的 max_connections 提到 400（deploy/compose.yaml）。
+POOL="${SMARTLECT_TUNE_POOL:-16}"
 
 set_env() {
   local key="$1" value="$2"
@@ -34,11 +41,19 @@ IS_REPLICA=$(grep -c "^SMARTLECT_APP_SERVICES=" "$RT" || true)
 echo "[$(hostname)] $(nproc) 核 / $(awk '/MemTotal/{printf "%d", $2/1048576}' /proc/meminfo)G 角色=$([ "$IS_REPLICA" -gt 0 ] && echo 副本 || echo 主节点)"
 
 set_env SMARTLECT_DB_POOL_MAX_SIZE "$POOL"
+
 if [ "$IS_REPLICA" -gt 0 ]; then
   set_env SMARTLECT_JAVA_PROCESSORS 2
   set_env SMARTLECT_JAVA_XMS 256m
   set_env SMARTLECT_JAVA_XMX 512m
 else
-  echo "  主节点 JVM 参数保持不变（无证据支持改动）"
+  # 主节点同样要设：早先这里"无证据不改"是错的——实测把默认的 2 处理器/256m
+  # 提到 4 处理器/512m 后，**单机天花板从 833 提到 1090 req/s（+31%）**，
+  # 1200 并发档 p95 从 1863ms 降到 1081ms。JIT 编译线程与 GC 线程按 8 核的
+  # 1/9 分摊远不够用，这是 2026-09 记录里就列为"下一排杠杆"的那一项。
+  set_env SMARTLECT_JAVA_PROCESSORS "${SMARTLECT_TUNE_PROCESSORS:-4}"
+  set_env SMARTLECT_JAVA_XMS 256m
+  set_env SMARTLECT_JAVA_XMX "${SMARTLECT_TUNE_XMX:-512m}"
 fi
+
 [ "$DRY" = "--dry-run" ] || { chmod 600 "$RT"; echo "  已写入 $RT（生效需 systemctl restart smartlect-apps）"; }

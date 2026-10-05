@@ -87,7 +87,7 @@ done
 # 跑交易前先补库存：demo 夹具 40 个 SKU 原库存合计仅 580 件，一轮 10 并发×60s 就能打空，
 # 打空后的轮次会全线 no_stock，被误读成"系统高负载失败"（2026-10-06 就是这么误判的）。
 # 单量也用 --max-orders 封顶，保证各变体之间的样本量一致。
-log "交易闭环：先补库存到每 SKU $TOPUP_STOCK 件"
+log "交易闭环：先补库存（stock-control.sh topup）"
 bash "$(dirname "$HERE")/deploy/cluster/scripts/stock-control.sh" topup 2>/dev/null || \
   bash /opt/cluster/scripts/stock-control.sh topup 2>/dev/null || echo "  （stock-control 不可用，跳过）"
 log "交易闭环 $ORDER_VUS 并发 × ${ORDER_HOLD}s"
