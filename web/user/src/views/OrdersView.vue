@@ -294,8 +294,7 @@ const loadMore = async () => {
     const next = pageNo.value + 1;
     const r = await orderApi.loadMyOrder({
       pageNo: next,
-      status: apiStatus.value,
-      ...(tab.value === 'evaluate' ? { commentPending: 1 } : {})
+      status: apiStatus.value
     });
     const chunk = r?.list || [];
     if (next === 1) list.value = chunk;
@@ -469,18 +468,6 @@ onUnmounted(() => {
     }
 
     &.is-cancel {
-      color: $color-text-muted;
-    }
-
-    &.is-comment-pending {
-      color: $color-price;
-    }
-
-    &.is-commented {
-      color: $color-primary;
-    }
-
-    &.is-recommented {
       color: $color-text-muted;
     }
   }

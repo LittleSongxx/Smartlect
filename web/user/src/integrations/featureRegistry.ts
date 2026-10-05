@@ -163,8 +163,8 @@ export const FEATURE_REGISTRY: FeatureMeta[] = [
   {
     id: 'order_comment',
     label: '评价',
-    supported: true,
-    eshopApi: 'order/comment/*'
+    supported: false,
+    extensionHint: '评价域已在后端收敛中退役；恢复需重建 order/comment API 与审核链'
   },
   {
     id: 'user_login_email',
@@ -205,32 +205,32 @@ export const FEATURE_REGISTRY: FeatureMeta[] = [
   {
     id: 'favorite',
     label: '收藏',
-    supported: true,
-    eshopApi: 'userFavorite/*'
+    supported: false,
+    extensionHint: 'userFavorite 域已在后端收敛中退役；恢复需重建收藏 API 与列表页'
   },
   {
     id: 'browse_history',
     label: '浏览足迹',
-    supported: true,
-    eshopApi: 'browseHistory/*'
+    supported: false,
+    extensionHint: 'browseHistory 域已在后端收敛中退役'
   },
   {
     id: 'sign_in',
     label: '签到',
-    supported: true,
-    eshopApi: 'sign/*'
+    supported: false,
+    extensionHint: 'sign 域已在后端收敛中退役；恢复需重建签到与积分体系'
   },
   {
     id: 'member_center',
     label: '会员中心',
-    supported: true,
-    eshopApi: 'userMember/*'
+    supported: false,
+    extensionHint: 'userMember 域已在后端收敛中退役'
   },
   {
     id: 'notification',
     label: '消息中心',
-    supported: true,
-    eshopApi: 'userNotification/*'
+    supported: false,
+    extensionHint: 'userNotification 域已在后端收敛中退役'
   },
   {
     id: 'agent_chat',

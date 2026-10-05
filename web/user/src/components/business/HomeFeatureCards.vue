@@ -27,12 +27,11 @@ const router = useRouter();
 
 const featureItems = ref([
   { icon: Star, label: '猜你喜欢', path: '#recommend-section', badge: '', isAnchor: true },
-  { icon: Medal, label: '会员中心', path: '/member-center', badge: '', isAnchor: false },
-  { icon: Check, label: '签到有礼', path: '/sign', badge: '', isAnchor: false },
+  { icon: Medal, label: '编辑精选', path: '/recommend', badge: '', isAnchor: false },
   { icon: Discount, label: '优惠券', path: '/coupons', badge: '', isAnchor: false },
+  { icon: Check, label: '我的订单', path: '/orders', badge: '', isAnchor: false },
 ]);
 
-// 等级差异由会员中心承担，入口图标统一用主色（原先按等级切橙/金/灰三套硬编码色）
 const iconColor = computed(() => 'var(--primary)');
 
 const handleClick = (item: { path: string; isAnchor: boolean }) => {

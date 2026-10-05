@@ -167,7 +167,6 @@ export const payTradeApi = {
 
 export interface ImageUploadResult {
   path: string;
-  assetId?: string;
   contentSha256?: string;
   mimeType?: string;
   width?: number;
@@ -188,7 +187,7 @@ export const fileApi = {
   uploadImage: async (
     file: Blob,
     createThumbnail = true,
-    scene?: 'avatar' | 'comment' | 'agent',
+    scene?: 'avatar',
     orderId?: string,
     options?: ImageUploadOptions
   ): Promise<ImageUploadResult> => {
@@ -219,18 +218,8 @@ export const fileApi = {
       });
     }
     const data = result.data;
-    const { normalizeCommentImagePath } = await import('@/utils/commentImagePaths');
-    const path = normalizeCommentImagePath(data) || '';
-    const assetId =
-      typeof data === 'object' && data !== null && (data as { assetId?: unknown }).assetId
-        ? String((data as { assetId?: unknown }).assetId)
-        : undefined;
-    if (scene === 'agent' && !assetId) {
-      throw new Error('上传响应缺少图片资产ID');
-    }
-    if (scene !== 'agent' && !path) {
-      throw new Error('上传响应缺少图片路径');
-    }
+    const { extractUploadPath } = await import('@/utils/image');
+    const path = extractUploadPath(data) || '';
     const pendingReview =
       typeof data === 'object' && data !== null && 'pendingReview' in data
         ? !!(data as { pendingReview?: boolean }).pendingReview
@@ -269,7 +258,6 @@ export const fileApi = {
         : undefined;
     return {
       path,
-      assetId,
       contentSha256,
       mimeType,
       width,

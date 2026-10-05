@@ -21,9 +21,7 @@ const navLinks = [
   { label: '精选好物', path: '/' },
   { label: '全部分类', path: '/search' },
   { label: '优惠券', path: '/coupons' },
-  { label: '签到有礼', path: '/sign' },
-  { label: '会员中心', path: '/member-center' },
-  { label: '我的收藏', path: '/wishlist' },
+  { label: '编辑精选', path: '/recommend' },
   { label: '我的订单', path: '/orders' },
   { label: '智能客服', path: '/assistant', agent: true }
 ];

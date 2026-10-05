@@ -40,20 +40,12 @@ const Api = {
     mqCompensationLogGetByLogId: "/mqCompensationLog/getByLogId",
     mqCompensationLogUpdateStatus: "/mqCompensationLog/updateStatus",
     mqCompensationLogReplay: "/mqCompensationLog/replay",
-    ragSyncFailureLoadList: "/ragSyncFailure/loadDataList",
-    ragSyncFailureReplay: "/ragSyncFailure/replay",
-    ragSyncFailureUpdateStatus: "/ragSyncFailure/updateStatus",
-    ragSyncFailureDismissRedis: "/ragSyncFailure/dismissRedisSnapshot",
 
     loadUser: "/user/loadUser",
     changeStatus: "/user/changeStatus",
 
     saveSysSaveLogistics: "/setting/saveLogistics",
     getSysLogistics: "/setting/getLogistics",
-    loadPromptList: "/setting/loadPromptList",
-    getPromptDetail: "/setting/getPromptDetail",
-    savePrompt: "/setting/savePrompt",
-    cleanPromptCache: "/setting/cleanPromptCache",
 
     getTodayData: "/home/getTodayData",
     loadWeeklyStatisticsData: "/home/loadWeeklyStatisticsData",
@@ -63,10 +55,6 @@ const Api = {
     saveDiscountCoupon: "/discountCoupon/saveDiscountCoupon",
     getDiscountCouponInfo: "/discountCoupon/getDiscountCouponInfo",
     updateDiscountCouponStatus: "/discountCoupon/updateDiscountCouponStatus",
-
-    searchHotKeywordLoadList: "/searchHotKeyword/loadList",
-    searchHotKeywordSave: "/searchHotKeyword/save",
-    searchHotKeywordDel: "/searchHotKeyword/del",
 
     warmupRushStock: "/discountCoupon/warmupRushStock",
     reconcileRushStock: "/discountCoupon/reconcileRushStock",

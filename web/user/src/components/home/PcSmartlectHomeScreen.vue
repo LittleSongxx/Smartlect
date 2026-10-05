@@ -106,8 +106,8 @@
           </template>
         </div>
         <div class="sl-member-ft">
-          <RouterLink to="/sign" class="t"><span class="sl-coin">◆</span>签到有礼</RouterLink>
-          <RouterLink to="/member-center" class="h"><span class="sl-coin gold">◆</span>会员中心</RouterLink>
+          <RouterLink to="/coupons" class="t"><span class="sl-coin">◆</span>领券中心</RouterLink>
+          <RouterLink to="/my-coupons" class="h"><span class="sl-coin gold">◆</span>我的优惠券</RouterLink>
         </div>
       </div>
 
@@ -137,11 +137,11 @@ import { RouterLink, useRouter } from 'vue-router';
 import {
   ArrowRight,
   ChatDotRound,
+  CreditCard,
   Grid,
   List,
   Location,
-  Present,
-  Star,
+  MagicStick,
   Ticket,
   Wallet
 } from '@element-plus/icons-vue';
@@ -222,10 +222,10 @@ const serviceGrid = [
   { label: '优惠券', path: '/coupons', icon: Ticket },
   { label: '我的订单', path: '/orders', icon: List },
   { label: '购物车', path: '/cart', icon: Wallet },
-  { label: '签到有礼', path: '/sign', icon: Present },
-  { label: '我的收藏', path: '/wishlist', icon: Star },
   { label: '收货地址', path: '/address', icon: Location },
-  { label: '消息中心', path: '/notifications', icon: ChatDotRound }
+  { label: '支付记录', path: '/pay-records', icon: CreditCard },
+  { label: '编辑精选', path: '/recommend', icon: MagicStick },
+  { label: '智能客服', path: '/ai-assistant', icon: ChatDotRound }
 ];
 
 const goCategory = (id: string) => {

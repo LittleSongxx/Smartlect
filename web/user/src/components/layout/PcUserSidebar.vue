@@ -39,8 +39,6 @@ const onNavClick = (path: string) => {
 const isActive = (path: string) => {
   if (path === '/account') return route.path === '/account';
   if (path === '/orders') return route.path === '/orders' || route.path.startsWith('/order/');
-  if (path === '/member-center') return route.path === '/member-center';
-  if (path === '/notifications') return route.path === '/notifications';
   return route.path === path || route.path.startsWith(`${path}/`);
 };
 </script>
