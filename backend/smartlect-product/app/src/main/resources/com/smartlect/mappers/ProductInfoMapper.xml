@@ -167,9 +167,6 @@
 		 <if test="query.orderBy!=null">
 			 order by ${query.orderBy}
 		 </if>
-		 <if test="query.simplePage!=null">
-			 limit #{query.simplePage.start},#{query.simplePage.end}
-		 </if>
 	</select>
 
 	<!-- 分类 OR 拆 UNION：分别命中 (status,category_id,...) / (status,p_category_id,...) -->
@@ -211,9 +208,6 @@
 		) category_union
 		<if test="query.orderBy!=null">
 			order by ${query.orderBy}
-		</if>
-		<if test="query.simplePage!=null">
-			limit #{query.simplePage.start},#{query.simplePage.end}
 		</if>
 	</select>
 

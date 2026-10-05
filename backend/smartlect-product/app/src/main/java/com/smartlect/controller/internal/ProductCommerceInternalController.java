@@ -12,13 +12,13 @@ import com.smartlect.entity.po.ProductSku;
 import com.smartlect.entity.query.ProductInfoQuery;
 import com.smartlect.entity.query.ProductPropertyValueQuery;
 import com.smartlect.entity.query.ProductSkuQuery;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.api.dto.SkuStockQueryDTO;
 import com.smartlect.mappers.ProductInfoMapper;
 import com.smartlect.mappers.ProductPropertyValueMapper;
 import com.smartlect.mappers.ProductSkuMapper;
 import com.smartlect.exception.BusinessException;
+import com.smartlect.utils.PageUtils;
 import com.smartlect.utils.ProductContentJson;
 import com.smartlect.utils.ProductIndexTextSanitizer;
 import com.smartlect.utils.StringTools;
@@ -101,11 +101,11 @@ public class ProductCommerceInternalController extends ABaseController {
         if (limit > 50) {
             limit = 50;
         }
-        query.setSimplePage(new SimplePage(0, limit));
         if (query.getProductIdList() == null) {
             query.setExcludeIsolatedCatalog(true);
         }
-        List<ProductInfo> list = productInfoMapper.selectList(query);
+        List<ProductInfo> list = PageUtils.pageInfo(1, limit,
+                () -> productInfoMapper.selectList(query)).getList();
         Map<String, String> brandByProduct = new HashMap<>();
         Map<String, Integer> stockByProduct = Collections.emptyMap();
         if (list != null && !list.isEmpty()) {

@@ -4,9 +4,9 @@ import com.smartlect.controller.ABaseController;
 import com.smartlect.entity.po.UserAddress;
 import com.smartlect.entity.query.UserAddressQuery;
 import com.smartlect.biz.UserAddressService;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.security.DelegatedUserIdentity;
+import com.smartlect.utils.PageUtils;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,9 +29,10 @@ public class UserCommerceInternalController extends ABaseController {
         String userId = DelegatedUserIdentity.requireAndMatch(body == null ? null : body.get("userId"));
         UserAddressQuery query = new UserAddressQuery();
         query.setUserId(userId);
-        query.setSimplePage(new SimplePage(0, 20));
+        List<UserAddress> addresses = PageUtils.pageInfo(1, 20,
+                () -> userAddressService.findListByParam(query)).getList();
         List<Map<String, Object>> result = new ArrayList<>();
-        for (UserAddress address : userAddressService.findListByParam(query)) {
+        for (UserAddress address : addresses) {
             result.add(Map.of("addressId", address.getAddressId(),
                     "isDefault", Integer.valueOf(1).equals(address.getDefaultType()),
                     "label", "收货地址 " + (result.size() + 1)));

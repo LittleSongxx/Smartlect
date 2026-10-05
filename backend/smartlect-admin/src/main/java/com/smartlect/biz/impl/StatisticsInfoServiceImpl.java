@@ -10,10 +10,8 @@ import com.smartlect.api.vo.OrderDailyStatsVO;
 import com.smartlect.api.vo.OrderRangeStatsVO;
 import com.smartlect.biz.StatisticsInfoService;
 import com.smartlect.entity.enums.DateTimePatternEnum;
-import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.enums.StatisticsDataTypeEnum;
 import com.smartlect.entity.po.StatisticsInfo;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.query.StatisticsInfoQuery;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.entity.vo.StatisticsDataVO;
@@ -21,6 +19,7 @@ import com.smartlect.entity.vo.TodayDataVO;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.mappers.StatisticsInfoMapper;
 import com.smartlect.utils.DateUtil;
+import com.smartlect.utils.PageUtils;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -42,12 +41,7 @@ public class StatisticsInfoServiceImpl implements StatisticsInfoService {
 
 	@Override
 	public PaginationResultVO<StatisticsInfo> findListByPage(StatisticsInfoQuery param) {
-		int count = statisticsInfoMapper.selectCount(param);
-		int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-		SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-		param.setSimplePage(page);
-		List<StatisticsInfo> list = statisticsInfoMapper.selectList(param);
-		return new PaginationResultVO<>(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
+		return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> statisticsInfoMapper.selectList(param));
 	}
 
 	@Override

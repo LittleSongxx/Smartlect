@@ -3,7 +3,6 @@ package com.smartlect.controller;
 import com.smartlect.entity.enums.ProductSortKey;
 import com.smartlect.entity.enums.SortDirection;
 import com.smartlect.entity.query.ProductInfoQuery;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.query.SysCategoryQuery;
 import com.smartlect.entity.vo.Product4VO;
 import com.smartlect.entity.vo.ResponseVO;
@@ -48,7 +47,8 @@ public class ProductController extends ABaseController {
         query.setCommendType(1);
         query.setStatus(1);
         query.setOrderBy(com.smartlect.entity.query.SafeSort.of("create_time desc"));
-        query.setSimplePage(new SimplePage(0, 11));
+        query.setPageNo(1);
+        query.setPageSize(11);
         query.setExcludeIsolatedCatalog(true);
         return getSuccessResponseVO(productInfoService.findListByPage(query).getList());
     }

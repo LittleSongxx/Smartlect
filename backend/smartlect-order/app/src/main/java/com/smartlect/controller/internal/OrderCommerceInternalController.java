@@ -15,9 +15,9 @@ import com.smartlect.entity.po.RefundRequest;
 import com.smartlect.entity.query.OrderInfoQuery;
 import com.smartlect.entity.query.OrderItemQuery;
 import com.smartlect.entity.query.SafeSort;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.vo.ResponseVO;
 import com.smartlect.exception.BusinessException;
+import com.smartlect.utils.PageUtils;
 import com.smartlect.utils.StringTools;
 import com.smartlect.utils.RequestFingerprint;
 import com.smartlect.mappers.OrderItemMapper;
@@ -83,9 +83,9 @@ public class OrderCommerceInternalController extends ABaseController {
                 OrderStatusEnum.PARTIALLY_REFUNDED.getStatus()
         });
         int limit = intVal(body.get("limit"), 30);
-        query.setSimplePage(new SimplePage(0, limit));
         // time range: filter in memory after query if needed (mapper may lack timeStart)
-        List<OrderInfo> list = orderInfoService.findListByParam(query);
+        List<OrderInfo> list = PageUtils.pageInfo(1, limit,
+                () -> orderInfoService.findListByParam(query)).getList();
         String timeStart = str(body, "timeStart");
         String timeEnd = str(body, "timeEnd");
         List<Map<String, Object>> result = new ArrayList<>();

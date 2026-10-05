@@ -5,6 +5,8 @@ import com.smartlect.entity.po.ProductInfo;
 import com.smartlect.entity.query.ProductInfoQuery;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.mappers.ProductInfoMapper;
+import com.github.pagehelper.PageHelper;
+import com.github.pagehelper.page.PageMethod;
 import org.apache.ibatis.mapping.BoundSql;
 import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,7 +47,10 @@ class ProductCommerceSearchScopeTest {
         assertEquals(ProductStatusEnum.ON_SALE.getStatus(), query.getStatus());
         assertEquals("phone", query.getProductNameFuzzy());
         assertEquals("phones", query.getCategoryId());
-        assertEquals(3, query.getSimplePage().getEnd());
+        // 分页由 PageHelper 独占（PageUtils.pageInfo 的 ThreadLocal）；mapper 查询参数不再携带 limit。
+        assertEquals(1, PageMethod.getLocalPage().getPageNum());
+        assertEquals(3, PageMethod.getLocalPage().getPageSize());
+        PageHelper.clearPage();
 
         BoundSql bound = boundSql(query);
         String sql = bound.getSql().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
@@ -54,7 +59,8 @@ class ProductCommerceSearchScopeTest {
         int exclude = sql.indexOf("p.product_id not in (");
         int sort = sql.indexOf(" order by p.total_sale desc");
         assertTrue(where >= 0 && include > where && exclude > include && sort > exclude);
-        assertTrue(sql.indexOf(" limit ") > sort);
+        // PageHelper 拦截器在运行时追加 LIMIT；mapper 原生 SQL 不得再含 limit 子句（双重分页事故防线）。
+        assertFalse(sql.contains(" limit "));
         assertFalse(sql.contains("p3'"));
         assertEquals(List.of("p1", "p2", "p3' OR 1=1 --"), bound.getParameterMappings().stream()
                 .filter(parameter -> bound.hasAdditionalParameter(parameter.getProperty()))
@@ -69,7 +75,8 @@ class ProductCommerceSearchScopeTest {
         assertEquals(List.of(), query.getExcludeProductIdList());
         assertEquals("phones", query.getCategoryId());
         assertNull(query.getProductNameFuzzy());
-        assertEquals(20, query.getSimplePage().getEnd());
+        assertEquals(20, PageMethod.getLocalPage().getPageSize());
+        PageHelper.clearPage();
         assertNull(query.getPriceFrom());
         assertNull(query.getPriceTo());
         String sql = boundSql(query).getSql().replaceAll("\\s+", " ");

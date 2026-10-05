@@ -12,16 +12,15 @@ import com.smartlect.constants.ReliableMessageSender;
 import com.smartlect.entity.dto.MqCompensationRecord;
 import com.smartlect.entity.enums.MessageReliabilityLevelEnum;
 import com.smartlect.entity.enums.MqCompensationLogStatusEnum;
-import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.po.MqCompensationLog;
 import com.smartlect.entity.po.ProductItem;
 import com.smartlect.entity.query.MqCompensationLogQuery;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.exception.BusinessException;
 import com.smartlect.mappers.MqCompensationLogMapper;
 import com.smartlect.service.MqCompensationLogService;
 import com.smartlect.support.MqConsumeReplayRouter;
+import com.smartlect.utils.PageUtils;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -58,12 +57,7 @@ public class MqCompensationLogServiceImpl implements MqCompensationLogService {
 
     @Override
     public PaginationResultVO<MqCompensationLog> findListByPage(MqCompensationLogQuery param) {
-        int count = mqCompensationLogMapper.selectCount(param);
-        int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
-        SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
-        param.setSimplePage(page);
-        List<MqCompensationLog> list = mqCompensationLogMapper.selectList(param);
-        return new PaginationResultVO<>(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
+        return PageUtils.page(param.getPageNo(), param.getPageSize(), () -> mqCompensationLogMapper.selectList(param));
     }
 
     @Override
@@ -153,11 +147,8 @@ public class MqCompensationLogServiceImpl implements MqCompensationLogService {
         MqCompensationLogQuery query = new MqCompensationLogQuery();
         query.setStatus(MqCompensationLogStatusEnum.PENDING.getStatus());
         query.setOrderBy(com.smartlect.entity.query.SafeSort.of("log_id asc"));
-        query.setPageNo(1);
-        query.setPageSize(batchSize * 2);
-        SimplePage page = new SimplePage(1, batchSize * 2, batchSize * 2);
-        query.setSimplePage(page);
-        List<MqCompensationLog> list = mqCompensationLogMapper.selectList(query);
+        List<MqCompensationLog> list = PageUtils.pageInfo(1, batchSize * 2,
+                () -> mqCompensationLogMapper.selectList(query)).getList();
         if (list == null || list.isEmpty()) {
             return 0;
         }

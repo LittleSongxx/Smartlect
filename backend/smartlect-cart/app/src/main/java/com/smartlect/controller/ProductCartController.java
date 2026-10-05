@@ -4,7 +4,6 @@ import com.smartlect.entity.dto.TokenUserInfoDTO;
 import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.po.ProductCart;
 import com.smartlect.entity.query.ProductCartQuery;
-import com.smartlect.entity.query.SimplePage;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.api.vo.ProductCartVO;
 import com.smartlect.entity.vo.ResponseVO;
@@ -53,9 +52,9 @@ public class ProductCartController extends ABaseController{
             throw new BusinessException("请先登录");
         }
         String userId = tokenUserInfo.getUserId();
-        SimplePage page = new SimplePage(pageNo, PageSize.SIZE15.getSize());
         ProductCartQuery param = new ProductCartQuery();
-        param.setSimplePage(page);
+        param.setPageNo(pageNo);
+        param.setPageSize(PageSize.SIZE15.getSize());
         // 按最后操作时间降序排序
         param.setOrderBy(com.smartlect.entity.query.SafeSort.of("last_update_time desc"));
         PaginationResultVO<ProductCartVO> result = productCartService.findListByPageAndUserId(param, userId);

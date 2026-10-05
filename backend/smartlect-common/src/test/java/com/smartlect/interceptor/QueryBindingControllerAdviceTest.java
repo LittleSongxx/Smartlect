@@ -24,6 +24,6 @@ class QueryBindingControllerAdviceTest {
 
         assertEquals(3, target.getPageNo());
         assertNull(target.getOrderBy());
-        assertNull(target.getSimplePage());
+        // BaseParam 已无 simplePage 字段：历史手写分页路径退役，绑定目标不存在本身即防线。
     }
 }
