@@ -254,8 +254,23 @@ def acl_denied_documents(visible_rows, hidden_rows, utterance, query=''):
                   'title': item['title']}
         if not hidden_document_covers(packed, text):
             continue
-        hits.append({'doc_id': doc_id, 'title': item['title'], 'acl': item['acl']})
-    return hits
+        # Evidence strength, not mere membership: the any-term title gate is
+        # deliberately sensitive (colloquial paraphrases, holdout-3 sup-h3-04),
+        # so bridging terms (e.g. 核对 shared by an unrelated internal doc) can
+        # produce weak hits. Rank by content-constraint coverage first, then by
+        # the number of question terms the title carries; surface only the
+        # strongest evidence — the handoff contract needs the best-explaining
+        # hidden doc, not every doc that shares one word.
+        question_terms = set(tokens(text))
+        title_terms = set(tokens((item['title'] or '') + ' ' + ' '.join(item['heading'])))
+        score = (0 if misses_utterance_constraints([packed], text) else 1000) \
+            + len(question_terms & title_terms)
+        hits.append({'doc_id': doc_id, 'title': item['title'], 'acl': item['acl'], 'score': score})
+    if not hits:
+        return []
+    best = max(hit['score'] for hit in hits)
+    return [{key: hit[key] for key in ('doc_id', 'title', 'acl')}
+            for hit in hits if hit['score'] == best]
 
 
 def covering_span(sequence, terms):
