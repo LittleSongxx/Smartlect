@@ -342,7 +342,7 @@
 			 buy_count,
 			 order_item_status,
 			 remark,
-			 refund_order_id,
+			 refund_order_id
 		 )values
 		 <foreach collection="list" item="item" separator=",">
 			 (
@@ -357,7 +357,7 @@
 				 #{item.buyCount},
 				 #{item.orderItemStatus},
 				 #{item.remark},
-				 #{item.refundOrderId},
+				 #{item.refundOrderId}
 			 )
 		 </foreach>
 	</insert>
@@ -376,7 +376,7 @@
 			 buy_count,
 			 order_item_status,
 			 remark,
-			 refund_order_id,
+			 refund_order_id
 		 )values
 		 <foreach collection="list" item="item" separator=",">
 			 (
@@ -391,7 +391,7 @@
 				 #{item.buyCount},
 				 #{item.orderItemStatus},
 				 #{item.remark},
-				 #{item.refundOrderId},
+				 #{item.refundOrderId}
 			 )
 		 </foreach>
 			on DUPLICATE key update 

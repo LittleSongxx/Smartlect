@@ -191,7 +191,10 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 	}
 
 	@Override
-	@Transactional(rollbackFor = Exception.class)
+	// 不标 @Transactional：方法体里唯一的事务性工作是把 couponFeignSupport.preview 的远程调用
+	// 包住，而远程调用期间数据库连接会被一直占住（同一反模式导致过支付/Outbox 连锁失败，
+	// 见 confirmOrderReceipt 的注释）。方法内没有本地写需要原子保护——prepareOrder 只读、
+	// orderQuoteService.issue 自身非事务，去掉外层事务后各写各自提交，语义不变。
 	public Map<String, Object> quoteOrder(String userId, PostOrderDTO request) {
 		PreparedOrder prepared = prepareOrder(userId, request);
 		if (!StringTools.isEmpty(request.getUserCouponId())) {
@@ -1339,7 +1342,13 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		if (rows == 0) {
 			return false;
 		}
-		increaseProductSalesForOrder(orderId);
+		// 加销量要调 product 服务（Feign 远程调用），**不能放在事务里**：远程调用期间数据库
+		// 连接一直被占着。自动收货任务每 10 分钟批量处理最多 100 单，每单都这样占连接，
+		// 实测单连接被占用 18.1 秒；连接池（4 条）被抽干后，支付成功处理与 Outbox 投递
+		// 一起失败（2026-10-05 压测实证：68 次支付处理失败 + 101 次投递失败 + 934 条 MQ 最终失败）。
+		// 改为事务提交后再调：销量是派生数据，延迟几十毫秒无影响；失败时上面已有
+		// try/catch 记警告，且商品销售统计另有对账兜底。
+		transactionalMqSender.sendAfterCommit(() -> increaseProductSalesForOrder(orderId));
 		return true;
 	}
 

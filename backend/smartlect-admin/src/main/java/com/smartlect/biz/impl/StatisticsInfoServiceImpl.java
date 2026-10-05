@@ -148,7 +148,10 @@ public class StatisticsInfoServiceImpl implements StatisticsInfoService {
 	}
 
 	@Override
-	@Transactional(rollbackFor = Exception.class)
+	// 不标 @Transactional：方法开头要调 orderFeignSupport.aggregateDaily 拉跨服务聚合，
+	// 放在事务里会让数据库连接在整个聚合查询期间被占住（日结只跑一次，但聚合可能数秒）。
+	// 后续 saveStatistics 是主键 upsert、逐日幂等，去掉整体事务后各日各自提交，
+	// 即便中途失败，下次跑该任务会重算覆盖，不会留下半成品。
 	public void statistics(String startTime, String endTime) {
 		if (startTime == null) {
 			startTime = DateUtil.getTimeOnParttern(14, DateTimePatternEnum.YYYY_MM_DD.getPattern()) + " 01:00:00";
@@ -191,7 +194,10 @@ public class StatisticsInfoServiceImpl implements StatisticsInfoService {
 		statisticsInfo.setDataType(StatisticsDataTypeEnum.REFUND_COUNT.getType());
 		statisticsInfo.setDataValue(refundCount);
 		Integer c4 = statisticsInfoMapper.insertOrUpdate(statisticsInfo);
-		if (c1 == 0 || c2 == 0 || c3 == 0 || c4 == 0) {
+		// MySQL 的 INSERT ... ON DUPLICATE KEY UPDATE 在"行已存在且值未变"时返回 0 行——
+		// 这不是失败，而是重复执行（多副本、启动补齐、管理员手工重跑）的正常结果。
+		// 按 0 行抛错会让第二个执行者整笔回滚并误报"统计异常"，只有 null 才是写失败。
+		if (c1 == null || c2 == null || c3 == null || c4 == null) {
 			throw new BusinessException("统计异常");
 		}
 	}

@@ -144,6 +144,20 @@ public class Constants {
     public static final String REDIS_KEY_COUPON_RUSH_RECONCILE_LOCK =
             REDIS_KEY_PREFIX + "lock:coupon:rush:reconcile";
 
+    /**
+     * 统计日结任务的分布式锁（键再拼 spring.application.name，同服务的副本互斥）。
+     * 统计落库是 upsert 幂等的，加锁是为了避免每个副本都去拉一次全量聚合。
+     * TTL 不按调度间隔取——日任务间隔 24 小时，按间隔取会让锁跨天残留。
+     */
+    public static final String REDIS_KEY_ADMIN_AUTO_DATA_LOCK = REDIS_KEY_PREFIX + "lock:admin:auto-data";
+
+    /**
+     * 支付轮询任务的分布式锁（键再拼 spring.application.name）。
+     * 轮询要调支付渠道查询接口，多副本各轮一遍等于外部调用量翻 N 倍；
+     * 落库路径本身有单号粒度的 Redisson 锁 + 条件更新，这里只为收敛外部流量。
+     */
+    public static final String REDIS_KEY_ORDER_PAY_POLL_LOCK = REDIS_KEY_PREFIX + "lock:order:pay-poll";
+
     public static final String REDIS_KEY_COUPON_REBUILD_LOCK = REDIS_KEY_PREFIX + "coupon:rebuild:lock:";
 
     public static final String REDIS_COUPON_NULL_PLACEHOLDER = "@COUPON_NULL@";

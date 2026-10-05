@@ -179,7 +179,9 @@ public class ProductCartServiceImpl implements ProductCartService {
 
 	// 获取购物车列表
 	@Override
-	@Transactional(rollbackFor = Exception.class)
+	// 不标 @Transactional：这是购物车列表的**只读**组装，方法体内要调 product 的
+	// snapshotBatch/toProductInfoMap 等 5 个远程接口；放在事务里会让数据库连接在整个
+	// 远程调用期间被占住。方法只读不写，去掉事务无副作用。
 	public PaginationResultVO<ProductCartVO> findListByPageAndUserId(ProductCartQuery param, String userId) {
 		if (userId == null) {
 			return new PaginationResultVO<ProductCartVO>();
@@ -287,6 +289,12 @@ public class ProductCartServiceImpl implements ProductCartService {
 	private String resolvePropertyValueIds(String productId, String propertyValueIds) {
 		if (!StringTools.isEmpty(propertyValueIds)) {
 			return propertyValueIds;
+		}
+		// productId 为空时不能去调对端 defaultSku：ProductIdDTO 上有 @NotEmpty，
+		// 请求会被参数校验直接打回，在本服务侧表现为一条莫名其妙的远程校验异常
+		// （实测日志刷了 388 条 WARN + 堆栈）。这里就地拦成明确的业务错误。
+		if (StringTools.isEmpty(productId)) {
+			throw new BusinessException("商品不存在");
 		}
 		ProductSkuSnapshotVO defaultSku = productFeignSupport.defaultSku(productId);
 		if (defaultSku == null) {

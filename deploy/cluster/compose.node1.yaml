@@ -1,0 +1,29 @@
+# node1 基础设施的集群期 override（叠加在 deploy/compose.yaml 之上）
+#
+# 用法（node1 执行）：
+#   docker compose -p smartlect --env-file run/runtime.env \
+#     -f deploy/compose.yaml -f deploy/cluster/compose.node1.yaml up -d --wait
+#
+# 作用：
+#   1) mysql / redis 增加内网绑定 —— node2/3 的 nacos 成员、redis 副本、应用副本要跨机访问
+#   2) redis 补 masterauth —— 集群期主库可能被 sentinel 降级为副本，降级后要向新主认证
+#   3) 单机 rabbitmq / nacos 挂到 single-only profile —— 集群期由 /opt/cluster 下的
+#      rabbit-c1 / nacos-c1（host 网络）接管；数据卷原样保留，回退即恢复
+#
+# 注意：compose 对 ports 是**合并**语义，基线里的 127.0.0.1 绑定仍然生效。
+
+services:
+  mysql:
+    ports:
+      - "${NODE1_IP:?source deploy/cluster/nodes.env}:${SMARTLECT_MYSQL_PORT:?}:3306"
+
+  redis:
+    command: [sh, -ec, 'exec redis-server --appendonly yes --maxmemory 192mb --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD" --masterauth "$$REDIS_PASSWORD"']
+    ports:
+      - "${NODE1_IP:?source deploy/cluster/nodes.env}:${REDIS_PORT:-6379}:6379"
+
+  rabbitmq:
+    profiles: ["single-only"]
+
+  nacos:
+    profiles: ["single-only"]

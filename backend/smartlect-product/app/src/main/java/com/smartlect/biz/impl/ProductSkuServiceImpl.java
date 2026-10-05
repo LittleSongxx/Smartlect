@@ -112,7 +112,8 @@ public class ProductSkuServiceImpl implements ProductSkuService {
 	}
 
 	@Override
-	@Transactional(rollbackFor = Exception.class)
+	// 不标 @Transactional：方法内只有一次本地读 + 一次远程调用（stockFeignSupport.changeStock），
+	// 没有任何本地写需要原子保护。保留事务只会让数据库连接在整个远程调用期间被占住。
 	public void updateStock(String productId, String propertyValueIdHash, Integer changeStock) {
 		ProductSku productSku = this.getProductSkuByProductIdAndPropertyValueIdHash(productId, propertyValueIdHash);
 		if (productSku == null) {

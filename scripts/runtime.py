@@ -25,7 +25,7 @@ PROCESS_FILE = ROOT / "run/processes.json"
 PROCESS_LOCK = ROOT / "run/processes.lock"
 DATABASES = ("admin", "user", "product", "stock", "cart", "order", "pay", "coupon")
 APPS = ("assistant", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
-PORTS = {"MYSQL": 13306, "POSTGRES": 15432, "REDIS": 16379, "RABBIT": 15672,
+PORTS = {"MYSQL": 13306, "REDIS": 16379, "RABBIT": 15672,
          "RABBIT_MANAGEMENT": 15674, "NACOS": 18848, "ES": 9200, "QDRANT": 6333,
          "GATEWAY": 18080, "GROWTH": 18000, "DASHBOARD": 18501,
          "ADMIN": 18101, "USER": 18105, "PRODUCT": 18106, "STOCK": 18108,
@@ -100,22 +100,16 @@ def bootstrap():
             int(v) for k, v in env.items() if k.endswith('_PORT')}))
         admin_port = env.get('SMARTLECT_WEB_ADMIN_PORT') or str(free_ports(PORTS['WEB_ADMIN'], occupied={
             int(v) for k, v in env.items() if k.endswith('_PORT')} | {int(web_port)}))
-        occupied = {int(v) for k, v in env.items() if k.endswith("_PORT") and str(v).isdigit()}
-        postgres_port = env.get("SMARTLECT_POSTGRES_PORT") or str(free_ports(PORTS["POSTGRES"], occupied=occupied))
-        additions = {key: value for key, value in {
+        candidate = {
             "SMARTLECT_DEMO_ENABLED": "true", "SMARTLECT_DEMO_PASSWORD": secrets.token_hex(24),
             "SMARTLECT_VISITOR_SECRET": secrets.token_hex(32),
             "SMARTLECT_ATTRIBUTION_SECRET": secrets.token_hex(32),
             "SMARTLECT_ALLOWED_ORIGINS": "http://127.0.0.1:" + env["SMARTLECT_GATEWAY_PORT"],
             "SMARTLECT_WEB_USER_PORT": web_port,
             "SMARTLECT_WEB_ADMIN_PORT": admin_port,
-            "SMARTLECT_POSTGRES_HOST": "127.0.0.1",
-            "SMARTLECT_POSTGRES_PORT": postgres_port,
-            "SMARTLECT_POSTGRES_USER": "smartlect",
-            "SMARTLECT_POSTGRES_PASSWORD": secrets.token_hex(24),
-            "SMARTLECT_POSTGRES_DATABASE": "smartlect_growth",
             "SMARTLECT_GROWTH_MYSQL_SSL": "0",
-        }.items() if key not in env}
+        }
+        additions = {key: value for key, value in candidate.items() if key not in env}
         if additions:
             with ENV_FILE.open("a") as target:
                 target.write("\n" + "\n".join(f"{key}={value}" for key, value in additions.items()) + "\n")
@@ -144,19 +138,16 @@ def bootstrap():
         "SMARTLECT_QDRANT_URL": "http://127.0.0.1:6333",
         "SMARTLECT_GROWTH_MYSQL_USER": "smartlect_growth",
         "SMARTLECT_GROWTH_MYSQL_DATABASE": "smartlect_growth",
-        "SMARTLECT_POSTGRES_HOST": "127.0.0.1",
-        "SMARTLECT_POSTGRES_USER": "smartlect",
-        "SMARTLECT_POSTGRES_DATABASE": "smartlect_growth",
         "SMARTLECT_GROWTH_MYSQL_SSL": "0",
         "SMARTLECT_MODEL_MODE": "mock", "SMARTLECT_PAYMENT_MODE": "mock", "SMARTLECT_DEMO_ENABLED": "true",
-        "SMARTLECT_GROWTH_EVENTS_ENABLED": "true",
     }
-    for key in ("MYSQL_ROOT_PASSWORD", "MYSQL_PASSWORD", "FLYWAY_PASSWORD",
-                "REDIS_PASSWORD", "RABBIT_PASSWORD", "NACOS_PASSWORD",
-                "NACOS_MYSQL_PASSWORD", "NACOS_IDENTITY",
-                "INTERNAL_TOKEN", "INTERNAL_OPS_TOKEN",
-                "GROWTH_MYSQL_PASSWORD", "POSTGRES_PASSWORD",
-                "ADMIN_PASSWORD", "DEMO_PASSWORD", "VISITOR_SECRET", "ATTRIBUTION_SECRET"):
+    password_keys = ["MYSQL_ROOT_PASSWORD", "MYSQL_PASSWORD", "FLYWAY_PASSWORD",
+                     "REDIS_PASSWORD", "RABBIT_PASSWORD", "NACOS_PASSWORD",
+                     "NACOS_MYSQL_PASSWORD", "NACOS_IDENTITY",
+                     "INTERNAL_TOKEN", "INTERNAL_OPS_TOKEN",
+                     "GROWTH_MYSQL_PASSWORD",
+                     "ADMIN_PASSWORD", "DEMO_PASSWORD", "VISITOR_SECRET", "ATTRIBUTION_SECRET"]
+    for key in password_keys:
         env[f"SMARTLECT_{key}"] = secrets.token_hex(24)
     env["SMARTLECT_NACOS_AUTH_TOKEN"] = base64.b64encode(secrets.token_bytes(48)).decode()
     occupied = set()
@@ -176,9 +167,28 @@ def bootstrap():
     print("Created independent credentials and available ports in run/runtime.env (mode 600).")
 
 
-def compose(*args, capture=False):
-    return run("docker", "compose", "--project-name", "smartlect", "--env-file",
-               str(ENV_FILE), "-f", str(ROOT / "deploy/compose.yaml"), *args, capture=capture)
+def cluster_node_env():
+    """集群编排的节点拓扑（deploy/cluster/nodes.env），注入给 docker compose 用。
+
+    单机形态没有这个文件，返回空——compose 命令与从前逐字一致。
+    """
+    path = ROOT / "deploy/cluster/nodes.env"
+    if not path.exists():
+        return {}
+    return {key: value for key, value in parse_env(path).items() if not key.startswith("CLUSTER_SSH")}
+
+
+def compose(*args, capture=False, cluster=False):
+    files = ["-f", str(ROOT / "deploy/compose.yaml")]
+    override = ROOT / "deploy/cluster/compose.node1.yaml"
+    if cluster and override.exists():
+        # 集群期叠加内网绑定；该文件把单机 rabbitmq/nacos 挂到 single-only profile，
+        # 所以集群形态必须走这条路径，否则重启时会去拉单机容器、与集群成员抢端口。
+        files += ["-f", str(override)]
+    return subprocess.run(("docker", "compose", "--project-name", "smartlect", "--env-file",
+                           str(ENV_FILE), *files, *args),
+                          cwd=ROOT, check=True, text=True,
+                          capture_output=capture, env={**os.environ, **cluster_node_env()}).stdout
 
 
 def verify_project():
@@ -194,8 +204,81 @@ def verify_project():
 
 def cluster_form(env):
     # SMARTLECT_CLUSTER_FORM=cluster：RabbitMQ/Nacos 由 /opt/cluster 下的多机编排提供，
-    # 本机 compose 只保留 mysql/redis（见 run/cloud/cluster/）。
+    # 本机 compose 只保留 mysql/redis（见 deploy/cluster/）。
     return env.get("SMARTLECT_CLUSTER_FORM") == "cluster"
+
+
+def app_bind_address(env):
+    """应用监听的地址。默认回环——单机形态的行为一字不变。
+
+    分机部署时设为 0.0.0.0：服务要能被跨机的网关/对端访问，同时本机的
+    assistant（SMARTLECT_JAVA_BASE_URL=http://127.0.0.1）与健康检查仍走回环，
+    不必为了跨机访问去改本机寻址。
+    """
+    return env.get("SMARTLECT_APP_BIND_ADDRESS") or "127.0.0.1"
+
+
+def app_register_ip(env):
+    """注册到 Nacos 的 IP。默认回环；分机部署时必须是本机内网 IP，
+    否则别的节点拿到 127.0.0.1 会打到自己身上。"""
+    return env.get("SMARTLECT_APP_REGISTER_IP") or "127.0.0.1"
+
+
+def app_services(env):
+    """本机要跑的服务子集。默认全部——单机形态仍是十二进程。
+
+    分机部署时用 SMARTLECT_APP_SERVICES 指定本机承载的服务（逗号分隔），
+    这样同一份 runtime.env 与同一套 JAR 可以在三台机器上分别拉起不同的副本。
+    """
+    raw = env.get("SMARTLECT_APP_SERVICES")
+    if not raw:
+        return APPS
+    wanted = tuple(name.strip() for name in raw.split(",") if name.strip())
+    unknown = [name for name in wanted if name not in APPS]
+    if unknown:
+        raise RuntimeError(f"SMARTLECT_APP_SERVICES contains unknown services: {', '.join(unknown)}")
+    if not wanted:
+        raise RuntimeError("SMARTLECT_APP_SERVICES is empty; unset it to run all services")
+    return wanted
+
+
+def wait_cluster(env, timeout=300, interval=5):
+    """轮询等待集群中间件可达（开机单元的 ExecStartPre 用）。
+
+    为什么需要它：重启后 Docker 容器（rabbit-c*/nacos-c*/redis-sentinel）的就绪
+    晚于 systemd 单元启动，而 app 单元是 Type=oneshot——首次检查失败就永久放弃，
+    结果是"容器都活了、应用副本一个没起"（2026-10-05 扩容重启实测如此）。
+    这里把"等"变成显式步骤，让开机自愈真正闭环。
+    """
+    deadline = time.monotonic() + timeout
+    if not cluster_form(env):
+        # 单机形态没有集群中间件要等；本机容器由 smartlect-infra 的前置依赖保证。
+        # 这条分支是回退安全的关键：否则 revert 回单机后开机单元会在此空等超时。
+        print("Single-node form: no cluster middleware to wait for.")
+        return
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            cluster_endpoint_check(env)
+            print(f"Cluster middleware is ready (attempt {attempt}).")
+            return
+        except (RuntimeError, OSError, urllib.error.URLError) as error:
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"Cluster middleware still unreachable after {timeout}s: {error}") from error
+            print(f"waiting for cluster middleware (attempt {attempt}): {error}", flush=True)
+            time.sleep(interval)
+
+
+def java_service_count(services):
+    """进 Nacos 注册表的服务数：assistant 与两个前端不注册。"""
+    return len(set(services) - {"assistant", "web-user", "web-admin"})
+
+
+def health_host(env):
+    """健康探针用的主机：绑 0.0.0.0 时走回环（更省），绑具体地址时就用那个地址。"""
+    bind = app_bind_address(env)
+    return "127.0.0.1" if bind in ("0.0.0.0", "::") else bind
 
 
 def amqp_port_open(endpoint, timeout=3):
@@ -219,7 +302,13 @@ def nacos_request(env, path, data):
 
 def infra_up(env):
     verify_project()
-    compose("up", "-d", "--wait", "--wait-timeout", "240", "mysql", "redis", "rabbitmq", "nacos", "elasticsearch", "qdrant")
+    clustered = cluster_form(env)
+    services = ["mysql", "redis", "rabbitmq", "nacos", "elasticsearch", "qdrant"]
+    if clustered:
+        # 集群期 rabbitmq/nacos 由 deploy/cluster 下的多机编排提供，本机 compose 里
+        # 这两个服务挂在 single-only profile，显式点名会报"service not enabled by profile"。
+        services = [name for name in services if name not in ("rabbitmq", "nacos")]
+    compose("up", "-d", "--wait", "--wait-timeout", "240", *services, cluster=clustered)
     try:
         nacos_request(env, "/nacos/v1/auth/users/admin", {"password": env["SMARTLECT_NACOS_PASSWORD"]})
     except urllib.error.HTTPError as error:
@@ -262,7 +351,32 @@ def infra_check(env):
         if user == "smartlect_app":
             if {row[2] for row in grants} != {"SELECT", "INSERT", "UPDATE", "DELETE"}:
                 raise RuntimeError("Unexpected commercial application privileges")
-    print("Infrastructure checks passed: authenticated Nacos, healthy Seata registration, isolated assistant(Flyway)/app grants.")
+    print("Infrastructure checks passed: authenticated Nacos, isolated assistant(Flyway)/app grants.")
+
+
+def cluster_endpoint_check(env):
+    """应用副本节点（不承载中间件）的前置检查：只验证到集群中间件的连通性。
+
+    与 infra_check 的区别是它不碰本机 compose——副本节点上没有 mysql/redis 容器，
+    照搬 compose 健康检查必然失败。检查项都是"连得上就算过"，可用性由中间件集群自身保证。
+    """
+    endpoints = [("MySQL", env["SMARTLECT_MYSQL_HOST"], int(env["SMARTLECT_MYSQL_PORT"]))]
+    for name, key in (("Redis sentinel", "SPRING_DATA_REDIS_SENTINEL_NODES"),
+                      ("RabbitMQ", "SPRING_RABBITMQ_ADDRESSES")):
+        for endpoint in [ep for ep in (env.get(key) or "").split(",") if ep]:
+            endpoints.append((name, *endpoint.rsplit(":", 1)))
+    unreachable = []
+    for name, host, port in endpoints:
+        try:
+            with socket.create_connection((host, int(port)), timeout=5):
+                pass
+        except OSError as error:
+            unreachable.append(f"{name} {host}:{port} ({error})")
+    if unreachable:
+        raise RuntimeError("Cluster middleware unreachable: " + "; ".join(unreachable))
+    nacos_request(env, "/nacos/v1/auth/login", {
+        "username": env["SMARTLECT_NACOS_USERNAME"], "password": env["SMARTLECT_NACOS_PASSWORD"]})
+    print(f"Cluster endpoint checks passed: {len(endpoints)} middleware endpoints reachable, Nacos authenticated.")
 
 
 def process_identity(pid):
@@ -375,8 +489,10 @@ def app_health(service, record):
     if not owned_process(record):
         return False
     path = '/admin/' if service == 'web-admin' else '/' if service == 'web-user' else "/health" if service == "assistant" else "/actuator/health"
+    # health_host 由 start_app 写入台账；缺省回环，兼容旧台账
+    host = record.get("health_host") or "127.0.0.1"
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{record['port']}{path}", timeout=2) as response:
+        with urllib.request.urlopen(f"http://{host}:{record['port']}{path}", timeout=2) as response:
             if service in {'web-user', 'web-admin'}:
                 return response.status == 200 and b'Smartlect' in response.read(8192)
             health = json.load(response)
@@ -456,7 +572,9 @@ def java_launch_args(service, env):
                f"-Dcsp.sentinel.log.dir={ROOT}/run/logs/sentinel/{service}",
                f"-DJM.LOG.PATH={ROOT}/run/logs/{service}",
                f"-DJM.SNAPSHOT.PATH={ROOT}/run/cache/{service}",
-               "-jar", str(runtime_jar), "--server.address=127.0.0.1", "--spring.cloud.nacos.discovery.ip=127.0.0.1"]
+               "-jar", str(runtime_jar),
+               f"--server.address={app_bind_address(env)}",
+               f"--spring.cloud.nacos.discovery.ip={app_register_ip(env)}"]
     # OTel javaagent 只能经命令行注入（JAVA_TOOL_OPTIONS 已剥离）；agent 文件
     # 不存在时（本地无追踪）完全不影响原命令。约束 #7：改本函数后
     # check_independence + 进程身份核验必须仍过。
@@ -480,7 +598,10 @@ def launch_env_for(service, env):
     launch_env = {**os.environ, **service_env(service, env)}
     for variable in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "PYTHONPATH"):
         launch_env.pop(variable, None)
-    launch_env["SMARTLECT_PROJECT_FOLDER"] = str(ROOT / "run/uploads") + "/"
+    # 上传目录默认本机 run/uploads；分机部署时由 env 指向共享挂载（NFS/对象存储），
+    # 否则同一张图片在 A 副本写入、B 副本读不到。
+    launch_env["SMARTLECT_PROJECT_FOLDER"] = (env.get("SMARTLECT_PROJECT_FOLDER")
+                                              or str(ROOT / "run/uploads") + "/")
     launch_env['LANGSMITH_TRACING'] = 'false'
     launch_env['LANGCHAIN_TRACING_V2'] = 'false'
     if service in {'web-user', 'web-admin'}:
@@ -497,7 +618,7 @@ def smoke_apps(env, timeout=180):
     所以用例以启动日志为准：看到 "Started ... in ... seconds" 即通过，随后主动回收进程。
     """
     failures = []
-    for service in APPS:
+    for service in app_services(env):
         if service in {"assistant", "web-user", "web-admin"}:
             continue
         executable, command, _, _, _ = app_launch(service, env)
@@ -593,7 +714,7 @@ def app_launch(service, env):
 
 def check_apps(env):
     """部署前自检：为每个服务拼一遍启动计划，确认可执行文件与产物都在。"""
-    for service in APPS:
+    for service in app_services(env):
         executable, command, _, _, artifact = app_launch(service, env)
         print(f"check: {service} ok ({Path(artifact).name})")
 
@@ -610,9 +731,11 @@ def start_app(service, env, records):
     port_env = {"assistant": "SMARTLECT_GROWTH_PORT"}.get(service, f"SMARTLECT_{service.upper().replace('-', '_')}_PORT")
     port = int(env[port_env])
     if port is not None:
+        # 预检端口占用：按实际绑定地址探测（绑 0.0.0.0 时通配探测，能同时挡住
+        # 别的进程占着某个具体地址的情况）
         with socket.socket() as probe:
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            probe.bind(("127.0.0.1", port))
+            probe.bind((app_bind_address(env), port))
     launch_env = launch_env_for(service, env)
     if service in {'web-user', 'web-admin'}:
         launch_env['SMARTLECT_' + service.upper().replace('-', '_') + '_PORT'] = str(port)
@@ -629,7 +752,8 @@ def start_app(service, env, records):
         raise RuntimeError(f"{service} exited during launch; inspect run/logs/smartlect-{service}.log")
     if identity["cmdline"] != command or identity["exe"] != str(executable.resolve()) or identity["cwd"] != str(ROOT):
         raise RuntimeError(f"{service} PID {process.pid} does not match the exact launched command")
-    records[service] = {**identity, "port": port, "artifact_stamp": stamp, "source_sha256": source_sha,
+    records[service] = {**identity, "port": port, "health_host": health_host(env),
+                        "artifact_stamp": stamp, "source_sha256": source_sha,
                         "source_artifact": str(artifact), "env_stamp": env_stamp}
     save_processes(records)
     print(f"Started Smartlect {service}: PID {process.pid}, port {port}.", flush=True)
@@ -660,28 +784,39 @@ def install_catalog(env):
 
 
 def apps_up(env):
-    infra_check(env)
+    local = set(app_services(env))
+    # 主节点（跑全部服务）沿用完整 infra 门禁；副本节点只验到集群中间件的连通性
+    if local == set(APPS):
+        infra_check(env)
+    else:
+        cluster_endpoint_check(env)
     with ledger_lock():
         records = load_processes()
         for services in (APPS[1:8], ('assistant',), ('admin', 'gateway'), ('web-user', 'web-admin')):
             for service in services:
+                if service not in local:
+                    continue
                 start_app(service, env, records)
                 # Warm one JVM at a time on the shared WSL host.
                 wait_apps((service,), records)
                 if service == "stock":
                     install_catalog(env)
         apps_check(env)
-        print("Smartlect application startup smoke passed: nine Java services, AI API and both UI health.")
+        java_count = len([name for name in local if name not in {"assistant", "web-user", "web-admin"}])
+        print(f"Smartlect application startup smoke passed: {java_count} Java services, AI API and UI health.")
 
 
 def apps_check(env):
     records = load_processes()
-    if any(service not in records for service in APPS):
+    local = app_services(env)
+    if any(service not in records for service in local):
         raise RuntimeError("Some application processes are not registered; run up first")
-    wait_apps(APPS, records)
+    wait_apps(local, records)
     token = nacos_request(env, "/nacos/v1/auth/login", {
         "username": env["SMARTLECT_NACOS_USERNAME"], "password": env["SMARTLECT_NACOS_PASSWORD"]})["accessToken"]
-    pending = set(APPS) - {"assistant", "web-user", "web-admin"}
+    # 只有 Java 服务进 Nacos 注册表；注册 IP 是分机部署的关键断言（回环 IP 别的节点打不通）
+    register_ip = app_register_ip(env)
+    pending = set(local) - {"assistant", "web-user", "web-admin"}
     deadline = time.monotonic() + 30
     while pending and time.monotonic() < deadline:
         for service in tuple(pending):
@@ -690,19 +825,21 @@ def apps_check(env):
             with urllib.request.urlopen("http://" + nacos_addr(env) +
                                         "/nacos/v1/ns/instance/list?" + query, timeout=5) as response:
                 hosts = json.load(response)["hosts"]
-            if any(host["healthy"] and host["ip"] == "127.0.0.1"
+            if any(host["healthy"] and host["ip"] == register_ip
                    and host["port"] == records[service]["port"] for host in hosts):
                 pending.remove(service)
         if pending:
             time.sleep(1)
     if pending:
         raise RuntimeError(f"Missing application discovery registrations: {', '.join(sorted(pending))}")
-    print("Application checks passed: twelve owned healthy processes, nine Nacos registrations.")
+    java_local = java_service_count(local)
+    print(f"Application checks passed: {len(local)} owned healthy processes, "
+          f"{java_local} Nacos registrations at {register_ip}.")
 
 
-def apps_status():
+def apps_status(services=None):
     records = load_processes()
-    for service in APPS:
+    for service in services or APPS:
         record = records.get(service)
         state = "stopped" if record is None or not owned_process(record) else (
             "healthy" if app_health(service, record) else "starting/unhealthy")
@@ -714,6 +851,31 @@ def self_test():
         blocker.bind(("127.0.0.1", 0))
         busy = blocker.getsockname()[1]
         assert free_ports(busy) != busy
+    # 分机部署开关的契约：不设任何开关时，必须与单机形态逐字一致（回环 + 全部服务）。
+    # 这条断言是"改造不改变单机行为"的可执行证据，改动这些默认值会先在这里失败。
+    assert app_services({}) == APPS
+    assert app_bind_address({}) == "127.0.0.1"
+    assert app_register_ip({}) == "127.0.0.1"
+    assert health_host({}) == "127.0.0.1"
+    assert app_services({"SMARTLECT_APP_SERVICES": "product, order"}) == ("product", "order")
+    assert app_bind_address({"SMARTLECT_APP_BIND_ADDRESS": "0.0.0.0"}) == "0.0.0.0"
+    assert health_host({"SMARTLECT_APP_BIND_ADDRESS": "0.0.0.0"}) == "127.0.0.1"
+    assert health_host({"SMARTLECT_APP_BIND_ADDRESS": "172.19.34.202"}) == "172.19.34.202"
+    # 注册数汇总必须能直接吃 app_services 的返回值（元组）——写成集合运算曾把
+    # 启动门禁在最后一行打崩，进程其实全都起来了
+    assert java_service_count(app_services({})) == 9
+    assert java_service_count(("gateway", "product", "web-user", "assistant")) == 2
+    # 绑定地址必须真的落到 java 命令行上（分机部署靠它跨机可达）
+    java_command = java_launch_args("product", {"SMARTLECT_APP_BIND_ADDRESS": "0.0.0.0",
+                                                "SMARTLECT_APP_REGISTER_IP": "172.19.34.202"})[1]
+    assert "--server.address=0.0.0.0" in java_command
+    assert "--spring.cloud.nacos.discovery.ip=172.19.34.202" in java_command
+    for bad in ({"SMARTLECT_APP_SERVICES": "product,nope"}, {"SMARTLECT_APP_SERVICES": ","}):
+        try:
+            app_services(bad)
+            raise AssertionError(f"Invalid SMARTLECT_APP_SERVICES accepted: {bad}")
+        except RuntimeError:
+            pass
     with tempfile.TemporaryDirectory() as temp:
         path = Path(temp) / "runtime.env"
         path.write_text("# local\nSMARTLECT_TOKEN=abc==\nSMARTLECT_EMPTY=\n")
@@ -882,9 +1044,11 @@ def main():
         temporary.replace(ENV_FILE)
         print(f'Model mode saved: {mode}. Run ./scripts/dev.sh up to apply it.')
     elif command == "status":
-        verify_project()
-        compose("ps", "--all")
-        apps_status()
+        # 副本节点只有应用运行时（没有 deploy/ 与中间件容器），跳过 compose 那一段
+        if (ROOT / "deploy/compose.yaml").exists():
+            verify_project()
+            compose("ps", "--all")
+        apps_status(app_services(env))
     elif command == "infra-up":
         infra_up(env)
     elif command == "infra-check":
@@ -897,6 +1061,9 @@ def main():
         apps_check(env)
     elif command == "smoke":
         smoke_apps(env)
+    elif command == "wait-cluster":
+        timeout = int(sys.argv[sys.argv.index("--timeout") + 1]) if "--timeout" in sys.argv else 300
+        wait_cluster(env, timeout=timeout)
     elif command == "check-apps":
         check_apps(env)
     elif command == "apps-down":

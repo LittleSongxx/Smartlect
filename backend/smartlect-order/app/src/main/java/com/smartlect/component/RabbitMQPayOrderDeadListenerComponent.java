@@ -25,7 +25,6 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -38,6 +37,20 @@ import java.util.Random;
 @Component
 @Slf4j
 public class RabbitMQPayOrderDeadListenerComponent {
+
+    /**
+     * 自身代理引用：下面两个 handle* 方法要把自调用转交给代理，才能让
+     * process* 上的 @Transactional 生效（自调用不走代理 = 没有事务）。
+     *
+     * <p>原实现用 {@code AopContext.currentProxy()}，但它依赖全局的 exposeProxy 开关；
+     * 在本工程里 {@code @EnableAspectJAutoProxy(exposeProxy = true)} 与 Boot 的
+     * AopAutoConfiguration 存在注册时序问题，注解加上了却仍抛
+     * "Cannot find current proxy"（实测 4113 次）。自注入不依赖任何全局开关，更稳。
+     */
+    @org.springframework.context.annotation.Lazy
+    @Resource
+    private RabbitMQPayOrderDeadListenerComponent self;
+
 
     private static final String[] RECORD_ADDRESSES = {
             "上海市浦东新区中转站",
@@ -133,9 +146,7 @@ public class RabbitMQPayOrderDeadListenerComponent {
                 return;
             }
             log.info("确认收货死信队列收到订单: {}", message.getOrderId());
-            RabbitMQPayOrderDeadListenerComponent proxy =
-                    (RabbitMQPayOrderDeadListenerComponent) AopContext.currentProxy();
-            proxy.processOrderConfirm(message, deliveryTag, channel, mqMessage);
+            self.processOrderConfirm(message, deliveryTag, channel, mqMessage);
         } catch (Exception e) {
             log.error("自动确认收货处理失败", e);
             try {
@@ -175,9 +186,7 @@ public class RabbitMQPayOrderDeadListenerComponent {
                 return;
             }
             log.info("模拟物流死信队列收到订单: {}, step={}", message.getOrderId(), message.getLogisticsStep());
-            RabbitMQPayOrderDeadListenerComponent proxy =
-                    (RabbitMQPayOrderDeadListenerComponent) AopContext.currentProxy();
-            proxy.processOrderLogistics(message, deliveryTag, channel, mqMessage);
+            self.processOrderLogistics(message, deliveryTag, channel, mqMessage);
         } catch (Exception e) {
             log.error("模拟物流处理失败", e);
             try {

@@ -1,0 +1,58 @@
+# Smartlect 三节点集群编排
+
+把中间件从 node1 单机提升为跨三台 ECS 的集群。应用层多副本见
+`docs/prod-hardening/ha-cluster.md` 的「全栈 HA（应用多副本）」一节。
+
+## 拓扑
+
+```
+node1 (8c16g, 172.21.131.151)  MySQL 主 · Redis 主 · sentinel · rabbit-c1 · nacos-c1 · nginx · 监控
+node2 (2c8g , 172.19.34.202)   Redis 副本 · sentinel · rabbit-c2 · nacos-c2
+node3 (2c8g , 172.19.34.203)   Redis 副本 · sentinel · rabbit-c3 · nacos-c3
+```
+
+IP/端口集中定义在 [nodes.env](nodes.env)，脚本都从这里取，不再散落硬编码。
+
+## 组件与取舍
+
+| 组件 | 形态 | 关键设计 |
+|---|---|---|
+| RabbitMQ | 3 节点，58→当前全部 quorum 队列 3 副本 | host 网络 + 稳定节点名 `rabbit@<hostname>`；`pause_minority` 防脑裂；**拓扑走 export/import_definitions**，单机数据卷不动 |
+| Redis | 1 主（node1）+ 2 副本 + 3 Sentinel | host 网络；`replica-announce-ip` 必填（否则 sentinel 记错地址）；主库补 `masterauth` 以支持降级后再认证 |
+| Nacos | 3 节点 Raft | host 网络 8848/9848/7848；三成员**共用 node1 MySQL 的 `smartlect_nacos` 库**，所以从 standalone 切过来零数据迁移 |
+| MySQL | 仍单机（node1） | 只增加内网绑定 172.21.131.151:13306 供 node2/3 访问；主从/切换不在本次范围 |
+
+**为什么密钥不入库**：`gen-cluster-env.sh` 从 node1 既有的 `run/runtime.env` 读取
+（Redis 密码、Nacos token/identity、MySQL 密码），只新增 erlang cookie 一项。
+含密码的 `sentinel.conf` 也是构建期现场生成。仓库里没有任何凭据。
+
+## 执行顺序（全部在 node1）
+
+```bash
+cd /opt/cluster/scripts
+bash distribute.sh                 # 生成 .env 并分发编排到 node2/3
+
+# ↓ 以下步骤处于维护窗口内（应用会短暂不可用）
+bash build-rabbit.sh               # 导出单机 defs → 新 3 节点集群 → 导入
+bash build-redis.sh                # 2 副本 + 3 sentinel
+bash build-nacos.sh                # 3 节点 Raft（会先停单机 nacos）
+bash verify-cluster.sh             # 终态验证 + 证据落 /opt/cluster/evidence
+```
+
+前置：node1 的 `deploy/compose.yaml` 叠加 `deploy/cluster/compose.node1.yaml`
+（mysql/redis 内网绑定；单机 rabbitmq/nacos 挂 `single-only` profile）。
+
+## 回退
+
+```bash
+bash revert-cluster.sh             # 停集群成员 → 撤 override → 起单机中间件 → 入口门禁
+```
+
+单机期的数据卷（`smartlect_rabbit`/`smartlect_redis`/`smartlect_mysql`）全程未被改动，
+集群成员用的是集群期新建的卷。回退不丢单机期数据。
+
+## 与 2026-09 那套的关系
+
+编排思路沿用 2026-09-15 的集群战役（那套只存在于服务器 `/opt/cluster`，未入库），
+本次入库并修正了两处过时内容：移除已退役的 Seata 相关 override 与 `SMARTLECT_NACOS_SEATA_ADDR`；
+队列数断言不再硬编码 58，改为与导出的 definitions 实际数量比对。
