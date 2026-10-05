@@ -296,32 +296,39 @@ class ShoppingRetrieve:
             if extra_ids and set(extra_ids) != set(product_ids):
                 cards, initial_removed = await self._snapshot(extra_ids, request, scope)
         if not cards and request.get('required_terms'):
-            # 必含词单门全剔守卫（holdout-4 归因泛化）：全组 AND 后清零、去掉某个词
-            # 即有候选——该词大概率是范畴说法或口语衬字（"音频设备"/"礼物"），不是
-            # 商品属性词。逐词试剔一次（有界，仅空集路径触发），首次非空即采用并
-            # 贯穿后续排序/复验；diagnostics 显式记录 required_term_relaxed。
-            base_ids = product_ids or extra_ids
-            for term in request['required_terms']:
-                relaxed_terms = [t for t in request['required_terms'] if t != term]
-                relaxed_request = {**request, 'required_terms': relaxed_terms}
-                relaxed_cards, relaxed_removed = await self._snapshot(base_ids, relaxed_request, scope)
-                if not relaxed_cards:
-                    continue
-                # 锚定栅栏（v17 官方跑 shop-d-13 教训）：放宽绝不能把约束请求
-                # 变成无约束枚举——合法空集（如"300 以内的人体工学椅"，椅子超预
-                # 算）被 USB 线/鼠标灌回即是伪救援。放宽候选必须仍被剩余必含词
-                # 或查询显著词钉住商品族，且只回传锚命中子集。
-                anchors = [_fold(str(t)) for t in relaxed_terms]
-                anchors += [_fold(t) for t in re.split(r'[\s,，、]+', str(request.get('query') or '')) if len(t) >= 2]
+            # 词表惰性过滤（v18，取代逐词试剔+锚定栅栏两代守卫）：必含词在整个
+            # 候选池的名称/规格里零命中 = 用户词表与目录词表的错配（"座椅"vs
+            # "人体工学椅"、"音频设备"vs"耳机"），不是用户约束——剔除并显式
+            # 记录 required_terms_inert。有命中的词是真实商品属性词，保持硬门
+            # （"游戏耳机"贵超预算 → 诚实空集，不被泛耳机族伪救援：v17 的
+            # d-13/64 教训一并吸收）。一次全池快照判词，再按剩余词重新过门。
+            # 词表池必须绕开价格/类目召回门（v18 追订）：池若被预算预过滤，
+            # 超预算的真约束词（"游戏"只在 399 的游戏耳机名里）会被误判惰性，
+            # 合法空集又被泛族伪救援（P1 探针教训）。
+            pool_request = {**request, 'required_terms': [], 'excluded_terms': [],
+                            'max_price_cents': None, 'min_price_cents': 0, 'quantity': 1}
+            pool_rows = await self._search_on_sale(pool_request, scope, '', category_id=request.get('category_id'), errors=errors)
+            pool_ids = self._product_ids(pool_rows, pool_request) or (product_ids or extra_ids)
+            pool_cards, _pool_removed = await self._snapshot(pool_ids, pool_request, scope)
+            if pool_cards:
                 def _card_text(card):
                     return _fold(str(card.get('productName') or '') + str(card.get('specification') or ''))
-                anchored = [card for card in relaxed_cards
-                            if any(anchor in _card_text(card) for anchor in anchors if anchor)]
-                if anchored:
-                    errors['required_term_relaxed'] = term
-                    request = relaxed_request
-                    cards, initial_removed = anchored, relaxed_removed
-                    break
+                pool_text = ' '.join(_card_text(card) for card in pool_cards)
+                inert = [t for t in request['required_terms'] if _fold(str(t)) not in pool_text]
+                # 全部必含词皆惰性时，仍需预算/排除/类目把候选钉住才可整体剔除
+                #（与 d-13 形状互斥：那类词池内有命中，根本进不了 inert）。
+                other_pins = (request.get('max_price_cents') is not None
+                              or request.get('min_price_cents')
+                              or request.get('excluded_terms')
+                              or request.get('category_id'))
+                if inert and (len(inert) < len(request['required_terms']) or other_pins):
+                    kept = [t for t in request['required_terms'] if t not in inert]
+                    relaxed_request = {**request, 'required_terms': kept}
+                    relaxed_cards, relaxed_removed = await self._snapshot(pool_ids, relaxed_request, scope)
+                    if relaxed_cards:
+                        errors['required_terms_inert'] = inert
+                        request = relaxed_request
+                        cards, initial_removed = relaxed_cards, relaxed_removed
         if not cards:
             return self._finish([], ranked=[], cards=cards, mode='content_rule', rerank_error=None,
                                 initial_removed=initial_removed, final_removed={},

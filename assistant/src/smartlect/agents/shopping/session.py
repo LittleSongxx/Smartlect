@@ -382,16 +382,17 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             products.update({item['sku_key']: item for item in sku_items(data)})
             if isinstance(data, dict):
                 route_errors = (data.get('diagnostics') or {}).get('route_errors') or {}
-                relaxed_term = route_errors.get('required_term_relaxed')
-                if relaxed_term:
-                    # 检索层已判定该必含词不是商品属性词并放宽（诊断留痕）；会话级
-                    # 发布门（sku_obeys_request）必须用同一口径，否则放宽的商品
-                    # 会在终答发布时被旧词二次筛掉——选品面在最后一米丢失。
-                    context['required_term_relaxed'] = relaxed_term
+                inert_terms = route_errors.get('required_terms_inert')
+                if inert_terms:
+                    # 检索层已判定这些必含词是用户词表与目录词表的错配（诊断留痕）；
+                    # 会话级发布门（sku_obeys_request）必须同口径，否则放宽商品会在
+                    # 终答发布时被旧词二次筛掉——选品面在最后一米丢失。
+                    context['required_terms_inert'] = inert_terms
                     current = context.get('shopping_request') or {}
-                    if relaxed_term in (current.get('required_terms') or []):
+                    updated_terms = [t for t in (current.get('required_terms') or []) if t not in inert_terms]
+                    if updated_terms != current.get('required_terms'):
                         updated = dict(current)
-                        updated['required_terms'] = [t for t in current['required_terms'] if t != relaxed_term]
+                        updated['required_terms'] = updated_terms
                         context['shopping_request'] = updated
                 if data.get('comparison'):
                     context['comparison'] = data['comparison']
@@ -996,6 +997,21 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                     # discard a complete answer (same doctrine as guard_repair_fits).
                     context['selection_refresh_error'] = getattr(error, 'code', None) or str(error)[:120]
             request = context.get('shopping_request') or {}
+            if products and request.get('required_terms'):
+                # 发布门词表惰性剥离（与检索层 required_terms_inert 同原理）：mission
+                # 携带的用户词（"座椅"）若在本轮全部观察商品卡里零命中，是词表错配
+                # 而非约束——不剥离会把检索已放宽/正确返回的商品在发布时二次筛掉
+                # （v18 探针 P2：检索干净、发布门用污染请求把人体工学椅杀掉）。
+                from smartlect.catalog_gate import _fold as _gate_fold
+                observed_text = ' '.join(
+                    _gate_fold(str((card or {}).get('productName') or '') + str((card or {}).get('specification') or ''))
+                    for card in products.values())
+                publish_inert = [t for t in request['required_terms']
+                                 if _gate_fold(str(t)) not in observed_text]
+                if publish_inert and len(publish_inert) < len(request['required_terms']):
+                    request = {**request,
+                               'required_terms': [t for t in request['required_terms'] if t not in publish_inert]}
+                    context['publish_required_terms_inert'] = publish_inert
             selected = [key for key in final.selected_sku_keys
                         if key in products and sku_obeys_request(products[key], request)]
             result = {'answer': final.answer, 'answer_status': decision['answer_status'],
