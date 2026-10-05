@@ -59,7 +59,10 @@ class ShoppingRetrieveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['strategy_version'], STRATEGY_VERSION)
         self.assertEqual(result['algorithm_version'], ALGORITHM_VERSION)
         self.assertTrue(any(path.endswith('/searchOnSale') for _, path, _ in self.commerce.calls))
-        self.assertTrue(any(data.get('maxPriceCents') == 1 for _, path, data in self.commerce.calls if path.endswith('/searchOnSale')))
+        # v19 起价格窗不下发 Java（商品粒度过滤会误杀多规格商品），
+        # 由 eligible_skus 的 SKU 粒度资格门执行——召回请求不再携带价格。
+        self.assertFalse(any(data.get('maxPriceCents') is not None
+                             for _, path, data in self.commerce.calls if path.endswith('/searchOnSale')))
         self.assertFalse(any('popularProducts' in path or 'coPurchase' in path for _, path, _ in self.commerce.calls))
 
     async def test_saved_avoid_preference_is_soft_and_browse_may_use_newest(self):

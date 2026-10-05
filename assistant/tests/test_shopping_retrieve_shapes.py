@@ -123,6 +123,14 @@ class RetrieveShapes(unittest.TestCase):
         names = [item['productName'] for item in result['items']]
         self.assertIn('人体工学椅', names)
 
+    def test_metal_keyboard_price_window_found(self):
+        """d-76：多规格商品（金属机械键盘 399/459）价格窗 300–450 → 黑款 399 必须命中。"""
+        result = self.recommend({'query': '金属键盘', 'required_terms': ['金属'],
+                                 'min_price_cents': 30000, 'max_price_cents': 45000})
+        names = [item['productName'] + '/' + item['specification'] for item in result['items']]
+        self.assertTrue(any('金属' in n for n in names), names)
+
+
     def test_catalog_phrase_query_matches_only_family(self):
         """F2 空白归一：query 'USB 线' 命中 'USB线'。"""
         result = self.recommend({'query': 'USB 线'})

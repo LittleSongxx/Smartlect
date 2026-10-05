@@ -136,6 +136,15 @@ def extract_mission(utterance):
         price = _cn_price(match.group(1))
         if price:
             extracted['budget_max_cents'] = price * 100
+    # 预算区间（v19）：「预算三百到四百五」双界都归预算语义（元语境由"预算"锚定，
+    # 数字可不带元/块）。此前只抓到下界 300 当上限，窗口塌缩成 [300,300]，
+    # 溯源守卫据此丢弃模型的正确上界（v18 d-76 根因）。
+    for match in re.finditer(r'预算\s*([0-9０-９一二两三四五六七八九十百千]+)\s*(?:元|块)?\s*(?:到|至|-|—|~)\s*'
+                             r'([0-9０-９一二两三四五六七八九十百千]+)\s*(?:元|块)?', text):
+        low, high = _cn_price(match.group(1)), _cn_price(match.group(2))
+        if low and high:
+            extracted['min_price_cents'] = min(low, high) * 100
+            extracted['budget_max_cents'] = max(low, high) * 100
     # Buy-count intent: purchase verb + count + measure word. Interrogatives without
     # a count ("能买吗") and result-count asks ("推荐3个") stay outside.
     for match in re.finditer(r'(?:买|购买|要|来)\s*([0-9０-９一二两三四五六七八九十百千]+)\s*[' + COUNT_MEASURE + ']', text):
@@ -146,6 +155,16 @@ def extract_mission(utterance):
     # carry a currency so quantity ranges ("2到3个") never parse as prices.
     for match in re.finditer(r'([0-9０-９一二两三四五六七八九十百千]+)\s*(?:元|块)\s*(?:到|至|-|—|~)'
                              r'\s*([0-9０-９一二两三四五六七八九十百千]+)\s*(?:元|块)?(?:之间|以内|以下)?', text):
+        low, high = _cn_price(match.group(1)), _cn_price(match.group(2))
+        if low and high:
+            extracted['min_price_cents'] = min(low, high) * 100
+            extracted['budget_max_cents'] = max(low, high) * 100
+    # 裸口语区间 + 的字锚定（v19 追订）："一百五到六百的耳机"——数字不带元/块
+    # 且无"预算"前缀，但"的+名词"的定语结构锚定价格语义（数量区间"2到3个"的
+    # 第二数字后跟量词，不匹配）。此前该形状抽取不到任何界，溯源守卫丢弃模型
+    # 的正确窗口，末端微调调用后请求窗口塌缩、下界失守（v18 d-73 根因）。
+    for match in re.finditer(r'([0-9０-９一二两三四五六七八九十百千]+)\s*(?:到|至|-|—|~)\s*'
+                             r'([0-9０-９一二两三四五六七八九十百千]+)\s*的', text):
         low, high = _cn_price(match.group(1)), _cn_price(match.group(2))
         if low and high:
             extracted['min_price_cents'] = min(low, high) * 100

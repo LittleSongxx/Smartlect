@@ -134,10 +134,10 @@ class ShoppingRetrieve:
         query = {'keyword': _re.sub(r'\s+', '', keyword or ''), 'limit': limit, **recall_scope}
         if category_id is not None:
             query['categoryId'] = category_id
-        if request.get('max_price_cents') is not None:
-            query['maxPriceCents'] = request['max_price_cents']
-        if request.get('min_price_cents'):
-            query['minPriceCents'] = request['min_price_cents']
+        # 价格窗不下发 Java（v19）：Java searchOnSale 按商品粒度（min/max_price 列）
+        # 过滤，多规格商品任一规格越界即整品被剔（v18 d-76：白款 459 超顶连累合格
+        # 的 399 黑款）；召回全量、价格由 eligible_skus 的 SKU 粒度资格门执行
+        #（场景目录 ≤20 商品，召回代价可忽略）。
         try:
             rows = await self.commerce.request('product', '/internal/product/commerce/searchOnSale', data=query)
         except CommerceError:
