@@ -13,3 +13,4 @@
 | [拆分订单事务边界.md](拆分订单事务边界.md) | postOrder/createConfirmed 移除 @Transactional，Feign 移出事务（五阶段重构）；幂等服务独立事务；全仓 BUILD SUCCESS |
 | [Agent侧四项修正.md](Agent侧四项修正.md) | P1 预算常量统一 policy 源；P2 消融臂 DB 脱钩；P3 子智能体注入检测+截断；P4 移除 glm-5.3+成本汇总；300 tests OK |
 | [部署前缺陷修复.md](部署前缺陷修复.md) | 上线前检查：九个服务 yml 重复键（SnakeYAML 2.4 下**服务启动即失败**，部署阻断）、九个 xxl-job 任务从未执行（未登记+执行器端口冲突+user 开关）、基础设施编排七处不一致（infra-up/门禁假阳性/xxljob 用户/挂载位置/健康检查/litellm/自测）、Nacos 推送自引用 |
+| [README重写与展示资产更新.md](README重写与展示资产更新.md) | 参考 NewsClaw/MindCart 全面重写 README（场景小节 + 运维排查入口表 + 「没有的东西」）；架构图按当前拓扑重绘（Canal/xxl-job/Nacos 配置中心）；11 张截图全部走真实交互重拍（console 零错误，顺带跑通浏览→导购→加购→下单→支付闭环）；GitHub About 的 description/topics 从已废弃技术线全量替换 |
