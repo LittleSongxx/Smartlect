@@ -13,8 +13,8 @@ it('合并首次会话、隔离超时，写前重新核验且旧响应不能覆�
   }));
   vi.stubGlobal('fetch', fetch); session.value = null;
   const timeout = new AbortController();
-  const exposure = aiPost('/recommendations/rec1/exposures', { positions: [1] }, timeout.signal);
-  const expired = expect(exposure).rejects.toMatchObject({ name: 'AbortError' });
+  const created = aiPost('/conversations', {}, timeout.signal);
+  const expired = expect(created).rejects.toMatchObject({ name: 'AbortError' });
   const startup = loadSession(); const focus = loadSession();
   expect(fetch).toHaveBeenCalledTimes(1);
   timeout.abort(); await expired;
@@ -23,13 +23,13 @@ it('合并首次会话、隔离超时，写前重新核验且旧响应不能覆�
   expect(await startup).toEqual(visitor); expect(await focus).toEqual(visitor);
   expect(fetch).toHaveBeenCalledTimes(1);
 
-  const landing = aiPost('/traffic/landing', { entry_id: 'entry1' });
+  const preference = aiPost('/preferences/purpose', { value: '办公' });
   expect(fetch.mock.calls[1]![0]).toBe('/api/assistant/session');
   pending[1]!({ ...visitor, csrf_token: 'fresh-csrf' }); await flushPromises();
-  expect(fetch.mock.calls[2]).toEqual(['/api/assistant/traffic/landing', expect.objectContaining({
+  expect(fetch.mock.calls[2]).toEqual(['/api/assistant/preferences/purpose', expect.objectContaining({
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'fresh-csrf' },
   })]);
-  pending[2]!({ recorded: true }); await landing;
+  pending[2]!({ recorded: true }); await preference;
 
   const oldRead = loadSession();
   const login = javaPost('/account/login', { email: 'synthetic@example.invalid' });

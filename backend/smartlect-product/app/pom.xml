@@ -44,7 +44,17 @@
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-starter-loadbalancer</artifactId>
     </dependency>
-  </dependencies>
+    <!-- 商品搜索 ES 化：与 deploy 容器同版本 8.19；rest-client/jackson 随其传递引入 -->
+    <dependency>
+      <groupId>co.elastic.clients</groupId>
+      <artifactId>elasticsearch-java</artifactId>
+      <version>8.19.0</version>
+    </dependency>
+          <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+        </dependency>
+    </dependencies>
   <build>
     <plugins>
       <plugin>

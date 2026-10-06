@@ -10,12 +10,17 @@ services:
       SMARTLECT_FLYWAY_PASSWORD: ${SMARTLECT_FLYWAY_PASSWORD:?run bootstrap}
       SMARTLECT_NACOS_MYSQL_PASSWORD: ${SMARTLECT_NACOS_MYSQL_PASSWORD:?run bootstrap}
       SMARTLECT_GROWTH_MYSQL_PASSWORD: ${SMARTLECT_GROWTH_MYSQL_PASSWORD:?run bootstrap}
+      SMARTLECT_CANAL_MYSQL_PASSWORD: ${SMARTLECT_CANAL_MYSQL_PASSWORD:?run bootstrap}
+      SMARTLECT_XXLJOB_MYSQL_PASSWORD: ${SMARTLECT_XXLJOB_MYSQL_PASSWORD:?run bootstrap}
       TZ: Asia/Shanghai
-    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_general_ci, --innodb_buffer_pool_size=512M, --max_connections=200]
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_general_ci, --innodb_buffer_pool_size=512M, --max_connections=200,
+              --server-id=1, --log-bin=binlog, --binlog-format=ROW, --binlog-row-image=FULL]
     volumes:
       - mysql:/var/lib/mysql
       - ./mysql-init.sh:/docker-entrypoint-initdb.d/00-smartlect.sh:ro
       - ./sql/14-nacos.sql:/docker-entrypoint-initdb.d/14-nacos.sql:ro
+      # 建表脚本必须挂在 MySQL 的 initdb 目录；之前误挂在 xxl-job-admin 容器上，从未被执行。
+      - ./sql/16-xxljob.sql:/docker-entrypoint-initdb.d/16-xxljob.sql:ro
     # 8c32g 后余量充足：512M buffer pool + 2g 上限（1g 时常驻 748MB 已逼近）；
     # max_connections 160→200 给 assistant 线程本地复用与未来多副本留余量
     mem_limit: 2g
@@ -120,23 +125,92 @@ services:
       timeout: 3s
       retries: 24
 
-  postgres:
-    profiles: ["postgres"]
-    image: postgres:16-alpine
-    ports: ["127.0.0.1:${SMARTLECT_POSTGRES_PORT:-15432}:5432"]
+  # Canal：伪装 MySQL 从库解析 binlog，直投 RabbitMQ（flat JSON）。
+  # 消息路由见 deploy/canal/instance.properties；Java 消费方为 product 服务的
+  # ProductIndexConsumer（商品索引增量同步与缓存失效的变更源）。
+  canal:
+    image: canal/canal-server:v1.1.8
+    depends_on:
+      mysql:
+        condition: service_healthy
     environment:
-      POSTGRES_USER: ${SMARTLECT_POSTGRES_USER:-smartlect}
-      POSTGRES_PASSWORD: ${SMARTLECT_POSTGRES_PASSWORD:-smartlect}
-      POSTGRES_DB: ${SMARTLECT_POSTGRES_DATABASE:-smartlect_growth}
-      TZ: Asia/Shanghai
+      canal.serverMode: rabbitMQ
+      CANAL_MYSQL_ADDRESS: "mysql:3306"
+      CANAL_MYSQL_USER: smartlect_canal
+      CANAL_MYSQL_PASSWORD: ${SMARTLECT_CANAL_MYSQL_PASSWORD:?run bootstrap}
+      CANAL_RABBIT_HOST: rabbitmq
+      CANAL_RABBIT_PORT: "5672"
+      CANAL_RABBIT_VHOST: ${SMARTLECT_RABBIT_VHOST:?run bootstrap}
+      CANAL_RABBIT_USER: ${SMARTLECT_RABBIT_USER:?run bootstrap}
+      CANAL_RABBIT_MGMT_PORT: "15672"
+      CANAL_RABBIT_PASSWORD: ${SMARTLECT_RABBIT_PASSWORD:?run bootstrap}
+    ports:
+      - "127.0.0.1:${SMARTLECT_CANAL_PORT:-11111}:11111"
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - ./canal/instance.properties:/smartlect-canal-instance-template.properties:ro
+      - ./canal/canal.properties:/smartlect-canal-template.properties:ro
+      - ./canal/startup.sh:/smartlect-canal-startup.sh:ro
+    # 镜像无 envsubst：startup.sh 先用 sed 注入 CANAL_* 环境变量再交回官方启动脚本
+    command: ["bash", "/smartlect-canal-startup.sh"]
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:11112/metrics >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # XXL-JOB 调度中心：替代 @Scheduled + Redis 锁，任务管理/触发/告警统一到控制台。
+  xxl-job-admin:
+    image: xuxueli/xxl-job-admin:2.5.0
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      PARAMS: >-
+        --spring.datasource.url=jdbc:mysql://mysql:3306/smartlect_xxljob?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+        --spring.datasource.username=smartlect_xxljob
+        --spring.datasource.password=${SMARTLECT_XXLJOB_MYSQL_PASSWORD:?run bootstrap}
+        --xxl.job.accessToken=${SMARTLECT_XXLJOB_TOKEN:?run bootstrap}
+    ports:
+      - "127.0.0.1:${SMARTLECT_XXLJOB_PORT:-18090}:8080"
     mem_limit: 512m
     healthcheck:
-      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      # 镜像里既没有 curl 也没有 wget，原先的 curl 探活恒失败（容器永远 unhealthy）。
+      # 用 bash 的 /dev/tcp 探测 Web 端口——端口在监听即视为就绪。
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # LiteLLM 网关：统一模型路由/降级/成本追踪，替代 provider.py 厂商分支。
+  # 非硬依赖：assistant 直连上游仍可用（base_url 切换即回退）。
+  # 挂在 litellm profile 下：批次五 provider 回退后暂无消费者，默认不随 infra-up 启动
+  # （docker compose --profile litellm up -d litellm 显式启用）。
+  litellm:
+    profiles: ["litellm"]
+    image: ghcr.io/berriai/litellm:main-v1.78-stable
+    env_file:
+      # required: false —— 缺 model.env 时 compose 会直接报错退出，
+      # 那会连带阻断 `docker compose config` 等全量校验。
+      - path: ./model.env
+        required: false
+    environment:
+      LITELLM_MASTER_KEY: ${SMARTLECT_LITELLM_MASTER_KEY:?run bootstrap}
+    ports:
+      - "127.0.0.1:${SMARTLECT_LITELLM_PORT:-14000}:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    mem_limit: 384m
+    healthcheck:
+      # python 基础镜像不带 curl，改用解释器自身的 urllib 探活。
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=3)\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
 
 volumes:
   mysql:
@@ -144,4 +218,3 @@ volumes:
   rabbit:
   es-data:
   qdrant-data:
-  postgres:

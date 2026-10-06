@@ -447,7 +447,7 @@ def create_app(settings=None, *, config=None, store=None, identity=None, commerc
                     ):
                         await run_shopping(actor=actor, run=run, lease=lease, store=store, commerce=commerce,
                                            knowledge=knowledge, memory=memory, provider=provider,
-                                           mode=settings.model_mode, config=config, attribution=scenario_scope)
+                                           mode=settings.model_mode, config=config, scenario_scope_store=scenario_scope)
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:

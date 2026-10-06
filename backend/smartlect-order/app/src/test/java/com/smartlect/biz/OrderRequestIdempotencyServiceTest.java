@@ -41,8 +41,25 @@ class OrderRequestIdempotencyServiceTest {
     @Mock
     private OrderRequestIdempotencyMapper mapper;
 
+    @Mock
+    private org.springframework.transaction.support.TransactionTemplate txTemplate;
+
     @InjectMocks
     private OrderRequestIdempotencyService service;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpTxTemplate() {
+        org.mockito.Mockito.lenient().when(txTemplate.execute(org.mockito.ArgumentMatchers.<org.springframework.transaction.support.TransactionCallback<Object>>any()))
+                .thenAnswer(call -> {
+                    org.springframework.transaction.support.TransactionCallback<?> cb = call.getArgument(0);
+                    return cb.doInTransaction(null);
+                });
+        org.mockito.Mockito.lenient().doAnswer(call -> {
+            java.util.function.Consumer<org.springframework.transaction.TransactionStatus> cb = call.getArgument(0);
+            cb.accept(null);
+            return null;
+        }).when(txTemplate).executeWithoutResult(org.mockito.ArgumentMatchers.<java.util.function.Consumer<org.springframework.transaction.TransactionStatus>>any());
+    }
 
     @Test
     void checkoutReplayIsIdempotentButRejectsChangedQuantity() {

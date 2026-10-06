@@ -60,6 +60,8 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 
 	@Resource
 	private StockFeignSupport stockFeignSupport;
+	@Resource
+	private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
 	@Resource
 	private ProductFeignSupport productFeignSupport;
@@ -179,7 +181,9 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 	}
 
 	@Override
-	@Transactional(rollbackFor = Exception.class)
+	// 不标 @Transactional：createOrder 拆为三阶段（读准备 → 远程锁资源 → 短本地事务写入），
+	// 远程 Feign 不再占用数据库连接（压测实测 18.1s 连接占用 → 连接池抽干）。
+	// 本地事务由 createOrder 内的 TransactionTemplate 管理，仅覆盖 DB 写入（毫秒级）。
 	public PayInfoDTO postOrder(String userId, PostOrderDTO postOrderDTO, String idempotencyKey) {
 		return orderRequestIdempotencyService.execute(
 				userId,
@@ -210,7 +214,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 	}
 
 	@Override
-	@Transactional(rollbackFor = Exception.class)
+	// 同 postOrder：远程操作在事务外，本地写入用 TransactionTemplate 短事务。
 	public PayInfoDTO createConfirmed(String userId, PostOrderDTO request, String quoteId,
 			Long confirmedAmountCents, String idempotencyKey) {
 		if (quoteId == null || confirmedAmountCents == null) OrderQuoteService.reconfirm();
@@ -434,6 +438,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 
 	private PayInfoDTO createOrder(String userId, PostOrderDTO postOrderDTO,
 			OrderQuoteService.Quote quote, Long confirmedAmountCents) {
+		// Phase 1: 只读准备（无本地事务，Feign 查地址/快照/库存预检不占连接）
 		PreparedOrder prepared = prepareOrder(userId, postOrderDTO);
 		PayChannelEnum payChannelEnum = prepared.channel();
 		OrderFromTypeEnum orderFromTypeEnum = prepared.from();
@@ -446,19 +451,23 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		String unifiedPayOrderId = prepared.payOrderId();
 		Date now = prepared.now();
 		OrderCouponRel couponRel = null;
-		// --- 下单使用优惠券（可选）：经 coupon 服务校验并预占 ---
-		String userCouponId = postOrderDTO.getUserCouponId();
+		if (newList.isEmpty()) {
+			throw new BusinessException("请选择商品");
+		}
+
+		// Phase 2: 锁远程资源（远程服务各自事务，本地不持有连接）
 		boolean couponLocked = false;
+		boolean stockDeducted = false;
+		List<ProductItem> deductList = copyItemsWithSignedBuyCount(newList, true);
+		String userCouponId = postOrderDTO.getUserCouponId();
 		if (!StringTools.isEmpty(userCouponId)) {
 			BigDecimal orderAmountBeforeDiscount = orderInfoList.stream()
-					.map(OrderInfo::getAmount)
-					.reduce(BigDecimal.ZERO, BigDecimal::add);
+					.map(OrderInfo::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
 			CouponLockResultVO lockResult = couponFeignSupport.validateAndLock(userId, userCouponId, orderAmountBeforeDiscount);
 			if (Boolean.TRUE.equals(lockResult.getLocked()) && lockResult.getDiscountAmount() != null
 					&& lockResult.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
 				distributeCouponDiscount(orderInfoList, lockResult.getDiscountAmount());
 				OrderListPayAmountHelper.ensureOrderListMinTotalPay(orderInfoList);
-
 				OrderCouponRel rel = new OrderCouponRel();
 				rel.setOrderId(orderInfoList.get(0).getOrderId());
 				rel.setUserCouponId(userCouponId);
@@ -469,33 +478,30 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 				couponLocked = true;
 			}
 		}
-		// 统一操作数据库
-		if (newList.isEmpty()) {
-			throw new BusinessException("请选择商品");
-		}
-		boolean stockDeducted = false;
-		List<ProductItem> deductList = copyItemsWithSignedBuyCount(newList, true);
 		try {
-			// Compare the exact final amount and resolved SKU/address after coupon/stock locks,
-			// before any order, coupon relation or payment-intent persistence.
 			if (quote != null) {
 				orderQuoteService.validate(quote, userId, postOrderDTO, confirmedAmountCents,
 						prepared.address(), orderItemList, total(orderInfoList));
 			}
-			if (couponRel != null) orderCouponRelMapper.insert(couponRel);
-			// 插入数据库
-			orderInfoMapper.insertBatch(orderInfoList);
-			orderItemMapper.insertBatch(orderItemList);
-			orderLogisticsInfoMapper.insertBatch(orderLogisticsInfoList);
-			// 远程扣减库存（与本地订单事务分离；后续步骤失败时补偿回补）
+
+			// Phase 3: 短本地事务（仅 DB 写入，毫秒级，不包含任何远程调用）
+			final OrderCouponRel relToInsert = couponRel;
+			transactionTemplate.executeWithoutResult(status -> {
+				if (relToInsert != null) orderCouponRelMapper.insert(relToInsert);
+				orderInfoMapper.insertBatch(orderInfoList);
+				orderItemMapper.insertBatch(orderItemList);
+				orderLogisticsInfoMapper.insertBatch(orderLogisticsInfoList);
+			});
+
+			// Phase 4: 事务外远程写（幂等，失败不回滚订单——走补偿/超时关单收敛）
 			stockFeignSupport.changeStockBatch(deductList, "order-deduct:" + unifiedPayOrderId);
 			stockDeducted = true;
+
 			if (OrderFromTypeEnum.CART == orderFromTypeEnum) {
 				cartFeignSupport.deleteBatch(productCartList);
 			}
 			BigDecimal totalAmount = orderInfoList.stream().map(OrderInfo::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
 			totalAmount = OrderPayAmountUtil.normalizeChannelPayAmount(totalAmount);
-
 			log.info("提交订单,payOrderId={}, 订单数量={}, 总金额={}", unifiedPayOrderId, orderInfoList.size(), totalAmount);
 
 			payFeignSupport.createPending(userId, unifiedPayOrderId, orderInfoList.get(0).getOrderId(),
@@ -515,6 +521,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 			}
 			return payInfoDTO;
 		} catch (RuntimeException ex) {
+			// Phase 5: 补偿（事务外，可独立重试）
 			if (stockDeducted) {
 				try {
 					stockFeignSupport.restoreOrderStock(
@@ -542,6 +549,7 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		}
 	}
 
+	// 支付表单获取是 best-effort：失败不阻塞下单（订单保持待支付，支付页可重试）。
 	PayInfoDTO requestInitialPayInfoBestEffort(
 			String payScene, String payOrderId, String subject, BigDecimal amount) {
 		if (OrderPayAmountUtil.isFreeOrder(amount)) {
@@ -550,10 +558,8 @@ public class OrderInfoServiceImpl implements OrderInfoService {
 		try {
 			return payFeignSupport.getPayUrl(payScene, payOrderId, subject, amount);
 		} catch (RuntimeException ex) {
-			log.warn(
-					"支付表单暂不可用，订单保持待支付并允许支付页重试, payOrderId={}, error={}",
-					payOrderId,
-					ex.getMessage());
+			log.warn("支付表单暂不可用，订单保持待支付并允许支付页重试, payOrderId={}, error={}",
+					payOrderId, ex.getMessage());
 			return new PayInfoDTO(null, payOrderId, amount);
 		}
 	}

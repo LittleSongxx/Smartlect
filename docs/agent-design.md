@@ -10,7 +10,7 @@
 ```
 用户消息 → Shopping Agent（有界 ReAct，手写三节点 LangGraph StateGraph）
               │
-              ├── 17 个工具（读 / 提案 / 记忆 / 人工 / 派发）
+              ├── 19 个工具（读 / 提案 / 记忆 / 人工 / 派发）
               │      │
               │      ├── task_dispatch ──→ 1–3 个子智能体并发（create_react_agent）
               │      │                      各自独立上下文，只回传结论
@@ -36,7 +36,7 @@
 
 超限不无限循环：`BudgetExceeded` → `close_degraded_turn()` 确定性收口（诚实空集 / 转人工 / 模板答案），终态记录在 run 结果里。
 
-## 工具面（17 个）
+## 工具面（19 个）
 
 | 类别 | 工具 | 权限 | 说明 |
 |---|---|---|---|
@@ -61,6 +61,7 @@
 - 每个子智能体 = `langgraph.prebuilt.create_react_agent`（框架预构建 ReAct 循环）
 - 工具面收窄为 7 个只读工具（`StructuredTool` 包装既有 REGISTRY）
 - `asyncio.gather` 并发，各自独立上下文与预算（25s 超时 + recursion_limit 12）
+- **模型与工具调用计入主循环同一预算与审计**：子智能体每次模型调用过主会话 `before_attempt` 闸（计入 MODEL_CALL_LIMIT、落 `model_attempts`），子工具调用过 `tool_tick`（计入 TOOL_CALL_LIMIT）；预算耗尽按单任务失败降级披露
 - 只回传最终结论文本——中间工具事件不进主上下文
 - 派发判据写进系统提示词：**可并行 / 需上下文隔离 / 调用链深**，其一成立才用
 
@@ -86,6 +87,8 @@
 `openai` SDK（3.14.1）走 OpenAI 兼容端点。端点白名单（dashscope / 智谱 compatible-mode）+ 模型白名单（qwen3.7-plus / glm-5.3）。模型热切换走 MySQL `model_runtime_config` 表（5s TTL 异步加载）。
 
 ## 行为守卫
+
+守卫分两层治理（[ADR-0013](adr/0013-guard-chain-layering.md)）：证据契约校验（确定性不变量，永久保留）与意图帧启发式（评测驱动逐条降级改判权）。
 
 | 守卫 | 机制 |
 |---|---|

@@ -1,7 +1,6 @@
 package com.smartlect.controller.internal;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.smartlect.biz.CommerceV2Service;
 import com.smartlect.biz.OrderInfoService;
 import com.smartlect.biz.OrderQuoteService;
@@ -38,13 +37,7 @@ public class OrderCommerceV2Controller extends ABaseController {
     public ResponseVO<Map<String, Object>> createConfirmed(@RequestBody JsonNode body,
             @RequestHeader("Idempotency-Key") String key) {
         String userId = DelegatedUserIdentity.requireNonTrial();
-        JsonNode purchase = body;
-        if (body != null && body.isObject() && body.has("attributionContextToken")) {
-            ObjectNode copy = body.deepCopy();
-            copy.remove("attributionContextToken");
-            purchase = copy;
-        }
-        OrderQuoteService.Confirmed request = OrderQuoteService.parse(purchase, OrderQuoteService.Confirmed.class);
+        OrderQuoteService.Confirmed request = OrderQuoteService.parse(body, OrderQuoteService.Confirmed.class);
         return getSuccessResponseVO(CommerceV2Service.created(orders.createConfirmed(userId,
                 OrderQuoteService.normalize(request.order()), request.quoteId(), request.confirmedAmountCents(), key)));
     }

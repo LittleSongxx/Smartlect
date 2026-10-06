@@ -11,7 +11,6 @@ import com.smartlect.api.dto.ProductSalesIncreaseDTO;
 import com.smartlect.api.dto.ProductSnapshotBatchVO;
 import com.smartlect.api.vo.ProductInfoSnapshotVO;
 import com.smartlect.api.vo.ProductPropertyValueSnapshotVO;
-import com.smartlect.api.vo.ProductSearchIndexVO;
 import com.smartlect.api.vo.ProductSkuSnapshotVO;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.api.vo.ProductSkuListVO;
@@ -179,12 +178,6 @@ public class ProductFeignSupport {
 
                 "增加销量失败");
 
-    }
-
-    public ProductSearchIndexVO getSearchIndex(String productId) {
-        return feignResponseSupport.call(
-                () -> productFeignClient.getSearchIndex(new ProductIdDTO(productId)),
-                "查询搜索索引商品失败");
     }
 
     public PaginationResultVO<ProductSkuListVO> lessStockSkuPage(Integer pageNo, Integer pageSize, Integer threshold) {

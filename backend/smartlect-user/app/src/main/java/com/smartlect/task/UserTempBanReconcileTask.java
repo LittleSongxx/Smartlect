@@ -5,7 +5,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.scheduling.annotation.Scheduled;
+import com.xxl.job.core.handler.annotation.XxlJob;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -19,7 +19,7 @@ public class UserTempBanReconcileTask {
     @Value("${user.temp-ban.reconcile-batch-size:100}")
     private int batchSize;
 
-    @Scheduled(fixedDelayString = "${user.temp-ban.reconcile-interval-ms:60000}")
+    @XxlJob("userTempBanReconcile")
     public void reconcile() {
         try {
             int released = userTempBanService.reconcileExpiredBans(batchSize);

@@ -129,7 +129,7 @@
 | **Agent** | Python 3.11 · FastAPI · LangGraph 1.2 · openai SDK（兼容模式端点白名单） |
 | **检索** | Elasticsearch 8.19（smartcn BM25）+ Qdrant 1.15（HNSW dense）→ RRF → gte-rerank |
 | **锁/限流** | Redisson 4.0（RLock 分布式锁 · RRateLimiter 限流） |
-| **存储** | MySQL · Redis · RabbitMQ · Nacos · PostgreSQL（LangGraph checkpointer） |
+| **存储** | MySQL · Redis · RabbitMQ · Nacos |
 | **模型** | 独立配置；演示走 live，缺配置时明确失败 |
 
 ```
@@ -183,6 +183,7 @@ docs/      设计说明与 ADR，给想往下翻的人
 | [0010](docs/adr/0010-subagent-dispatch.md) | 并行子智能体（SubAgent-as-Tool + create_react_agent） |
 | [0011](docs/adr/0011-sa-token-migration-plan.md) | Sa-Token 替换自研鉴权三件套 |
 | [0012](docs/adr/0012-echomind-patterns.md) | 借鉴 EchoMind 模式的 Agent 架构清晰化重构 |
+| [0013](docs/adr/0013-guard-chain-layering.md) | 守卫链分层治理：意图帧启发式与证据契约校验分离 |
 
 ---
 

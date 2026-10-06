@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
-import org.springframework.scheduling.annotation.Scheduled;
+import com.xxl.job.core.handler.annotation.XxlJob;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
@@ -31,7 +31,7 @@ public class AutoDataTask {
     private String applicationName;
 
     // 每天的凌晨一点自动统计昨天的数据
-    @Scheduled(cron = "0 0 1 * * ?")
+    @XxlJob("autoDataTask")
     public void autoCountYesterdayData() {
         countYesterdayData("定时");
     }

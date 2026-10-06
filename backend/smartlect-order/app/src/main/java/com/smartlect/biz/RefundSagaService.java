@@ -9,7 +9,7 @@ import com.smartlect.entity.po.RefundRequest;
 import com.smartlect.exception.BusinessException;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
+import com.xxl.job.core.handler.annotation.XxlJob;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -49,7 +49,7 @@ public class RefundSagaService {
         processPayment(request, true);
     }
 
-    @Scheduled(fixedDelayString = "${refund.saga.reconcile-interval-ms:30000}")
+    @XxlJob("refundSagaReconcile")
     public void reconcile() {
         List<RefundRequest> due = transactionService.selectDue(30);
         for (RefundRequest request : due) {

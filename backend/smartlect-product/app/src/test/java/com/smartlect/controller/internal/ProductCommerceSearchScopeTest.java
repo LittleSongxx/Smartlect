@@ -34,6 +34,10 @@ class ProductCommerceSearchScopeTest {
     void setUp() {
         ReflectionTestUtils.setField(controller, "productInfoMapper", mapper);
         when(mapper.selectList(any())).thenReturn(List.of());
+        // 默认桩：ES 不可达（null）→ searchOnSale 走 SQL LIKE 回退路径
+        com.smartlect.search.ProductIndexService index = mock(com.smartlect.search.ProductIndexService.class);
+        when(index.searchIdsByKeyword(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(null);
+        ReflectionTestUtils.setField(controller, "productIndexService", index);
     }
 
     @Test

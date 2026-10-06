@@ -9,7 +9,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.scheduling.annotation.Scheduled;
 
 import java.util.concurrent.TimeUnit;
 
@@ -95,9 +94,9 @@ class CouponRushReconcileTaskTest {
         assertEquals("app.common-scheduling.enabled", flag.name()[0]);
         assertEquals("true", flag.havingValue());
 
-        Scheduled scheduled = CouponRushReconcileTask.class
-                .getMethod("reconcileRushStock").getAnnotation(Scheduled.class);
-        assertNotNull(scheduled);
-        assertEquals("0 */10 * * * ?", scheduled.cron());
+        com.xxl.job.core.handler.annotation.XxlJob xxlJob = CouponRushReconcileTask.class
+                .getMethod("reconcileRushStock").getAnnotation(com.xxl.job.core.handler.annotation.XxlJob.class);
+        assertNotNull(xxlJob);
+        assertEquals("couponRushReconcile", xxlJob.value());
     }
 }

@@ -17,10 +17,11 @@ EXPOSED_KINDS = ("read",)
 #   load_skill      exists so the in-process agent can refresh its own prompt text.
 #                   It is not a business capability and an external client has no prompt to
 #                   apply it to.
-#   recommend_skus  saves a recommendation receipt that an A/B assignment and later exposure
-#   search_skus     and click reports are attributed against. That receipt only means
-#   compare_skus    something when the caller is a display surface bound to report those
-#                   events, which an MCP client is not.
+#   recommend_skus  save a selection receipt into the conversation's evaluation trail
+#   search_skus     (mission state + saved recommendation), which only means something
+#   compare_skus    when the caller is the in-process agent session that reads it back.
+#                   The attribution/exposure reporting line they once fed was retired
+#                   (ADR-0008); the receipts now serve run-level evaluation replay.
 INTERNAL_TOOLS = frozenset({"load_skill", "recommend_skus", "search_skus", "compare_skus"})
 
 

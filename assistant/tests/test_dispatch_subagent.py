@@ -10,7 +10,11 @@ from smartlect.tools import REGISTRY
 
 
 class _ScriptedProvider:
-    """奇数次调用调工具、偶数次调用给结论——可被多个子智能体共享。"""
+    """奇数次调用调工具、偶数次调用给结论——可被多个子智能体共享。
+
+    忠实模拟 Provider 的预算闸协议：调用方传入 before_attempt 时，
+    每次尝试前先过闸（拒绝即抛，与真实 Provider._complete_request 一致）。
+    """
 
     def __init__(self, tool_name, tool_args, answer):
         self._tool_name = tool_name
@@ -19,6 +23,9 @@ class _ScriptedProvider:
         self.calls = 0
 
     async def chat(self, messages, **kwargs):
+        before_attempt = kwargs.get('before_attempt')
+        if before_attempt is not None:
+            await before_attempt()
         self.calls += 1
         if self.calls % 2 == 1:
             message = {"role": "assistant", "content": None, "tool_calls": [
@@ -232,6 +239,208 @@ class TaskDispatchThroughInvokeTests(unittest.TestCase):
         self.assertEqual(row['status'], 'failed')
         self.assertIn('StateError', row['answer'])
         self.assertFalse(receipt['data']['all_succeeded'])
+
+
+class SubModelAttemptLimitTests(unittest.TestCase):
+    """单子任务模型调用上限：comparator 式不收敛循环不许烧穿全局预算。
+    live 调优（tuneA-v1，2026-10-06）曾观测到 13 次子调用耗尽整池、
+    主循环被迫 rule-fallback 收口——本测试锁定"超限按单任务失败降级"。"""
+
+    def test_runaway_sub_agent_fails_at_limit_not_beyond(self):
+        async def scenario():
+            provider = _LoopyProvider('compare_skus', '{"productIdList": ["9300000001", "9300000002"]}')
+            model = ProviderChatModel(provider=provider, before_attempt=None)
+
+            async def invoke(*_a, **_k):
+                return {'items': []}
+
+            with self.assertRaises(dispatch.BudgetExceeded):
+                await dispatch.run_sub_agent(model, '比较两个商品', invoke)
+            # 子任务自身上限先于任何全局预算触发：第 LIMIT+1 次尝试被闸下，未发出请求
+            self.assertEqual(provider.calls, dispatch.SUB_MODEL_ATTEMPT_LIMIT)
+
+        asyncio.run(scenario())
+
+
+class _LoopyProvider:
+    """永远要求调工具、永不给结论——模拟不收敛的子智能体。"""
+
+    def __init__(self, tool_name, tool_args):
+        self._tool = {"id": "c1", "type": "function",
+                      "function": {"name": tool_name, "arguments": tool_args}}
+        self.calls = 0
+
+    async def chat(self, messages, **kwargs):
+        before_attempt = kwargs.get('before_attempt')
+        if before_attempt is not None:
+            await before_attempt()
+        self.calls += 1
+        return {"message": {"role": "assistant", "content": None, "tool_calls": [dict(self._tool, id=f"c{self.calls}")]},
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+
+class VisibleSubScopeTests(unittest.TestCase):
+    """子模型可见工具面 = profile 面 ∩ 主会话 skill 门控面；交集为空显式失败。
+    live 路径曾把完整 profile 面下发给子模型、仅在调用时拦截，导致模型必然
+    撞 tool_not_loaded——本组测试锁定"可见即可调"的契约。"""
+
+    def test_outer_none_keeps_full_scope(self):
+        self.assertEqual(dispatch.visible_sub_scope(('a', 'b'), None), ('a', 'b'))
+
+    def test_intersection_only(self):
+        self.assertEqual(dispatch.visible_sub_scope(('a', 'b', 'c'), {'b', 'c', 'x'}), ('b', 'c'))
+
+    def test_empty_intersection_raises_state_error(self):
+        with self.assertRaises(dispatch.StateError) as ctx:
+            dispatch.visible_sub_scope(('a',), {'b'})
+        self.assertEqual(ctx.exception.code, 'sub_agent_no_available_tools')
+
+
+class BindToolsWireContractTests(unittest.TestCase):
+    """bind_tools 必须产出 OpenAI wire dict：provider.chat 对 tools 逐项做
+    dict/type/function 严格校验，StructuredTool 对象透传会在 live 路径被
+    only_registered_function_tools_allowed 拒绝（scripted 假 Provider 不校验，
+    曾因此漏测——本测试锁定 wire 契约本身）。"""
+
+    def test_structured_tool_converted_to_wire_dict(self):
+        tool = dispatch.structured_tools(lambda *a, **k: None, ("search_knowledge",))[0]
+        bound = ProviderChatModel(provider=object()).bind_tools([tool])
+        self.assertEqual(len(bound.tools_wire), 1)
+        entry = bound.tools_wire[0]
+        self.assertIsInstance(entry, dict)
+        self.assertEqual(entry.get("type"), "function")
+        self.assertIn("name", entry.get("function") or {})
+        self.assertFalse(set(entry) - {"type", "function"})
+
+    def test_openai_dict_passthrough_unchanged(self):
+        raw = {"type": "function", "function": {"name": "search_knowledge", "parameters": {}}}
+        bound = ProviderChatModel(provider=object()).bind_tools([raw])
+        self.assertEqual(bound.tools_wire, [raw])
+
+
+class SubAgentBudgetTests(unittest.TestCase):
+    """预算单一事实源对 dispatch 路径成立：子智能体的模型调用与工具调用
+    必须经 sub_agent_budget 钩子（before_attempt / tool_tick）计数——
+    不存在绕过主会话预算闸的第二条路径（审计：model_attempts 完整覆盖）。"""
+
+    def _fixtures(self):
+        from types import SimpleNamespace
+
+        class _Actor:
+            permissions = ('shopping:read', 'orders:read')
+            subject_type = 'user'
+
+            def require(self, permission):
+                pass
+
+            def is_trial_user(self):
+                return False
+
+        class _Store:
+            def __init__(self):
+                self.calls = []
+
+            def start_tool_call(self, lease, call_id, name, params):
+                self.calls.append(name)
+                return {'outcome': 'started'}
+
+            def finish_tool_call(self, lease, call_id, outcome=None, receipt=None):
+                pass
+
+        class _Commerce:
+            async def request(self, service, path, *, actor, data):
+                return [{'orderId': 'O1', 'status': 'PAID'}]
+
+        return _Actor(), _Store(), _Commerce(), SimpleNamespace
+
+    def test_budget_hooks_fire_for_sub_model_and_sub_tool(self):
+        import asyncio
+        from smartlect import tools
+
+        actor, store, commerce, SimpleNamespace = self._fixtures()
+        attempts, ticks = [], []
+
+        async def before_attempt():
+            attempts.append(len(attempts) + 1)
+
+        async def on_trace(record):
+            pass
+
+        async def tool_tick():
+            ticks.append(len(ticks) + 1)
+
+        provider = _ScriptedProvider('get_my_orders', '{"limit": 5}', '订单O1已支付')
+        receipt = asyncio.run(tools.invoke(
+            'task_dispatch', {'tasks': ['查询我的订单'], 'reason': 'parallel'},
+            actor=actor, commerce=commerce, store=store,
+            lease={'conversation_id': 'c1', 'agent_run_id': 'r1'},
+            allowed={'task_dispatch', 'get_my_orders'}, provider=provider,
+            sub_agent_budget=SimpleNamespace(before_attempt=before_attempt, on_trace=on_trace,
+                                             tool_tick=tool_tick)))
+        # 子智能体模型调用两次（工具轮 + 结论轮），每次都过 before_attempt 预算闸
+        self.assertEqual(len(attempts), 2)
+        # 子工具调用一次，过 tool_tick 工具预算闸
+        self.assertEqual(len(ticks), 1)
+        self.assertEqual(receipt['data']['results'][0]['status'], 'succeeded')
+
+    def test_model_budget_exhausted_fails_only_that_task(self):
+        import asyncio
+        from smartlect import tools
+        from smartlect.agents.shopping.contract import BudgetExceeded
+
+        actor, store, commerce, SimpleNamespace = self._fixtures()
+
+        async def deny():
+            raise BudgetExceeded('model_call_or_time_limit')
+
+        async def noop():
+            pass
+
+        async def tool_tick():
+            pass
+
+        provider = _ScriptedProvider('get_my_orders', '{"limit": 5}', '不应到达')
+        receipt = asyncio.run(tools.invoke(
+            'task_dispatch', {'tasks': ['查询我的订单'], 'reason': 'parallel'},
+            actor=actor, commerce=commerce, store=store,
+            lease={'conversation_id': 'c1', 'agent_run_id': 'r1'},
+            allowed={'task_dispatch', 'get_my_orders'}, provider=provider,
+            sub_agent_budget=SimpleNamespace(before_attempt=deny, on_trace=noop,
+                                             tool_tick=tool_tick)))
+        row = receipt['data']['results'][0]
+        self.assertEqual(row['status'], 'failed')
+        self.assertFalse(receipt['data']['all_succeeded'])
+        self.assertIn('BudgetExceeded', row['answer'])
+
+    def test_tool_budget_exhausted_fails_only_that_task(self):
+        import asyncio
+        from smartlect import tools
+        from smartlect.agents.shopping.contract import BudgetExceeded
+
+        actor, store, commerce, SimpleNamespace = self._fixtures()
+
+        async def before_attempt():
+            pass
+
+        async def noop():
+            pass
+
+        async def deny_tool():
+            raise BudgetExceeded('tool_call_limit')
+
+        provider = _ScriptedProvider('get_my_orders', '{"limit": 5}', '不应到达')
+        receipt = asyncio.run(tools.invoke(
+            'task_dispatch', {'tasks': ['查询我的订单'], 'reason': 'parallel'},
+            actor=actor, commerce=commerce, store=store,
+            lease={'conversation_id': 'c1', 'agent_run_id': 'r1'},
+            allowed={'task_dispatch', 'get_my_orders'}, provider=provider,
+            sub_agent_budget=SimpleNamespace(before_attempt=before_attempt, on_trace=noop,
+                                             tool_tick=deny_tool)))
+        row = receipt['data']['results'][0]
+        self.assertEqual(row['status'], 'failed')
+        self.assertIn('BudgetExceeded', row['answer'])
+        # 子工具被 tool_tick 拦下：台账只有主调用
+        self.assertEqual(store.calls, ['task_dispatch'])
 
 
 if __name__ == "__main__":

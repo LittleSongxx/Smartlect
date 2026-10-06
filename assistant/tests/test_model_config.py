@@ -61,7 +61,7 @@ class ProviderRuntimeTests(unittest.TestCase):
         self.assertEqual(dashscope.runtime_chat_options(), ["qwen3.7-plus", "qwen3.7-plus-2026-05-26"])
         zhipu = Provider({**CONFIG, "SMARTLECT_MODEL_BASE_URL": "https://open.bigmodel.cn/api/paas/v4",
                           "SMARTLECT_MODEL_API_KEY": "k"})
-        self.assertEqual(zhipu.runtime_chat_options(), ["glm-5.3"])
+        self.assertEqual(zhipu.runtime_chat_options(), ["qwen3.7-plus", "qwen3.7-plus-2026-05-26"])
 
 
 class ModelConfigStoreTests(unittest.TestCase):

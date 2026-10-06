@@ -5,7 +5,6 @@ import com.smartlect.api.dto.ProductIdDTO;
 import com.smartlect.api.dto.ProductIdListDTO;
 import com.smartlect.api.dto.ProductSalesIncreaseDTO;
 import com.smartlect.api.dto.ProductSnapshotBatchVO;
-import com.smartlect.api.vo.ProductSearchIndexVO;
 import com.smartlect.api.vo.ProductSkuSnapshotVO;
 import com.smartlect.biz.ProductInternalService;
 import com.smartlect.biz.ProductSkuService;
@@ -50,11 +49,6 @@ public class ProductInternalController extends ABaseController {
                     dto.getQty() == null ? 0 : dto.getQty());
         }
         return getSuccessResponseVO(null);
-    }
-
-    @PostMapping("/searchIndex")
-    public ResponseVO<ProductSearchIndexVO> getSearchIndex(@Valid @RequestBody ProductIdDTO dto) {
-        return getSuccessResponseVO(productInternalService.getSearchIndex(dto.getProductId()));
     }
 
     @PostMapping("/lessStockSkuPage")

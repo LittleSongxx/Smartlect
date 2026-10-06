@@ -6,10 +6,13 @@
 # 2026-09-19 redo: previous lock omitted langfuse/psycopg/langgraph-checkpoint-postgres
 # closures and pinned packaging/wrapt against langfuse metadata (pip check broken);
 # re-resolved from pyproject direct deps with packaging<26.0, wrapt<2.0.
+# 2026-10-05: psycopg* and langgraph-checkpoint-postgres removed with the checkpointer
+# (ADR-0009 postscript); langgraph-checkpoint base stays as a transitive dependency.
 # 2026-09-19 二次重解：3.13 解析的 idna==3.20 在 3.12 上不可装（部署 venv 为 3.12.3）。
 # --- 2026-10 收敛重构：混合检索后端（ES BM25 + Qdrant dense）---
 # qdrant-client 的 grpcio/numpy/protobuf 闭包与既有 protobuf==7.36.1 对齐。
 # 2026-10-04 重解：原锁 langgraph-prebuilt==1.0.13 / langgraph-sdk==0.3.15 / websockets==17.1 与 langgraph==1.2.12 的依赖区间冲突（ADR-0010 提交时未验证可装性）；从已通过 285 项 assistant 测试的部署 venv（langgraph-prebuilt 1.1.0 / sdk 0.4.5 / websockets 可装组合）整体重新冻结。
+# 2026-10-05: python-dotenv 从 pyproject 直接依赖移除（源码零 import）；此处保留为 uvicorn 的传递钉。
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
@@ -45,7 +48,6 @@ langchain-protocol==0.0.19
 langfuse==3.14.1
 langgraph==1.2.12
 langgraph-checkpoint==4.2.0
-langgraph-checkpoint-postgres==3.0.4
 langgraph-prebuilt==1.1.0
 langgraph-sdk==0.4.5
 langsmith==0.12.6
@@ -73,9 +75,6 @@ portalocker==3.2.0
 prometheus-fastapi-instrumentator==8.1.0
 prometheus_client==0.26.0
 protobuf==7.36.1
-psycopg==3.3.2
-psycopg-binary==3.3.2
-psycopg-pool==3.3.1
 pycparser==3.0
 pydantic==2.13.4
 pydantic_core==2.46.4

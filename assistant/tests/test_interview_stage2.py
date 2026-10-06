@@ -11,14 +11,12 @@ from pathlib import Path
 
 from smartlect.agents.shopping import (BOOTSTRAP_TOOLS, extract_streamed_answer, final_answer_response_format,
                                        route_shopping_model)
-from smartlect.graph_runtime import checkpointer, invoke_config, reset_for_tests
 from smartlect.auth import IdentityBridge
 from smartlect.csrf_store import consume
 from smartlect.guest_token import issue_visitor_jwt, verify_visitor_jwt
 from smartlect.knowledge import compose_search_query, parallel_queries, rank_chunks
 from smartlect.observability import (gen_ai_span, langfuse_enabled, otel_spans_enabled, prompt_hash,
                                      record_generation, reset_for_tests as reset_observability)
-from smartlect.postgres import dsn_from_env
 from smartlect.rerank_client import RerankError, configured, rerank_texts
 from smartlect.tokenizer import count_tokens, truncate_tokens
 
@@ -109,7 +107,6 @@ class InterviewStage2Tests(unittest.IsolatedAsyncioTestCase):
     def test_langfuse_noop_without_keys(self):
         self.assertFalse(langfuse_enabled({}))
         record_generation(name='x', model='m', prompt_hash=prompt_hash('a'))
-        self.assertIsNone(dsn_from_env({}))
 
     def test_gen_ai_span_is_noop_without_exporter(self):
         os.environ.pop("SMARTLECT_OTEL_EXPORTER", None)
@@ -163,14 +160,16 @@ class InterviewStage2Tests(unittest.IsolatedAsyncioTestCase):
         app_src = Path(app.__file__).read_text()
         self.assertIn("invoke_agent shopping", app_src)
 
-    def test_checkpointer_is_memory_without_dsn(self):
-        reset_for_tests()
-        saver = checkpointer()
-        self.assertEqual(type(saver).__name__, 'InMemorySaver')
-        config = invoke_config('conv', 'run')
-        self.assertEqual(config['configurable']['thread_id'], 'conv')
-        self.assertEqual(config['configurable']['checkpoint_ns'], 'run')
-        reset_for_tests()
+    def test_graph_runtime_has_no_checkpointer(self):
+        """守卫：checkpointer 已于 2026-10-05 移除（ADR-0009 后记）——无消费者
+        （跨 run 不复用、崩溃不恢复、不用 interrupt），会话事实源是 MySQL。
+        行为断言而非源码文本断言：编译产物不携带 checkpointer，模块不再
+        暴露 saver 相关入口，invoke 配置只剩递归上限。"""
+        import smartlect.graph_runtime as graph_runtime
+        self.assertIsNone(graph_runtime.shopping_graph().checkpointer)
+        for removed in ('checkpointer', 'ensure_postgres_tables', 'reset_for_tests'):
+            self.assertFalse(hasattr(graph_runtime, removed), removed)
+        self.assertEqual(graph_runtime.invoke_config(), {"recursion_limit": 25})
 
     async def test_rerank_without_key_is_explicit_error(self):
         self.assertFalse(configured({}))

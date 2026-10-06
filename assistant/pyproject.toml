@@ -5,16 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "smartlect-assistant"
 version = "0.1.0"
-description = "Smartlect AI assistant service: bounded shopping agent, knowledge, recommendations, ledger"
+description = "Smartlect AI assistant service: bounded shopping agent, knowledge, proposals, sub-agent dispatch"
 requires-python = ">=3.11"
 dependencies = [
     "openai==3.14.1", "PyMySQL[rsa]==1.2.0", "cryptography==50.0.1",
     "cffi==2.1.1", "pycparser==3.0",
     "fastapi==0.141.1", "pydantic==2.13.4", "uvicorn==0.32.1",
-    "langgraph==1.2.12", "httpx==0.28.1", "python-dotenv==1.2.2", "pypdf==6.18.0",
+    "langgraph==1.2.12", "httpx==0.28.1", "pypdf==6.18.0",
     "elasticsearch==8.19.0", "qdrant-client==1.15.1",
     "jieba==0.42.1", "tiktoken==0.12.0",
-    "psycopg[binary,pool]==3.3.2", "langgraph-checkpoint-postgres==3.0.4",
     "langfuse==3.14.1",
     "PyJWT==2.10.1",
     "prometheus-fastapi-instrumentator==8.1.0",

@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.scheduling.annotation.Scheduled;
+import com.xxl.job.core.handler.annotation.XxlJob;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.atomic.AtomicInteger;
@@ -52,7 +52,7 @@ public class OutboxDispatchTask {
                 .register(meterRegistry);
     }
 
-    @Scheduled(fixedDelayString = "${mq.outbox.dispatch-interval-ms:5000}")
+    @XxlJob("outboxDispatch")
     public void dispatch() {
         refreshExhaustedGauge();
         String lockKey = Constants.REDIS_KEY_MQ_COMPENSATE

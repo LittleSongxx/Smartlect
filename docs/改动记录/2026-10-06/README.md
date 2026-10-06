@@ -5,6 +5,8 @@
 | 功能点 | 状态 |
 | --- | --- |
 | [扩容后排查与参数调优.md](扩容后排查与参数调优.md) | 排查 6 项（修 5）；后续 5 项全部实施；postOrder 长耗时定位并修复（p95 6835→249ms）；**单机天花板定量：1227 req/s @2400 并发（JVM 预算杠杆 +47%）** |
+| [子智能体执行修复与live复验.md](子智能体执行修复与live复验.md) | 修复 2 个 live 才暴露的执行缺陷（bind_tools wire 格式、可见工具面与闸门不一致）；live 复验派发 `all_succeeded=true`，证据 [eval/verification/subagent-dispatch-live-20261006/](../../eval/verification/subagent-dispatch-live-20261006/verify.md) |
+| [子智能体消融实验.md](子智能体消融实验.md) | 消融开关+切臂工具+调优修复 4 缺陷+配对对照全流程；结论持平偏 B（机制有效、当前分布无显著收益），报告 [ablation-report.md](../../eval/verification/subagent-dispatch-live-20261006/ablation-report.md) |
 
 ## 本日修复的缺陷（按影响排序）
 

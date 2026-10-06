@@ -57,6 +57,8 @@ public class ProductCommerceInternalController extends ABaseController {
     private StockFeignSupport stockFeignSupport;
     @Resource
     private AppConfig appConfig;
+    @Resource
+    private com.smartlect.search.ProductIndexService productIndexService;
 
     @PostMapping("/searchOnSale")
     public ResponseVO<List<Map<String, Object>>> searchOnSale(@RequestBody Map<String, Object> body) {
@@ -67,8 +69,25 @@ public class ProductCommerceInternalController extends ABaseController {
             return getSuccessResponseVO(List.of());
         }
         query.setStatus(ProductStatusEnum.ON_SALE.getStatus());
+        // 文本检索谓词优先走 ES 商品索引（与 LIKE 等价的短语包含语义）；
+        // 指定 productIds 的定向查询与 ES 不可达（null）时回退 SQL LIKE——
+        // 检索永不因索引故障中断。
         String keyword = str(body, "keyword");
-        if (!StringTools.isEmpty(keyword) && !keyword.startsWith("category:")) {
+        boolean keywordSearch = !StringTools.isEmpty(keyword) && !keyword.startsWith("category:");
+        boolean resolvedByIndex = false;
+        if (keywordSearch && query.getProductIdList() == null) {
+            java.util.List<String> indexIds = productIndexService.searchIdsByKeyword(
+                    keyword, query.getExcludeProductIdList(),
+                    com.smartlect.search.ProductIndexService.SEARCH_ID_CAP);
+            if (indexIds != null) {
+                if (indexIds.isEmpty()) {
+                    return getSuccessResponseVO(List.of());
+                }
+                query.setProductIdList(indexIds);
+                resolvedByIndex = true;
+            }
+        }
+        if (keywordSearch && !resolvedByIndex) {
             query.setProductNameFuzzy(keyword);
         }
         String categoryId = str(body, "categoryId");

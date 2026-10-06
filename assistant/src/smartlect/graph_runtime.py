@@ -1,76 +1,30 @@
-"""Process-lifetime LangGraph compile + checkpointer.
+"""Process-lifetime LangGraph compile (no checkpointer).
 
 Nodes stay run-scoped via ContextVar. The graph object is compiled once.
-thread_id = conversation_id; checkpoint_ns = agent_run_id so turns do not collide.
-MySQL lease remains mutual exclusion; checkpoint is the graph state of record.
+无 checkpointer（2026-10-05 移除，ADR-0009 后记）：每个 run 独立执行、跨 run
+不复用图状态（会话事实源是 MySQL：消息/任务槽/台账，每轮重建输入）；
+不用 interrupt()（HITL 是跨请求持久化提案，ADR-0009 决定一）；崩溃恢复
+走 run 租约与幂等台账，不从图状态续跑——checkpointer 写入因此无消费者。
 """
 from __future__ import annotations
 
 import contextvars
 from typing import Any
 
-from langgraph.checkpoint.memory import MemorySaver
-
-from smartlect.postgres import dsn_from_env
-
 shopping_session: contextvars.ContextVar[Any] = contextvars.ContextVar("shopping_session")
 
-_checkpointer = None
 _shopping_graph = None
-_postgres_setup_done = False
-
-
-def checkpointer():
-    """MemorySaver when Postgres is unset; PostgresSaver when DSN is present."""
-    global _checkpointer
-    if _checkpointer is not None:
-        return _checkpointer
-    dsn = dsn_from_env()
-    if not dsn:
-        _checkpointer = MemorySaver()
-        return _checkpointer
-    from langgraph.checkpoint.postgres import PostgresSaver
-    try:
-        from psycopg_pool import ConnectionPool
-        pool = ConnectionPool(conninfo=dsn, kwargs={"autocommit": True}, min_size=1, max_size=4)
-        _checkpointer = PostgresSaver(pool)
-    except Exception:
-        saver = PostgresSaver.from_conn_string(dsn)
-        _checkpointer = saver.__enter__() if hasattr(saver, "__enter__") else saver
-    return _checkpointer
-
-
-def ensure_postgres_tables():
-    global _postgres_setup_done
-    if _postgres_setup_done or not dsn_from_env():
-        return
-    saver = checkpointer()
-    setup = getattr(saver, "setup", None)
-    if callable(setup):
-        setup()
-    _postgres_setup_done = True
-
-
-def reset_for_tests(saver=None):
-    global _checkpointer, _shopping_graph, _postgres_setup_done
-    _checkpointer = saver
-    _shopping_graph = None
-    _postgres_setup_done = False
 
 
 def shopping_graph():
     global _shopping_graph
     if _shopping_graph is None:
         from smartlect.agents.shopping import build_shopping_graph
-        _shopping_graph = build_shopping_graph().compile(checkpointer=checkpointer())
+        _shopping_graph = build_shopping_graph().compile()
     return _shopping_graph
 
 
-def invoke_config(conversation_id, run_id):
+def invoke_config():
     return {
-        "configurable": {
-            "thread_id": conversation_id,
-            "checkpoint_ns": run_id,
-        },
         "recursion_limit": 25,
     }

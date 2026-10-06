@@ -165,7 +165,7 @@ def _message(value):
     return message
 
 
-CHAT_MODEL_WHITELIST = ("qwen3.7-plus", "qwen3.7-plus-2026-05-26", "glm-5.3")
+CHAT_MODEL_WHITELIST = ("qwen3.7-plus", "qwen3.7-plus-2026-05-26")
 
 
 class Provider:
@@ -230,11 +230,7 @@ class Provider:
         self._runtime_loaded_at = 0.0
 
     def runtime_chat_options(self):
-        """Models the configured endpoint family can actually serve; switching across
-        vendors would need a different BASE_URL, which stays environment-managed."""
-        host = urlsplit(self._config.get("SMARTLECT_MODEL_BASE_URL", "")).hostname or ""
-        if host in self.ZHIPU_HOSTS:
-            return ["glm-5.3"]
+        """Models the configured endpoint can serve; vendor switching is env-managed."""
         return ["qwen3.7-plus", "qwen3.7-plus-2026-05-26"]
 
     async def chat(self, messages, *, tools=None, tool_choice=None, response_format=None, stream=False, on_delta=None,

@@ -7,7 +7,7 @@
 | 侧 | 字段 | 来源 |
 |---|---|---|
 | Java 权威 | paid = `SUM(pay_amount)*100 WHERE trade_status IN (1,3)`；refunded = `SUM(refund_amount)*100 FROM pay_mock_refund` | smartlect_pay（只读 SQL） |
-| growth 账本 | paidCents / refundedCents（APPLIED 的 PAYMENT/REFUND 事件） | 官方接口 `GET /internal/ledger/summary`（x-internal-token，hmac 比对） |
+| growth 账本（已退役） | paidCents / refundedCents（APPLIED 的 PAYMENT/REFUND 事件） | ~~官方接口 `GET /internal/ledger/summary`~~（growth 事件线随 ADR-0008 退役，该侧口径与脚本分支已失效；账务事实以 Java 权威侧为准） |
 | 交叉校验 | conversions：Java 已付笔数 vs growth paymentConversions；CANCEL：trade_status=2 笔数 vs CANCEL 事件数；commerce_exception 计数；死信队列水位入日报 | — |
 
 **枚举语义**（查代码确认）：`trade_status` 1=已付、3=已退款（先付后退，故计入 paid 且退款额走 pay_mock_refund）、2=关闭（对应 growth CANCEL 事件，非资金移动）。全链路整数分（Java 侧 decimal*100 取整）。

@@ -50,9 +50,10 @@ eval/report-*.md
 eval/recall-report-*.md
 eval/category-recall-report-*.md
 
-# 证据重物：向量快照与本地索引库可由评测命令再生，不随证据入库
+# 证据重物：向量快照与本地索引库可由评测命令再生，不随证据入库；
+# 逐文件 sha256 manifest 属可再生重物（同目录 .md 报告照常入库）——20260930 批次先例
 eval/verification/**/vectors.json
 eval/verification/**/index/
-eval/verification/rerun-20260930/agent-release/agent-release-report-*.manifest.json
-eval/verification/rerun-20260930/agent-release-r2/agent-release-report-*.manifest.json
-eval/verification/rerun-20260930/agent-release-fixed/agent-release-report-*.manifest.json
+eval/verification/agent-release-gate-20261004/agent-release-report-*.manifest.json
+eval/verification/agent-release-gate-20261004-error-rerun/agent-release-report-*.manifest.json
+eval/verification/retrieval-dev-calibration-20261004/recall-dev-report-*.manifest.json

@@ -1,5 +1,12 @@
 # Commerce event ledger (F1 runtime, v1 facts)
 
+> **已退役（ADR-0008，2026-10）**：growth 事件消费 worker、`/internal/ledger/summary`
+> 端点与 `SMARTLECT_GROWTH_EVENTS_ENABLED` 开关已随推荐/归因线退役删除；`assistant`
+> 进程不再有独立 consumer，`smartlect.events` 模块与 demo 的 ledger 对账分支同批移除。
+> 本文以下内容为 F1/P2 时期的历史记录，保留作设计沿革与验证证据索引，不再描述现役运行态。
+> 现役账务事实源是 Java 订单/支付服务本身；30 天保留清理任务已并入 API 进程
+> （`app.py` `_retention_loop`）。
+
 Use `./scripts/dev.sh up` with `SMARTLECT_GROWTH_EVENTS_ENABLED=true`: it starts
 the FastAPI application and an independent `smartlect.worker` consumer. The
 checksummed migrations retain `commerce_event`, `commerce_exception` and the

@@ -7,7 +7,6 @@ import com.smartlect.api.dto.ProductIdListDTO;
 import com.smartlect.api.dto.ProductSalesIncreaseDTO;
 import com.smartlect.api.dto.ProductSnapshotBatchVO;
 import com.smartlect.api.support.FeignFallbackResponses;
-import com.smartlect.api.vo.ProductSearchIndexVO;
 import com.smartlect.api.vo.ProductSkuSnapshotVO;
 import com.smartlect.entity.vo.PaginationResultVO;
 import com.smartlect.api.vo.ProductSkuListVO;
@@ -36,11 +35,6 @@ public class ProductFeignFallbackFactory implements FallbackFactory<ProductFeign
 
             @Override
             public ResponseVO<Void> increaseSales(ProductSalesIncreaseDTO dto) {
-                return FeignFallbackResponses.unavailable("商品服务");
-            }
-
-            @Override
-            public ResponseVO<ProductSearchIndexVO> getSearchIndex(ProductIdDTO dto) {
                 return FeignFallbackResponses.unavailable("商品服务");
             }
 

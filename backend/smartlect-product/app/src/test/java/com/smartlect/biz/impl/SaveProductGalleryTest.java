@@ -9,7 +9,6 @@ import com.smartlect.entity.po.ProductSku;
 import com.smartlect.entity.query.ProductInfoQuery;
 import com.smartlect.entity.query.ProductPropertyValueQuery;
 import com.smartlect.entity.query.ProductSkuQuery;
-import com.smartlect.integration.ProductProjectionClient;
 import com.smartlect.mappers.ProductInfoMapper;
 import com.smartlect.mappers.ProductPropertyValueMapper;
 import com.smartlect.mappers.ProductSkuMapper;
@@ -51,7 +50,6 @@ class SaveProductGalleryTest {
     @SuppressWarnings("unchecked")
     private final ProductSkuMapper<ProductSku, ProductSkuQuery> productSkuMapper = mock(ProductSkuMapper.class);
     private final ProductBloomFilterComponent bloomFilter = mock(ProductBloomFilterComponent.class);
-    private final ProductProjectionClient projectionClient = mock(ProductProjectionClient.class);
     private final StockFeignSupport stockFeignSupport = mock(StockFeignSupport.class);
 
     @BeforeEach
@@ -60,7 +58,6 @@ class SaveProductGalleryTest {
         ReflectionTestUtils.setField(service, "productPropertyValueMapper", propertyValueMapper);
         ReflectionTestUtils.setField(service, "productSkuMapper", productSkuMapper);
         ReflectionTestUtils.setField(service, "productBloomFilterComponent", bloomFilter);
-        ReflectionTestUtils.setField(service, "productProjectionClient", projectionClient);
         ReflectionTestUtils.setField(service, "stockFeignSupport", stockFeignSupport);
         // saveProduct 末尾注册 afterCommit 同步，单测无事务上下文需手动开启
         TransactionSynchronizationManager.initSynchronization();
@@ -146,8 +143,6 @@ class SaveProductGalleryTest {
         ArgumentCaptor<List<ProductPropertyValue>> deleteCaptor = ArgumentCaptor.forClass(List.class);
         verify(propertyValueMapper).deleteBatch(eq("053997047858558"), deleteCaptor.capture());
         assertEquals("v2", deleteCaptor.getValue().get(0).getPropertyValueId());
-
-        verify(projectionClient).enqueueAfterCommit("053997047858558");
     }
 
     @Test

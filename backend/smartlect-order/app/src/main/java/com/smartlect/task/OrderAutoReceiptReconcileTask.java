@@ -7,7 +7,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.scheduling.annotation.Scheduled;
+import com.xxl.job.core.handler.annotation.XxlJob;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -34,7 +34,7 @@ public class OrderAutoReceiptReconcileTask {
     @Value("${order.lifecycle.auto-receipt-batch-size:100}")
     private int batchSize;
 
-    @Scheduled(fixedDelayString = "${order.lifecycle.auto-receipt-scan-ms:600000}")
+    @XxlJob("orderAutoReceiptReconcile")
     public void reconcile() {
         int boundedMinutes = Math.max(1, confirmMinutes);
         int boundedBatch = Math.max(1, Math.min(batchSize, 500));

@@ -1,6 +1,7 @@
 """One role-restricted registry: read, propose, owned memory and handoff; never approve trades."""
 import asyncio
 from dataclasses import dataclass
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 import uuid
@@ -153,7 +154,7 @@ REGISTRY = {
     "get_order_status": Tool(OrderArgs, "orders:read", "查询本人的订单及明细状态；只读，取消/退款须走对应提案工具"),
     "get_refund_status": Tool(OrderArgs, "orders:read", "查询本人的退款业务状态，受理不等于完成；查询不执行退款，办理退款走propose_refund提案"),
     "list_my_coupons": Tool(Arguments, "orders:read", "查询本人未使用优惠券，含券ID与门槛；成交价以报价为准"),
-    "task_dispatch": Tool(DispatchArgs, "shopping:read", "把1-3个独立只读检索任务并行派发给子智能体（按任务自动分型为检索/订单/比较，各自独立上下文并发执行，只回传结论）；仅当可并行/需隔离/链深时使用，普通单点检索直接调 search/recommend 工具", "read"),
+    "task_dispatch": Tool(DispatchArgs, "shopping:read", "把1-3个独立只读检索/查询任务并行派发给子智能体（自动分型为检索/订单/比较，各自独立上下文并发执行，只回传结论文本）。用户问题涉及两件及以上商品或多品类的并行检索、查询时优先用本工具，再合并结论作答；比较价格/规格/选哪个直接调 compare_skus 在主对话完成，不派发；单点检索直接调 search/recommend 工具", "read"),
     "propose_order": Tool(CreateOrderArgs, "orders:write", "取得Java报价并生成等待用户确认的下单提案；只创建提案不执行下单，无确认回执不得宣告交易完成", "proposal"),
     "propose_cancel": Tool(OrderArgs, "orders:write", "生成等待用户确认的取消提案；不执行取消，用户确认后由系统执行", "proposal"),
     "propose_refund": Tool(RefundArgs, "orders:write", "生成等待用户确认具体金额的退款提案；不执行退款，金额须等于剩余可退", "proposal"),
@@ -193,7 +194,8 @@ def schemas(actor, allowed=None):
 
 async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None, allowed=None,
                  knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, search=None,
-                 product_scope=None, observed_citations=None, user_utterance=None, focus=None, provider=None):
+                 product_scope=None, observed_citations=None, user_utterance=None, focus=None, provider=None,
+                 sub_agent_budget=None):
     tool = REGISTRY.get(name)
     if tool is None:
         raise ValueError("tool_not_allowed")
@@ -229,7 +231,7 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
                 "gen_ai.tool.call.id": call_id,
             },
         ):
-            result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, compare, search, observed_citations, user_utterance, focus, provider, allowed=allowed, product_scope=product_scope),
+            result = await asyncio.wait_for(_invoke(name, params, actor, commerce, store, lease, knowledge, embed_query, memory, recommend, compare, search, observed_citations, user_utterance, focus, provider, allowed=allowed, product_scope=product_scope, sub_agent_budget=sub_agent_budget),
                                             timeout=90 if name == "task_dispatch" else 30 if name in {"search_knowledge", "search_skus", "recommend_skus", "compare_skus"} else 15)
         status = "command_accepted"
         if name == "get_refund_status":
@@ -249,15 +251,23 @@ async def invoke(name, arguments, *, actor, commerce, store, lease, call_id=None
         raise
 
 
-async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, search=None, observed_citations=None, user_utterance=None, focus=None, provider=None, allowed=None, product_scope=None):
+async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, embed_query=None, memory=None, recommend=None, compare=None, search=None, observed_citations=None, user_utterance=None, focus=None, provider=None, allowed=None, product_scope=None, sub_agent_budget=None):
     if name == 'task_dispatch':
         if provider is None:
             raise ValueError('dispatch_model_unavailable')
         from smartlect.agents.shopping import dispatch as dispatch_module
         from smartlect.agents.shopping.model_adapter import ProviderChatModel
+        # 子智能体的模型调用经 before_attempt/on_trace 接入主会话同一预算闸与审计：
+        # 不存在第二条绕过 MODEL_CALL_LIMIT 或 model_attempts 的模型路径。
+        budget = sub_agent_budget or SimpleNamespace(before_attempt=None, on_trace=None)
         model = ProviderChatModel(provider=provider, prompt_version='shopping-dispatch-v1',
-                                  max_tokens=1024)
+                                  max_tokens=1024,
+                                  before_attempt=budget.before_attempt,
+                                  on_trace=budget.on_trace)
         allowed_outer = allowed
+
+        sub_sku_items = []
+        sub_agent_budget_tool_names = {'search_skus', 'recommend_skus', 'compare_skus'}
 
         async def sub_invoke(sub_name, sub_args, allowed=None):
             # 子智能体与主循环走同一条 invoke() 路径：幂等台账、RBAC、product_scope
@@ -265,17 +275,36 @@ async def _invoke(name, params, actor, commerce, store, lease, knowledge=None, e
             # allowed = 路由到的子 profile 工具面 ∩ 主 Agent 的 skill 门控面
             # （Skill 未启用的工具对子智能体同样不可见）；
             # provider 不透传，子智能体不能嵌套派发。
+            # tool_tick：子工具计入主循环 TOOL_CALL_LIMIT（预算单一事实源），
+            # 超限抛 BudgetExceeded → dispatch 单任务失败降级，不拖垮整批。
+            if sub_agent_budget is not None:
+                await sub_agent_budget.tool_tick()
             effective = allowed
             if allowed_outer is not None:
                 effective = [tool for tool in (allowed or ()) if tool in allowed_outer]
-            return await invoke(sub_name, sub_args, actor=actor, commerce=commerce, store=store,
+            result = await invoke(sub_name, sub_args, actor=actor, commerce=commerce, store=store,
                                 lease=lease, call_id=uuid.uuid4().hex, allowed=effective,
                                 knowledge=knowledge, embed_query=embed_query, memory=memory,
                                 recommend=recommend, compare=compare, search=search,
                                 product_scope=product_scope,
                                 observed_citations=observed_citations, user_utterance=user_utterance,
                                 focus=focus)
-        return await dispatch_module.dispatch(params['tasks'], model=model, invoke=sub_invoke)
+            # 子任务检索到的 SKU 卡片结构化透传：并行检索后主 Agent 要合法选品，
+            # selected_sku_keys 必须来自本轮回执——子回执同样过台账，把它并入
+            # 主上下文可引用集（只收卡片，不收自由文本），不开"结论文本当证据"的口子。
+            # 注意 invoke 返回 {'data': …} 包装（v4/v5 曾因读错层而失效）。
+            if sub_name in sub_agent_budget_tool_names:
+                payload = result.get('data') if isinstance(result, dict) else None
+                for item in ((payload or {}).get('items') or []):
+                    if isinstance(item, dict) and item.get('sku_key'):
+                        sub_sku_items.append(item)
+            return result
+        sub_invoke.allowed_outer = allowed_outer  # dispatch 以此收窄子模型可见工具面（与调用时闸一致）
+        receipt_data = await dispatch_module.dispatch(params['tasks'], model=model, invoke=sub_invoke)
+        if sub_sku_items:
+            # 键名对齐 sku_items 口径（'items'）；观察投影不取该键，不进模型上下文。
+            receipt_data['items'] = sub_sku_items
+        return receipt_data
     if name == 'request_handoff':
         if actor.is_trial_user():
             raise ValueError('trial_read_only')

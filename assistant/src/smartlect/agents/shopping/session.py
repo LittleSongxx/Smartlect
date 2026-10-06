@@ -30,10 +30,11 @@ from smartlect.session_focus import pin_focus_offer_args, pin_focus_retrieve_par
 from smartlect.shopping_retrieve import ShoppingRetrieve
 from smartlect.tools import Arguments, REGISTRY, ToolReceipt, invoke, schemas
 from smartlect import prompts
-from .policy import (BOOTSTRAP_TOOLS, EMPTY_EVIDENCE_ANSWER, EXCEPTION_KINDS, MODEL_CALL_LIMIT,
-                     PRODUCT_UNCOVERED_ANSWER, PROMPT_VERSION, PROPOSAL_CONFIRMATION,
+from .policy import (ANSWER_REPAIR_LIMIT, BOOTSTRAP_TOOLS, EMPTY_EVIDENCE_ANSWER, EXCEPTION_KINDS, MODEL_CALL_LIMIT,
+                     PRODUCT_UNCOVERED_ANSWER, PROPOSAL_CONFIRMATION,
                      PROVIDER_FAULT_ANSWER, REQUEST_KINDS, SCHEMA_VERSION, SEMANTIC_RERANK_PROMPT,
-                     STATE_SELF_ANSWER_TOOLS, SYSTEM_POLICY_BODY, TOOL_CALL_LIMIT)
+                     STATE_SELF_ANSWER_TOOLS, TOOL_CALL_LIMIT, dispatch_enabled, gate_allowed,
+                     prompt_version_label, system_policy_body)
 from .profiles import SHOPPING_MAIN, render_profile
 from .clarify_gate import clarify_hint, needs_clarification
 from .contract import (BudgetExceeded, FinalAnswer, GuardViolation, extract_streamed_answer,
@@ -124,18 +125,20 @@ def bounded_messages(messages, tool_schemas, question):
 
 
 async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory, provider, mode, config,
-                       recommendations=None, attribution=None):
+                       recommendations=None, scenario_scope_store=None):
     conversation_id = run['conversation_id']
     context = dict(run.get('context') or {})
     context.setdefault('model_calls', 0)
     context.setdefault('tool_calls', 0)
     context.setdefault('model_attempts', [])
-    context.setdefault('answer_repairs', min(1,len(context.get('answer_rejections',[]))))
+    context.setdefault('answer_repairs', min(ANSWER_REPAIR_LIMIT,len(context.get('answer_rejections',[]))))
     # Prompt/skill text resolves from the DB template store (hot-editable, versioned)
     # with the packaged code as the frozen fallback; the run records which version it used.
     policy_body, prompt_label = await asyncio.to_thread(
-        prompts.resolve_system, getattr(store, 'connect', None), 'shopping', SYSTEM_POLICY_BODY, PROMPT_VERSION)
-    context.update(prompt_version=prompt_label, schema_version=SCHEMA_VERSION, skill_versions={})
+        prompts.resolve_system, getattr(store, 'connect', None), 'shopping',
+        system_policy_body(), prompt_version_label())
+    context.update(prompt_version=prompt_label, schema_version=SCHEMA_VERSION, skill_versions={},
+                     dispatch_enabled=dispatch_enabled())
     skills = {name: await asyncio.to_thread(prompts.resolve_skill, getattr(store, 'connect', None), 'shopping', name)
               for name in USER_SKILLS}
     context['skill_versions'] = {name: skill['version'] for name, skill in skills.items()}
@@ -245,7 +248,7 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             'recommendation_id', 'assignment_id', 'strategy_version', 'ranking_mode', 'algorithm_version') if k in saved})
 
     async def recommend(params):
-        if attribution is None:
+        if scenario_scope_store is None:
             raise ValueError('recommendation_service_unavailable')
         preferences = await asyncio.to_thread(memory.preferences, actor) if actor.subject_type == 'user' else []
         previous = await asyncio.to_thread(memory.mission, actor, conversation_id)
@@ -263,14 +266,14 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
         # Tool-arg required_terms are a documented gate source (skill instruction + tool
         # schema); persist_mission keeps the stored mission extractor-owned regardless.
         result = await retriever.recommend(actor, params, mission=mission, preferences=preferences,
-            product_scope=await asyncio.to_thread(attribution.product_scope, actor),
+            product_scope=await asyncio.to_thread(scenario_scope_store.product_scope, actor),
             semantic_rerank=semantic_rerank if mode == 'live' else None)
-        saved = await asyncio.to_thread(attribution.save_recommendation, actor, result, conversation_id)
+        saved = await asyncio.to_thread(scenario_scope_store.save_recommendation, actor, result, conversation_id)
         remember_retrieve(params, mission, saved)
         return saved_payload(saved)
 
     async def search(params):
-        if attribution is None:
+        if scenario_scope_store is None:
             raise ValueError('recommendation_service_unavailable')
         previous = await asyncio.to_thread(memory.mission, actor, conversation_id)
         params, ungrounded = ground_tool_params(params, question, previous)
@@ -280,13 +283,13 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
         mission = await persist_mission(params)
         result = await retriever.search(
             actor, params,
-            product_scope=await asyncio.to_thread(attribution.product_scope, actor))
-        saved = await asyncio.to_thread(attribution.save_recommendation, actor, result, conversation_id)
+            product_scope=await asyncio.to_thread(scenario_scope_store.product_scope, actor))
+        saved = await asyncio.to_thread(scenario_scope_store.save_recommendation, actor, result, conversation_id)
         remember_retrieve(params, mission, saved)
         return saved_payload(saved)
 
     async def compare(params):
-        if attribution is None:
+        if scenario_scope_store is None:
             raise ValueError('comparison_service_unavailable')
         preferences = await asyncio.to_thread(memory.preferences, actor) if actor.subject_type == 'user' else []
         extra = {}
@@ -301,15 +304,30 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
         params = pin_focus_retrieve_params(params, context, question)
         mission = await persist_mission(params, extra)
         result = await retriever.compare(actor, params, mission=mission, preferences=preferences,
-            product_scope=await asyncio.to_thread(attribution.product_scope, actor),
+            product_scope=await asyncio.to_thread(scenario_scope_store.product_scope, actor),
             semantic_rerank=semantic_rerank if mode == 'live' else None)
-        saved = await asyncio.to_thread(attribution.save_recommendation, actor, result, conversation_id)
+        saved = await asyncio.to_thread(scenario_scope_store.save_recommendation, actor, result, conversation_id)
         remember_retrieve(params, mission, saved)
         return saved_payload(saved)
 
     def allowed_tools():
         loaded = {name for skill in skills.values() for name in skill.get('tools') or ()}
-        return set(BOOTSTRAP_TOOLS) | loaded
+        return gate_allowed(set(BOOTSTRAP_TOOLS) | loaded)
+
+    async def sub_tool_tick():
+        """task_dispatch 子智能体的工具预算闸：与主循环 call_tool 同一计数与上限。
+
+        子工具原本直达 invoke() 绕过 TOOL_CALL_LIMIT；预算单一事实源要求
+        dispatch 路径同样计数。超限抛 BudgetExceeded，由 dispatch 的单任务
+        失败降级兜住（不拖垮整批，组装层显式披露该任务未完成）。
+        """
+        if context['tool_calls'] >= TOOL_CALL_LIMIT:
+            raise BudgetExceeded('tool_call_limit')
+        context['tool_calls'] += 1
+        await persist()
+
+    sub_agent_budget = SimpleNamespace(before_attempt=before_attempt, on_trace=trace,
+                                       tool_tick=sub_tool_tick)
 
     async def call_tool(name, arguments, call_id=None):
         nonlocal proposal, orders, handoff_result
@@ -356,9 +374,10 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                                knowledge=knowledge, embed_query=embed_query if mode == 'live' else None,
                                memory=memory, allowed=allowed_tools(), call_id=call_id, recommend=recommend,
                                search=search, compare=compare,
-                               product_scope=await asyncio.to_thread(attribution.product_scope, actor) if attribution is not None else None,
+                               product_scope=await asyncio.to_thread(scenario_scope_store.product_scope, actor) if scenario_scope_store is not None else None,
                                observed_citations=citations, user_utterance=question, focus=context,
-                               provider=provider if mode == 'live' else None)
+                               provider=provider if mode == 'live' else None,
+                               sub_agent_budget=sub_agent_budget if name == 'task_dispatch' else None)
         evidence.append(receipt['evidence_id'])
         data = receipt['data']
         if name != 'load_skill':
@@ -379,6 +398,10 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                 not citations and data['answer_status'] != 'conflicting'
                 and not context['quarantined'] and not context['acl_denied'])
         elif name in {'search_skus', 'recommend_skus', 'compare_skus'}:
+            products.update({item['sku_key']: item for item in sku_items(data)})
+        elif name == 'task_dispatch':
+            # 子智能体并行检索的 SKU 卡片并入本轮可引用集：回执经同一台账与范围闸，
+            # 与主循环直查同源同构——selected_sku_keys 的"必须来自本轮回执"边界不变。
             products.update({item['sku_key']: item for item in sku_items(data)})
             if isinstance(data, dict):
                 route_errors = (data.get('diagnostics') or {}).get('route_errors') or {}
@@ -896,7 +919,9 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                 final.handoff_requested = True
                 context['handoff_compiled_from_answer'] = True
             if looks_like_irreconcilable_sources(question) and request_kind not in EXCEPTION_KINDS:
+                # 意图帧改判（ADR-0013 B 层）：审计旗标随 run 快照落库，改判可回放定位。
                 request_kind = 'request_handoff'
+                context['irreconcilable_compiled'] = True
             evidence_kind = classify_evidence({
                 'citations': list(citations.values()),
                 'knowledge_status': context.get('knowledge_status'),
@@ -1054,7 +1079,7 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
                 'candidate_output': rejected_output[:12000], 'candidate_output_truncated': len(rejected_output) > 12000,
                 'allowed_chunk_ids': list(citations), 'allowed_sku_keys': list(products)})
             if not isinstance(error, GuardViolation):
-                if context['answer_repairs'] >= 1:
+                if context['answer_repairs'] >= ANSWER_REPAIR_LIMIT:
                     if state.get('repair') and not state.get('repair_no_tools'):
                         # 修复阶段 1 再失败：不给第二次自由轮，直接进阶段 2 的
                         # schema 强制收口（无工具）。这是同一次修复轮内的相位推进，
@@ -1073,7 +1098,7 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
             return {'repair': 1, 'messages': repair_round_messages(state, reason)}
 
     session = SimpleNamespace(model_node=model_node, tool_node=tool_node, answer_node=answer_node)
-    from smartlect.graph_runtime import invoke_config, shopping_graph, shopping_session, ensure_postgres_tables
+    from smartlect.graph_runtime import invoke_config, shopping_graph, shopping_session
     token = shopping_session.set(session)
     async def heartbeat():
         while True:
@@ -1084,12 +1109,11 @@ async def run_shopping(*, actor, run, lease, store, commerce, knowledge, memory,
     try:
         if mode != 'live':
             raise ProviderError('explicit_' + mode)
-        ensure_postgres_tables()
         async with asyncio.timeout(max(1, timeout_at - time.monotonic())):
             result = await shopping_graph().ainvoke(
                 {'messages': [{'role': 'system', 'content': system}] + recent,
                  'response': {}, 'result': {}, 'repair': context['answer_repairs']},
-                invoke_config(conversation_id, run['agent_run_id']))
+                invoke_config())
         return await finish(result['result'], 'live')
     except (ProviderError, BudgetExceeded, TimeoutError) as error:
         context['fallback_reason'] = getattr(error, 'code', str(error))

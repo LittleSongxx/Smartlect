@@ -9,7 +9,6 @@ import com.smartlect.api.vo.ProductPropertyValueVO;
 import com.smartlect.biz.ProductInfoService;
 import com.smartlect.component.ProductBloomFilterComponent;
 import com.smartlect.constants.Constants;
-import com.smartlect.integration.ProductProjectionClient;
 import com.smartlect.entity.dto.ProductSaveDTO;
 import com.smartlect.entity.enums.PageSize;
 import com.smartlect.entity.enums.ResponseCodeEnum;
@@ -63,9 +62,9 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 	@Resource
 	private ProductBloomFilterComponent productBloomFilterComponent;
 	@Resource
-	private StockFeignSupport stockFeignSupport;
+	private com.smartlect.component.ProductCacheService productCacheService;
 	@Resource
-	private ProductProjectionClient productProjectionClient;
+	private StockFeignSupport stockFeignSupport;
 
 	@Override
 	public List<ProductInfo> findListByParam(ProductInfoQuery param) {
@@ -236,12 +235,11 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 			@Override
 			public void afterCommit() {
 				if (added) {
+					productCacheService.invalidate(productInfo.getProductId());
 					productBloomFilterComponent.add(productInfo.getProductId());
 				}
 			}
 		});
-		// Projection is after-commit and async: indexing failure cannot roll back save.
-		productProjectionClient.enqueueAfterCommit(productInfo.getProductId());
 	}
 
 	@Override
@@ -301,6 +299,11 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 	public Product4VO getProduct4VOByProductId(String productId) {
 		if (!productBloomFilterComponent.mightExist(productId)) {
 			throw new BusinessException(ResponseCodeEnum.CODE_600);
+		}
+		// Cache-Aside 读：L1（进程内）→ L2（Redis）→ DB，命中后实时补库存（库存不进缓存）
+		Product4VO cached = productCacheService.get(productId);
+		if (cached != null) {
+			return replenishRealtimeStock(cached);
 		}
 		// 根据productId查询productInfo,productPropertyList,skuList
 		ProductInfo productInfo = productInfoMapper.selectByProductId(productId);
@@ -368,7 +371,25 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 		product4VO.setProductInfo(productInfo);
 		product4VO.setProductPropertyList(ProductPropertyVOS);
 		product4VO.setSkuList(productSkuList);
+		// 回填多级缓存（库存清零后存静态快照，下次命中再实时补）
+		productCacheService.put(productId, product4VO);
 		return product4VO;
+	}
+
+	/** 缓存命中的快照库存已清零，实时补库存（Feign 查 stock，与 miss 路径同源）。 */
+	private Product4VO replenishRealtimeStock(Product4VO cached) {
+		if (cached.getSkuList() == null || cached.getSkuList().isEmpty()) {
+			return cached;
+		}
+		java.util.List<com.smartlect.api.dto.SkuStockQueryDTO> queries = cached.getSkuList().stream()
+				.map(sku -> new com.smartlect.api.dto.SkuStockQueryDTO(
+						sku.getProductId(), sku.getPropertyValueIdHash()))
+				.toList();
+		java.util.Map<String, Integer> stockBySku = stockFeignSupport.getAvailableBatch(queries);
+		for (var sku : cached.getSkuList()) {
+			sku.setStock(stockBySku.getOrDefault(sku.getPropertyValueIdHash(), 0));
+		}
+		return cached;
 	}
 
 	@Override
@@ -395,9 +416,6 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 		ProductInfo productInfo = new ProductInfo();
 		productInfo.setStatus(status);
 		productInfoMapper.updateByProductId(productInfo, productId);
-		if (ProductStatusEnum.ON_SALE.getStatus().equals(status)) {
-			productProjectionClient.enqueueAfterCommit(productId);
-		}
 	}
 
 	@Override
@@ -438,7 +456,8 @@ public class ProductInfoServiceImpl implements ProductInfoService {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
-					productBloomFilterComponent.add(productId);
+					productCacheService.invalidate(productId);
+        productBloomFilterComponent.add(productId);
 				}
 			});
 		}

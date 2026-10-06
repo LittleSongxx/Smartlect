@@ -4,7 +4,12 @@ server:
 
 spring:
   config:
-    import: optional:classpath:smartlect-common.yml
+    import:
+      # 本地 classpath 兜底优先级最低；Nacos 可达且存在同名 dataId 时以后者为准。
+      # 三者都写 optional：配置中心缺失/不可达时退回本地 yml，而不是启动失败。
+      - optional:classpath:smartlect-common.yml
+      - optional:nacos:smartlect-common.yml?group=SMARTLECT_GROUP&refreshEnabled=true
+      - optional:nacos:smartlect-gateway.yml?group=SMARTLECT_GROUP&refreshEnabled=true
   application:
     name: smartlect-gateway
   lifecycle:
@@ -23,6 +28,11 @@ spring:
       sentinel:
         enabled: true
     nacos:
+      config:
+        server-addr: ${SMARTLECT_NACOS_ADDR:127.0.0.1:18848}
+        username: ${SMARTLECT_NACOS_USERNAME:}
+        password: ${SMARTLECT_NACOS_PASSWORD:}
+        group: SMARTLECT_GROUP
       discovery:
         server-addr: ${SMARTLECT_NACOS_ADDR:127.0.0.1:18848}
         username: ${SMARTLECT_NACOS_USERNAME:nacos}

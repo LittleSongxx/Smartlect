@@ -31,6 +31,8 @@ public class ProductController extends ABaseController {
 
     @Resource
     private ProductInfoService productInfoService;
+    @Resource
+    private com.smartlect.search.ProductIndexService productIndexService;
 
     @GetMapping("/loadCategory")
     public ResponseVO loadCategory() {
@@ -70,9 +72,17 @@ public class ProductController extends ABaseController {
         query.setOrderBy(com.smartlect.entity.query.SafeSort.of(buildProductOrderBy(sortKey, sortDirection)));
         query.setExcludeProductIdList(parseExcludeProductIds(excludeProductIds));
         query.setExcludeIsolatedCatalog(true);
+        // 关键词检索走 ES 商品索引（与 LIKE 等价的短语包含语义）；ES 不可达回退 SQL。
         String trimmed = keyword == null ? null : keyword.trim();
         if (trimmed != null && !trimmed.isEmpty()) {
-            query.setProductNameFuzzy(trimmed);
+            java.util.List<String> indexIds = productIndexService.searchIdsByKeyword(
+                    trimmed, query.getExcludeProductIdList(),
+                    com.smartlect.search.ProductIndexService.SEARCH_ID_CAP);
+            if (indexIds != null) {
+                query.setProductIdList(indexIds);
+            } else {
+                query.setProductNameFuzzy(trimmed);
+            }
         }
         // A keyword searches the whole on-sale catalogue. Restricting to commended products
         // only makes sense for the default landing list, not for a search.

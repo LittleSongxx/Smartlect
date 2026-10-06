@@ -1,12 +1,3 @@
-export const diagnosisLabels = {
-  stockout: '已观察售罄',
-  creative_underperforming: '素材表现',
-  payment_failures: '权威支付尝试失败',
-  refunds: '退款变化',
-  insufficient_evidence: '证据不足',
-  other: '其他观察',
-}
-
 export const statusText = (value) =>
   ({
     RUNNING: '运行中',
@@ -31,28 +22,6 @@ export const modeText = (value) =>
     not_called: '未调用模型',
     'rule-fallback': '规则降级 rule-fallback',
   })[value] || value || '模式未知'
-
-export const periodText = (value) =>
-  ({
-    scope_lifetime: '授权有效期内',
-    campaign_lifetime: '活动有效期内',
-    next_round: '下一轮观测前',
-  })[value] || value || '未报告'
-
-export const campaignStatusText = (value) =>
-  ({
-    DRAFT: '草稿',
-    ACTIVE: '投放中',
-    PAUSED: '已暂停',
-    EXHAUSTED: '额度用尽',
-    REVOKED: '已撤销',
-  })[value] || value || '未知'
-
-export const grantStatusText = (item) => {
-  if (!item) return '未知'
-  if (item.revoked_at || item.status === 'REVOKED') return '已撤销'
-  return ({ APPROVED: '已批准', ACTIVE: '生效中', DRAFT: '待批准' })[item.status] || item.status || '已批准'
-}
 
 export const knowledgeStatusText = (value) =>
   ({ DRAFT: '草稿', PUBLISHED: '已发布', WITHDRAWN: '已撤回' })[value] || value || '未知'
@@ -154,22 +123,3 @@ export function badgeTone(status) {
   return ''
 }
 
-export function productLabel(id, products = []) {
-  const hit = products.find((item) => item.product_id === id)
-  return hit?.product_name || id || '未报告'
-}
-
-export function observationMetrics(summary) {
-  if (!summary || typeof summary !== 'object') return []
-  const rows = [
-    ['impressions', '广告曝光'],
-    ['clicks', '广告点击'],
-    ['recommendation_impressions', '推荐曝光'],
-    ['recommendation_clicks', '推荐点击'],
-    ['paid_cents', '成交金额'],
-    ['refunded_cents', '退款金额'],
-  ]
-  return rows
-    .filter(([key]) => summary[key] !== undefined && summary[key] !== null)
-    .map(([key, label]) => ({ key, label, value: summary[key], money: key.endsWith('_cents') }))
-}

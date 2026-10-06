@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 import time
 import uuid
-from urllib.request import Request, urlopen
 
 from smartlect.commerce import CommerceClient, CommerceError
 from smartlect.money import to_cents
@@ -138,21 +137,9 @@ def transaction_scenario(seed):
     result = {"run_id": run_id, "scenario": "purchase_stockout", "seed": seed, "checks": checks,
             "pay_order_id": pay_id, "paid_cents": expected_cents,
             "refunded_cents": cents(refunds[0]["refundAmount"]), "initial_stock": before,
-            "final_stock": [stock(sku) for sku in selected], "model_mode": "mock",
-            "full_growth_loop": "not_yet_implemented"}
-    if config.get("SMARTLECT_GROWTH_EVENTS_ENABLED") == "true":
-        def read_ledger():
-            request = Request("http://127.0.0.1:" + config["SMARTLECT_GROWTH_PORT"]
-                              + "/internal/ledger/summary?payOrderId=" + pay_id,
-                              headers={"X-Internal-Token": config["SMARTLECT_INTERNAL_TOKEN"]})
-            with urlopen(request, timeout=5) as response:
-                return json.load(response)
-        ledger = wait_for(read_ledger, lambda value:
-                          (value["paidCents"], value["refundedCents"], value["paymentConversions"])
-                          == (expected_cents, result["refunded_cents"], 1), "commerce ledger reconciliation")
-        assert all(event["status"] == "APPLIED" for event in ledger["events"])
-        result["ledger"] = ledger
-        passed("Java events reconcile to the assistant ledger; repeat-purchase labels add no revenue")
+            "final_stock": [stock(sku) for sku in selected], "model_mode": "mock"}
+    # ADR-0008 退役 growth 事件消费线：原 SMARTLECT_GROWTH_EVENTS_ENABLED 分支调用
+    # 已删除的 /internal/ledger/summary 对账（demo 必失败），随退役一并移除。
     return result
 
 

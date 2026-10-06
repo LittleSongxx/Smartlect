@@ -416,39 +416,6 @@ def run_support_live(output, wanted=None, split='development', trials=1):
     return rows
 
 
-def campaign_metrics_from_growth(client, campaign_id):
-    scope = client.scope
-    impressions = client.rows(
-        "SELECT exposure_id FROM ad_interaction WHERE execution_scope_id=%s "
-        "AND JSON_UNQUOTE(JSON_EXTRACT(result_json,'$.campaign_id'))=%s",
-        (scope, campaign_id))
-    clicks = client.rows(
-        "SELECT click_id FROM ad_spend WHERE execution_scope_id=%s AND campaign_id=%s",
-        (scope, campaign_id))
-    attributed = client.rows(
-        "SELECT e.pay_order_id FROM commerce_event e "
-        "LEFT JOIN commerce_attribution a USING(event_id) "
-        "LEFT JOIN commerce_attribution_meta m USING(event_id) "
-        "WHERE e.status='APPLIED' AND e.event_type='PAYMENT' "
-        "AND COALESCE(a.execution_scope_id,m.execution_scope_id,'store')=%s "
-        "AND a.campaign_id=%s",
-        (scope, campaign_id))
-    unknown = client.rows(
-        "SELECT e.pay_order_id FROM commerce_event e "
-        "LEFT JOIN commerce_attribution a USING(event_id) "
-        "LEFT JOIN commerce_attribution_meta m USING(event_id) "
-        "WHERE e.status='APPLIED' AND e.event_type='PAYMENT' "
-        "AND COALESCE(a.execution_scope_id,m.execution_scope_id,'store')=%s "
-        "AND (a.campaign_id IS NULL OR a.campaign_id='')",
-        (scope,))
-    return {
-        'impressions': len(impressions),
-        'clicks': len(clicks),
-        'payment_conversions': len({row['pay_order_id'] for row in attributed if row.get('pay_order_id')}),
-        'unknown_payments': len({row['pay_order_id'] for row in unknown if row.get('pay_order_id')}),
-    }
-
-
 def pick_live_sku(client, exclude_key=None):
     snapshot = client.catalog
     stocks = { (row['productId'], row['propertyValueIdHash']): row.get('stock')
@@ -462,19 +429,6 @@ def pick_live_sku(client, exclude_key=None):
                 and stocks.get((sku['productId'], sku['propertyValueIdHash']), 0) >= 1:
             return {**sku, 'product_name': product.get('productName')}
     raise ValueError('no_sellable_sku_in_scenario')
-
-
-def wait_attribution_settled(client, pay_id, timeout=45):
-    """Poll until the payment's attribution row is FINAL; return its campaign_id (or None)."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        report = client.request('attribution', params={'payOrderId': pay_id}, merchant=True)
-        events = report.get('events') or []
-        payment = next((row for row in events if row.get('event_type') == 'PAYMENT'), None)
-        if payment and payment.get('calculation_status') == 'FINAL':
-            return payment.get('campaign_id') or None
-        time.sleep(.3)
-    raise AssertionError('attribution_not_settled:' + pay_id)
 
 
 def pay_sku(client, sku):

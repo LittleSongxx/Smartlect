@@ -48,6 +48,9 @@ class ProductDetailGalleryTest {
         ReflectionTestUtils.setField(service, "productSkuMapper", productSkuMapper);
         ReflectionTestUtils.setField(service, "productBloomFilterComponent", bloomFilter);
         ReflectionTestUtils.setField(service, "stockFeignSupport", stockFeignSupport);
+        com.smartlect.component.ProductCacheService cacheService =
+                mock(com.smartlect.component.ProductCacheService.class);
+        ReflectionTestUtils.setField(service, "productCacheService", cacheService);
         when(bloomFilter.mightExist(any())).thenReturn(true);
         when(productSkuMapper.selectList(any())).thenReturn(List.of());
         when(stockFeignSupport.getAvailableBatch(anyList())).thenReturn(java.util.Map.of());

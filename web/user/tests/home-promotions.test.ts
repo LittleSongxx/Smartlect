@@ -28,12 +28,6 @@ beforeEach(() => {
     const custom = await handler?.(path, body);
     if (custom) return custom;
     if (path.endsWith('/session')) return json(session.value);
-    if (path.includes('/recommendations?')) return json({
-      recommendation_id: 'rec1', items: [recommendation], ranking_mode: 'rule',
-    });
-    if (path.includes('/recommendations/rec1/exposures')) return json({ ok: true });
-    if (path.includes('/recommendations/rec1/clicks')) return json({ ok: true });
-    if (path.endsWith('/traffic/landing')) return json({ ok: true });
     throw new Error(`Unexpected request: ${path}`);
   }));
 });

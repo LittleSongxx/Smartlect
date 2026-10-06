@@ -67,6 +67,8 @@ class ProviderChatModel(BaseChatModel):
 
     预算（模型调用计数、trace、prompt_version 标注）仍由 Provider 内部承担——
     这与框架无冲突：BaseChatModel 的职责是协议适配，不是成本治理。
+    子智能体经 before_attempt/on_trace 钩子接入主会话的同一预算闸与审计
+    （policy「预算单一事实源」不变量对 dispatch 路径同样成立）。
     """
     provider: Any
     tools_wire: list = []
@@ -75,19 +77,29 @@ class ProviderChatModel(BaseChatModel):
     prompt_version: str = "shopping-react"
     skill_versions: dict = {}
     schema_version: str = "shopping-answer"
+    before_attempt: Any = None
+    on_trace: Any = None
+    max_attempts: int = 2
 
     @property
     def _llm_type(self) -> str:
         return "smartlect-provider"
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "ProviderChatModel":
-        wire = list(tools)  # 已是 OpenAI function 格式；由调用方保证
+        # create_react_agent 传入的是 StructuredTool 对象，必须转成 OpenAI wire dict；
+        # provider.chat 对 tools 逐项做 dict/type/function 严格校验，透传对象会以
+        # only_registered_function_tools_allowed 拒绝（dict 视为调用方已保证 wire 格式）。
+        from langchain_core.utils.function_calling import convert_to_openai_tool
+        wire = [item if isinstance(item, dict) else convert_to_openai_tool(item) for item in tools]
         return self.__class__(provider=self.provider, tools_wire=wire,
                               tool_choice_wire=kwargs.get("tool_choice"),
                               max_tokens=self.max_tokens,
                               prompt_version=self.prompt_version,
                               skill_versions=self.skill_versions,
-                              schema_version=self.schema_version)
+                              schema_version=self.schema_version,
+                              before_attempt=self.before_attempt,
+                              on_trace=self.on_trace,
+                              max_attempts=self.max_attempts)
 
     def _generate(self, messages: list[BaseMessage], stop=None, run_manager=None, **kwargs) -> ChatResult:
         raise NotImplementedError("sync_generate_not_used; assistant runtime is async-only")
@@ -101,7 +113,10 @@ class ProviderChatModel(BaseChatModel):
             max_tokens=self.max_tokens,
             prompt_version=self.prompt_version,
             skill_versions=self.skill_versions,
-            schema_version=self.schema_version)
+            schema_version=self.schema_version,
+            before_attempt=self.before_attempt,
+            on_trace=self.on_trace,
+            max_attempts=self.max_attempts)
         message = from_openai_message(response["message"])
         generation = ChatGeneration(message=message)
         generation.generation_info = {"usage": response.get("usage"),

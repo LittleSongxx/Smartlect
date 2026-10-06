@@ -20,9 +20,32 @@ import time
 from langchain_core.tools import StructuredTool
 from langgraph.prebuilt import create_react_agent
 
+from smartlect.agents.shopping.contract import BudgetExceeded
 from smartlect.agents.shopping.model_adapter import ProviderChatModel
 from smartlect.agents.shopping.profiles import render_profile, route_sub_agent
+from smartlect.state import StateError
 from smartlect.tools import REGISTRY
+
+SUB_MODEL_ATTEMPT_LIMIT = 4
+"""单子任务模型调用上限：子智能体只许在少量轮次内得出结论。全局 MODEL_CALL_LIMIT
+是所有子任务共享的池，comparator 曾在 3 工具面里反复调用不收敛，13 次子调用
+烧穿整池预算迫使主循环 rule-fallback 收口——25s 超时只止损不退预算，必须在
+次数上独立设闸：超限按单任务失败降级，剩余预算留给主循环兜底。"""
+
+
+def visible_sub_scope(profile_scope, allowed_outer):
+    """子模型可见工具面 = 路由 profile 工具面 ∩ 主会话 skill 门控面。
+
+    只在调用时拦截（sub_invoke 闸）会让子模型"看得见却调不动"，模型必然
+    撞 tool_not_loaded 403；交集必须作为可见面下发。交集为空说明该 profile
+    在当前会话没有任何可用工具，任务应显式失败而非让模型空转。
+    """
+    if allowed_outer is None:
+        return tuple(profile_scope)
+    scope = tuple(name for name in profile_scope if name in allowed_outer)
+    if not scope:
+        raise StateError("sub_agent_no_available_tools", 403)
+    return scope
 
 log = logging.getLogger(__name__)
 
@@ -53,12 +76,31 @@ def structured_tools(invoke, allowed):
 
 
 async def run_sub_agent(model: ProviderChatModel, task: str, invoke) -> dict:
-    """单个子智能体执行：路由 → profile 契约提示词 + 收窄工具面 → 一次性 ainvoke。"""
+    """单个子智能体执行：路由 → profile 契约提示词 + 收窄工具面 → 一次性 ainvoke。
+
+    子模型继承主模型的 before_attempt/on_trace 预算与审计钩子：子智能体的
+    模型调用计入主会话同一 MODEL_CALL_LIMIT 并落 model_attempts——预算
+    单一事实源对 dispatch 路径同样成立，不存在绕过闸的第二条模型路径。
+    """
     profile, reason = route_sub_agent(task)
+    scope = visible_sub_scope(profile.tool_scope, getattr(invoke, 'allowed_outer', None))
+    main_before = model.before_attempt
+    spent = {'count': 0}
+
+    async def before_with_sub_limit():
+        spent['count'] += 1
+        if spent['count'] > SUB_MODEL_ATTEMPT_LIMIT:
+            raise BudgetExceeded('sub_agent_model_limit')
+        if main_before is not None:
+            return await main_before()
+
     sub_model = ProviderChatModel(provider=model.provider,
                                   prompt_version=f'sub-{profile.name}-v1',
-                                  max_tokens=profile.max_tokens)
-    agent = create_react_agent(sub_model, structured_tools(invoke, profile.tool_scope),
+                                  max_tokens=profile.max_tokens,
+                                  before_attempt=before_with_sub_limit,
+                                  on_trace=model.on_trace,
+                                  max_attempts=model.max_attempts)
+    agent = create_react_agent(sub_model, structured_tools(invoke, scope),
                                prompt=render_profile(profile))
     result = await agent.ainvoke(
         {"messages": [("user", task)]},
@@ -119,8 +161,11 @@ async def dispatch(tasks: list[str], *, model: ProviderChatModel, invoke) -> dic
             return {"task": task, "status": "timeout", "answer": "子智能体在时限内未完成"}
         except Exception as error:  # 单子智能体失败降级为该任务的结果标注
             log.warning("sub-agent dispatch failed: %s", error, exc_info=True)
+            detail = type(error).__name__
+            if getattr(error, "code", None):
+                detail = f"{detail}:{error.code}"  # StateError 带 code（如 tool_not_loaded）一并披露
             return {"task": task, "status": "failed",
-                    "answer": f"子智能体执行失败：{type(error).__name__}"}
+                    "answer": f"子智能体执行失败：{detail}"}
 
     results = await asyncio.gather(*(one(task) for task in tasks))
     return compose_results(list(results), round((time.monotonic() - started) * 1000, 2))

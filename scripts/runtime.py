@@ -26,7 +26,7 @@ PROCESS_LOCK = ROOT / "run/processes.lock"
 DATABASES = ("admin", "user", "product", "stock", "cart", "order", "pay", "coupon")
 APPS = ("assistant", "user", "product", "stock", "order", "pay", "cart", "coupon", "admin", "gateway", "web-user", "web-admin")
 PORTS = {"MYSQL": 13306, "REDIS": 16379, "RABBIT": 15672,
-         "RABBIT_MANAGEMENT": 15674, "NACOS": 18848, "ES": 9200, "QDRANT": 6333,
+         "RABBIT_MANAGEMENT": 15674, "NACOS": 18848, "ES": 9200, "QDRANT": 6333, "CANAL": 11111, "XXLJOB": 18090, "LITELLM": 14000,
          "GATEWAY": 18080, "GROWTH": 18000, "DASHBOARD": 18501,
          "ADMIN": 18101, "USER": 18105, "PRODUCT": 18106, "STOCK": 18108,
          "CART": 18102, "ORDER": 18104, "PAY": 18103, "COUPON": 18107, "WEB_USER": 18180, "WEB_ADMIN": 18181}
@@ -145,7 +145,9 @@ def bootstrap():
                      "REDIS_PASSWORD", "RABBIT_PASSWORD", "NACOS_PASSWORD",
                      "NACOS_MYSQL_PASSWORD", "NACOS_IDENTITY",
                      "INTERNAL_TOKEN", "INTERNAL_OPS_TOKEN",
-                     "GROWTH_MYSQL_PASSWORD",
+                     "GROWTH_MYSQL_PASSWORD", "CANAL_MYSQL_PASSWORD",
+                     "XXLJOB_MYSQL_PASSWORD", "XXLJOB_TOKEN",
+                     "LITELLM_MASTER_KEY",
                      "ADMIN_PASSWORD", "DEMO_PASSWORD", "VISITOR_SECRET", "ATTRIBUTION_SECRET"]
     for key in password_keys:
         env[f"SMARTLECT_{key}"] = secrets.token_hex(24)
@@ -303,7 +305,10 @@ def nacos_request(env, path, data):
 def infra_up(env):
     verify_project()
     clustered = cluster_form(env)
-    services = ["mysql", "redis", "rabbitmq", "nacos", "elasticsearch", "qdrant"]
+    # 必须与 infra_check 的期望集合一致，否则全新环境 bootstrap 后
+    # canal / xxl-job-admin 从未被拉起，infra-check 必然失败。
+    services = ["mysql", "redis", "rabbitmq", "nacos", "elasticsearch", "qdrant",
+                "canal", "xxl-job-admin"]
     if clustered:
         # 集群期 rabbitmq/nacos 由 deploy/cluster 下的多机编排提供，本机 compose 里
         # 这两个服务挂在 single-only profile，显式点名会报"service not enabled by profile"。
@@ -324,7 +329,13 @@ def infra_up(env):
 def infra_check(env):
     verify_project()
     states = compose("ps", "--all", "--format", "{{.Service}} {{.Health}} {{.State}}", capture=True)
-    healthy = {line.split()[0] for line in states.splitlines() if line.endswith("healthy running")}
+    # 逐字段比对：endswith("healthy running") 会把 "unhealthy running" 一起放行，
+    # 等于门禁失效（xxl-job-admin 曾经因此长期 unhealthy 却无人发现）。
+    healthy = set()
+    for line in states.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] == "healthy" and parts[2] == "running":
+            healthy.add(parts[0])
     if cluster_form(env):
         if not {"mysql", "redis"} <= healthy:
             raise RuntimeError("Middleware health check incomplete; run infra-up first")
@@ -332,7 +343,7 @@ def infra_check(env):
         endpoints = [ep for ep in (env.get("SPRING_RABBITMQ_ADDRESSES") or "").split(",") if ep]
         if not endpoints or not any(amqp_port_open(ep) for ep in endpoints):
             raise RuntimeError("No RabbitMQ cluster endpoint reachable")
-    elif not {"mysql", "redis", "rabbitmq", "nacos", "elasticsearch", "qdrant"} <= healthy:
+    elif not {"mysql", "redis", "rabbitmq", "nacos", "elasticsearch", "qdrant", "canal", "xxl-job-admin"} <= healthy:
         raise RuntimeError("Middleware health check incomplete; run infra-up first")
     token = nacos_request(env, "/nacos/v1/auth/login", {
         "username": env["SMARTLECT_NACOS_USERNAME"], "password": env["SMARTLECT_NACOS_PASSWORD"]})["accessToken"]
@@ -949,13 +960,20 @@ def self_test():
         with_sql, _ = package_fingerprint(package)
         sql.write_text("SELECT 2;\n")
         assert package_fingerprint(package)[0] != with_sql
-    test_env = {**os.environ, **{f"SMARTLECT_{key}": "a" * 48 for key in
-                ("MYSQL_PASSWORD", "FLYWAY_PASSWORD", "NACOS_MYSQL_PASSWORD",
-                 "GROWTH_MYSQL_PASSWORD")}}
+    # 只继承 PATH：自测环境不透传外部 SMARTLECT_* 变量，否则脚本里缺密钥
+    # （历史上漏过 xxljob）会被开发机 shell 掩盖成"通过"。
+    test_env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                **{f"SMARTLECT_{key}": "a" * 48 for key in
+                   ("MYSQL_PASSWORD", "FLYWAY_PASSWORD", "NACOS_MYSQL_PASSWORD",
+                    "GROWTH_MYSQL_PASSWORD", "CANAL_MYSQL_PASSWORD",
+                    "XXLJOB_MYSQL_PASSWORD")}}
     script = 'docker_process_sql() { cat; }; source "$1"'
     args = ["bash", "-ec", script, "self-test", str(ROOT / "deploy/mysql-init.sh")]
     sql = subprocess.run(args, env=test_env, check=True, text=True, capture_output=True).stdout
-    assert sql.count("CREATE DATABASE smartlect_") == 10
+    assert sql.count("CREATE DATABASE smartlect_") == 11
+    # 每个库的属主用户都必须在同一脚本里被创建（GRANT 不给隐式建用户）
+    for identity in ("app", "flyway", "nacos", "growth", "canal", "xxljob"):
+        assert f"CREATE USER 'smartlect_{identity}'@'%'" in sql
     grants = [line for line in sql.splitlines() if "TO 'smartlect_growth'" in line]
     assert grants == ["GRANT ALL ON smartlect_growth.* TO 'smartlect_growth'@'%';"]
     test_env["SMARTLECT_MYSQL_PASSWORD"] = "invalid'password"

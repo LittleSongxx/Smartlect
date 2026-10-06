@@ -5,7 +5,6 @@ import com.smartlect.api.dto.ProductIdDTO;
 import com.smartlect.api.dto.ProductIdListDTO;
 import com.smartlect.api.dto.ProductSalesIncreaseDTO;
 import com.smartlect.api.dto.ProductSnapshotBatchVO;
-import com.smartlect.api.vo.ProductSearchIndexVO;
 import com.smartlect.api.vo.ProductSkuSnapshotVO;
 import com.smartlect.api.fallback.ProductFeignFallbackFactory;
 import com.smartlect.entity.vo.PaginationResultVO;
@@ -30,8 +29,6 @@ public interface ProductFeignClient {
     @PostMapping("/increaseSales")
     ResponseVO<Void> increaseSales(@RequestBody ProductSalesIncreaseDTO dto);
 
-    @PostMapping("/searchIndex")
-    ResponseVO<ProductSearchIndexVO> getSearchIndex(@RequestBody ProductIdDTO dto);
 
     @PostMapping("/lessStockSkuPage")
     ResponseVO<PaginationResultVO<ProductSkuListVO>> lessStockSkuPage(@RequestBody LessStockPageDTO dto);

@@ -1,5 +1,5 @@
-// AI 层控制面压测（无 LLM）：visitor 会话引导 + 推荐读取，走
-// nginx → gateway → assistant(FastAPI) → Java introspect/召回 → MySQL 全链。
+// AI 层控制面压测（无 LLM）：visitor 会话引导 + 目录可见域读取，走
+// nginx → gateway → assistant(FastAPI) → Java introspect → MySQL 全链。
 // 用法：k6 run -e BASE=http://172.21.131.151 -e VUS=100 -e HOLD=60s assistant-control.js
 import http from 'k6/http';
 import { check } from 'k6';
@@ -25,6 +25,6 @@ export default function () {
   const headers = { Origin: BASE };
   const s = http.get(`${BASE}/api/assistant/session`, { headers });
   check(s, { 'session 200': (r) => r.status === 200 });
-  const r = http.get(`${BASE}/api/assistant/recommendations?limit=4`, { headers });
-  check(r, { 'rec 200': (resp) => resp.status === 200 });
+  const r = http.get(`${BASE}/api/assistant/catalog/scope`, { headers });
+  check(r, { 'scope 200': (resp) => resp.status === 200 });
 }

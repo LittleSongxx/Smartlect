@@ -1,11 +1,27 @@
 """Deterministic turn guards: intent heuristics, retrieval budget, label coercion.
 
 Each guard is pure with respect to (text, context-shape): no DB, no model, no clock.
+
+分层（ADR-0013）：本模块的守卫分两层，治理路线不同——
+
+A. 证据契约校验（bind_* / coerce_* / 检索预算 / no_business_claim_*）
+   校验「终答声明 × 本轮回执」的一致性，是纯确定性不变量：引用必须来自本轮
+   chunk_id、SKU 必须来自本轮回执、标签与观测相符。无意图推断，永久保留。
+
+B. 意图帧启发式（looks_like_* / answer_*_human_*）
+   中文关键词正则推断用户/答案的意图，在 session.answer_node 拥有覆盖模型
+   request_kind 声明的改判权（破例帧强制 exception、矛盾资料强制 handoff、
+   目录事实形态触发模板收口等）。它们锚定 v11–v28 评测合同的具体失败样本，
+   但天然易误报（中文表达多样），按 ADR-0013 路线评测驱动逐条降级为
+   提示/审计标记；降级判据是模型 request_kind 声明在评测中的可靠率达标。
+   每个意图帧的改判点见各函数 docstring。
 """
 import re
 
 from smartlect.knowledge import misses_utterance_constraints
 from .contract import FinalAnswer
+
+# ── A. 证据契约校验与检索预算（确定性不变量，永久保留）─────────────────────
 
 def retrieval_budget_action(context, utterance):
     """Third search: uncovered leftovers get an empty observation; covering leftovers still fault."""
@@ -55,8 +71,14 @@ _PRODUCT_UNIQUE = re.compile(
 _STORE_POLICY_CUE = re.compile(r'运费|包邮|退换|退货|退款|发票|保修|配送|怎么退|如何退|售后流程')
 
 
+# ── B. 意图帧启发式（改判权见 ADR-0013，评测驱动逐条降级）───────────────────
+
 def looks_like_product_unique_fact(text):
-    """Ingredient/spec/packaging questions need this-turn product evidence."""
+    """Ingredient/spec/packaging questions need this-turn product evidence.
+
+    改判点：compile.py 的 product_unique_fact 编译（不足→PRODUCT_UNCOVERED_ANSWER
+    替换答案、已接地→无检索也判 answered）。
+    """
     value = str(text or '')
     if _STORE_POLICY_CUE.search(value) and not _PRODUCT_UNIQUE.search(value):
         return False
@@ -64,7 +86,11 @@ def looks_like_product_unique_fact(text):
 
 
 def looks_like_service_request(text):
-    """Performative service act, not a question about whether a service exists."""
+    """Performative service act, not a question about whether a service exists.
+
+    改判点：looks_like_catalog_fact_question 的排除项（服务请求不走目录模板
+    收口）；终答 request_kind=request_service 的编译语义与其同源。
+    """
     value = str(text or '')
     if re.search(r'(?:规则|范围|条件|流程).{0,16}(?:是什么|如何|怎么)|(?:是什么|如何|怎么).{0,16}(?:规则|范围|条件)', value):
         return False
@@ -77,7 +103,11 @@ def looks_like_service_request(text):
 
 
 def looks_like_irreconcilable_sources(text):
-    """User asserts published sources cannot be reconciled. Asking how two topics differ is not this."""
+    """User asserts published sources cannot be reconciled. Asking how two topics differ is not this.
+
+    改判点：session.answer_node——命中且 request_kind 非 exception 族时强制
+    重编为 request_handoff（开人工单），覆盖模型的 inquire_fact 声明。
+    """
     value = str(text or '')
     if re.search(r'(?:有什么|有何|哪些).{0,8}(?:区别|不一样|不同)', value):
         return False
@@ -95,7 +125,11 @@ _HUMAN_DEFERRAL = re.compile(r'(?:可以|可|建议|不妨)[^，。；！？]{0,
 
 def answer_offers_human_transfer(answer):
     """The model itself volunteers to transfer/create a ticket (first person).
-    Strong intent: no policy citation is required to compile it into action."""
+    Strong intent: no policy citation is required to compile it into action.
+
+    改判点：session.answer_node——request_service 轮命中即强制置位
+    handoff_requested 并开单（覆盖模型声明）。
+    """
     return bool(_HUMAN_OFFER.search(answer or ''))
 
 
@@ -127,6 +161,8 @@ def no_business_claim_has_store_conclusion(answer):
     scrubbed = re.sub(_SEARCH_OFFER_CUE + r'[^，。；！？\s]{0,6}' + _STORE_FACT_WORDS, '', text)
     return bool(re.search(_STORE_FACT_WORDS, scrubbed))
 
+
+# ── A（续）. 标签矫正与选品绑定：声明 × 回执的确定性编译，永久保留 ──────────
 
 def coerce_observed_fact_grounding(final, context):
     """Relabel a mis-tagged fact answer instead of rejecting the turn.
@@ -244,7 +280,11 @@ _CATALOG_FACT = re.compile(r'价格|多少钱|库存|有货|售价|现价|规格
 
 
 def looks_like_catalog_fact_question(text):
-    """Spec / price / stock questions can close from Java receipts without a second JSON."""
+    """Spec / price / stock questions can close from Java receipts without a second JSON.
+
+    改判点：compile.template_observed_catalog_result——命中即由控制器按目录
+    模板直接收口（跳过模型终答），session 的 tool_node/answer_node 两处消费。
+    """
     value = str(text or '')
     if looks_like_service_request(value):
         return False

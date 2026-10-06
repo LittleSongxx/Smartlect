@@ -76,11 +76,6 @@ smartlect:
     lock-public-register: ${SMARTLECT_TRIAL_LOCK_PUBLIC_REGISTER:true}
   payment:
     mode: ${SMARTLECT_PAYMENT_MODE:mock}
-  assistant:
-    # 环境变量名沿用历史 growth 前缀，线上 .env 不随服务改名
-    base-url: ${SMARTLECT_GROWTH_BASE_URL:http://127.0.0.1:18000}
-    attribution-connect-timeout-ms: ${SMARTLECT_GROWTH_ATTRIBUTION_CONNECT_TIMEOUT_MS:200}
-    attribution-read-timeout-ms: ${SMARTLECT_GROWTH_ATTRIBUTION_READ_TIMEOUT_MS:500}
   production-ready: ${SMARTLECT_PRODUCTION_READY:false}
   dev-login-bypass: ${SMARTLECT_DEV_LOGIN_BYPASS:false}
   internal:
@@ -131,3 +126,17 @@ sa-token:
     path: /
     http-only: true
     same-site: Lax
+
+xxl:
+  job:
+    admin:
+      addresses: ${SMARTLECT_XXLJOB_URL:http://127.0.0.1:18090/xxl-job-admin}
+    accessToken: ${SMARTLECT_XXLJOB_TOKEN:}
+    executor:
+      appname: ${spring.application.name}
+      # 0 = 由 xxl-job 从 9999 起自选空闲端口。九个服务跑在同一台机器上，
+      # 固定端口只有先启动的那个能绑定，其余八个执行器注册直接失败，
+      # 表现是调度中心里任务照常触发但永远"无可用执行器"。
+      port: ${SMARTLECT_XXLJOB_EXECUTOR_PORT:0}
+      logpath: ./logs/xxl-job
+      logretentiondays: 7

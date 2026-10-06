@@ -29,12 +29,28 @@ class PublicProductSearchTest {
         service = mock(ProductInfoService.class);
         when(service.findListByPage(any())).thenReturn(new PaginationResultVO<>());
         ReflectionTestUtils.setField(controller, "productInfoService", service);
+        // 默认桩：ES 不可达（null）→ 控制器走 SQL LIKE 回退路径，保住既有契约断言
+        com.smartlect.search.ProductIndexService index = mock(com.smartlect.search.ProductIndexService.class);
+        when(index.searchIdsByKeyword(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(null);
+        ReflectionTestUtils.setField(controller, "productIndexService", index);
     }
 
     private ProductInfoQuery capture() {
         ArgumentCaptor<ProductInfoQuery> captor = ArgumentCaptor.forClass(ProductInfoQuery.class);
         verify(service).findListByPage(captor.capture());
         return captor.getValue();
+    }
+
+    @Test
+    void esKeywordHitShortCircuitsToProductIdList() {
+        com.smartlect.search.ProductIndexService index = mock(com.smartlect.search.ProductIndexService.class);
+        when(index.searchIdsByKeyword(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(java.util.List.of("P1", "P2"));
+        ReflectionTestUtils.setField(controller, "productIndexService", index);
+        controller.loadProduct(1, null, "键盘", null, null, null, null, null);
+        ProductInfoQuery query = capture();
+        assertNull(query.getProductNameFuzzy());
+        assertEquals(List.of("P1", "P2"), query.getProductIdList());
     }
 
     @Test

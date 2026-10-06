@@ -81,8 +81,25 @@ class OrderCreationIntegrityTest {
             com.smartlect.entity.query.OrderCouponRelQuery> orderCouponRelMapper;
     @Mock
     private com.smartlect.component.RemoteCompensateRecorder remoteCompensateRecorder;
+
+    @Mock
+    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+
     @InjectMocks
     private OrderInfoServiceImpl service;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpTransactionTemplate() {
+        // Phase 3 短事务透传：让 lambda 内的 mapper 调用直接执行
+        org.mockito.Mockito.lenient()
+                .doAnswer(call -> {
+                    java.util.function.Consumer<org.springframework.transaction.TransactionStatus> cb = call.getArgument(0);
+                    cb.accept(null);
+                    return null;
+                })
+                .when(transactionTemplate)
+                .executeWithoutResult(org.mockito.ArgumentMatchers.<java.util.function.Consumer<org.springframework.transaction.TransactionStatus>>any());
+    }
 
     @Test
     void authoritativeSkuDrivesStockAndEveryOrderGetsLogistics() {

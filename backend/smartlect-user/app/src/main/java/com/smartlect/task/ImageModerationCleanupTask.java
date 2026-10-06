@@ -3,7 +3,7 @@ package com.smartlect.task;
 import com.smartlect.biz.ImageModerationService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
+import com.xxl.job.core.handler.annotation.XxlJob;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -13,7 +13,7 @@ public class ImageModerationCleanupTask {
     @Resource
     private ImageModerationService imageModerationService;
 
-    @Scheduled(cron = "0 15 * * * ?")
+    @XxlJob("imageModerationCleanup")
     public void cleanupOrphanedCommentUploads() {
         try {
             int cleaned = imageModerationService.cleanupOrphanedCommentUploads();

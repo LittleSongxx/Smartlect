@@ -61,16 +61,10 @@ class OrderCommerceV2ControllerTest {
     }
 
     @Test
-    void optionalContextIsOutsidePurchaseAndMalformedContextDoesNotCoerceMoney() throws Exception {
+    void malformedAmountDoesNotCoerceMoney() throws Exception {
         bindUser();
-        when(orders.createConfirmed(eq("trusted-user"), any(), eq("q"), eq(1000L), eq("original-key")))
-                .thenReturn(new PayInfoDTO(null, "pay1", new BigDecimal("10.00")));
-        for (String token : new String[]{"123", "{}", "null", "\"signed-context\""}) {
-            var body = JsonUtils.mapper().readTree("{\"quoteId\":\"q\",\"confirmedAmountCents\":1000,\"order\":" + ORDER
-                    + ",\"attributionContextToken\":" + token + "}");
-            assertEquals("business_completed", controller.createConfirmed(body, "original-key").getData().get("commandStatus"));
-        }
-        verify(orders, org.mockito.Mockito.times(4)).createConfirmed(eq("trusted-user"), any(), eq("q"), eq(1000L), eq("original-key"));
+        // attributionContextToken 剥离逻辑已随推荐归因线退役（ADR-0008，全链路无发送方）；
+        // 本用例保留其无关的金额语义断言：confirmedAmountCents 不接受字符串强转。
         var badAmount = JsonUtils.mapper().readTree("{\"quoteId\":\"q\",\"confirmedAmountCents\":\"1000\",\"order\":" + ORDER + "}");
         assertThrows(HttpBusinessException.class, () -> controller.createConfirmed(badAmount, "original-key"));
     }

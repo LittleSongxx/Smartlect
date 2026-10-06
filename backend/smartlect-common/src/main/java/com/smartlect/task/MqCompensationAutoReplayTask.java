@@ -7,7 +7,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.scheduling.annotation.Scheduled;
+import com.xxl.job.core.handler.annotation.XxlJob;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
@@ -31,7 +31,7 @@ public class MqCompensationAutoReplayTask {
     @Value("${spring.application.name:unknown}")
     private String applicationName;
 
-    @Scheduled(fixedDelayString = "${mq.compensation.auto-replay-interval-ms:60000}")
+    @XxlJob("mqCompensationReplay")
     public void autoReplay() {
         String lockKey = Constants.REDIS_KEY_MQ_COMPENSATE_AUTO_REPLAY_LOCK
                 + ":" + applicationName;

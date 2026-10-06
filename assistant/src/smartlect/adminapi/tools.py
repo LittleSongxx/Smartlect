@@ -1,13 +1,14 @@
 """Tool debug console: single-tool invocation with a full audit trail, no write surface.
 
-Debuggable tools are the read-only REGISTRY entries without attribution side effects, plus
-one debug-only probe `catalog_search` that runs ShoppingRetrieve directly. search_skus /
-recommend_skus / compare_skus stay off this surface for the same reason they stay off MCP:
-going through the recommendation service would write exposure receipts into the attribution
-ledger that no real display surface will ever report. Every debug call still creates an
-agent_run (message_id `debug:*`) and reuses tools.invoke, so it shows up in the runs
-browser with the same receipts and idempotency as an agent call — there is no second,
-weaker path into the tools.
+Debuggable tools are the read-only REGISTRY entries without conversation-state side
+effects, plus one debug-only probe `catalog_search` that runs ShoppingRetrieve directly.
+search_skus / recommend_skus / compare_skus stay off this surface for the same reason
+they stay off MCP: going through the selection service would write mission state and a
+saved recommendation receipt into the conversation's evaluation trail that no agent run
+will ever consume (the attribution ledger they once fed was retired with ADR-0008).
+Every debug call still creates an agent_run (message_id `debug:*`) and reuses
+tools.invoke, so it shows up in the runs browser with the same receipts and idempotency
+as an agent call — there is no second, weaker path into the tools.
 """
 import asyncio
 

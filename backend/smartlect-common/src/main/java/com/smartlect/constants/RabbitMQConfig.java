@@ -5,6 +5,7 @@ import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Declarable;
 import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.DirectExchange;
+import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -50,6 +51,10 @@ public class RabbitMQConfig {
     public static final String MQ_RETRY_EXCHANGE = "smartlect.mq.retry.exchange";
     public static final String MQ_FAILURE_EXCHANGE = "smartlect.mq.failure.exchange";
     public static final String MQ_FAILURE_QUEUE = "smartlect.mq.failure.queue";
+
+    // ===== Canal CDC（binlog → MQ）=====
+    public static final String CANAL_EXCHANGE = "smartlect-canal";
+    public static final String CANAL_PRODUCT_QUEUE = "smartlect.canal.product-index.queue";
     public static final String MQ_FAILURE_KEY = "smartlect.mq.failure";
     private static final long[] RETRY_DELAYS_MS = {5_000L, 30_000L, 120_000L};
 
@@ -147,6 +152,24 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(rushingOrderQueue())
                 .to(rushingExchange())
                 .with(RUSHING_ORDER_KEY);
+    }
+
+    // ========== Canal CDC 拓扑（商品索引增量） ==========
+    // Canal 以 rabbitMQ 模式直投 smartlect-canal topic 交换机（routing key = 实例名）；
+    // 绑定 # 由商品索引消费者按消息内的表名过滤，避免实例名耦合。
+    @Bean
+    public TopicExchange canalExchange() {
+        return new TopicExchange(CANAL_EXCHANGE, true, false);
+    }
+
+    @Bean
+    public Queue canalProductIndexQueue() {
+        return durableQueue(CANAL_PRODUCT_QUEUE).build();
+    }
+
+    @Bean
+    public Binding canalProductIndexBinding() {
+        return BindingBuilder.bind(canalProductIndexQueue()).to(canalExchange()).with("#");
     }
 
     // ========== 延迟队列（1分钟超时）==========

@@ -1,0 +1,252 @@
+package com.smartlect.search;
+
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.SortOrder;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.elasticsearch.core.BulkRequest;
+import co.elastic.clients.elasticsearch.core.BulkResponse;
+import co.elastic.clients.elasticsearch.core.CountResponse;
+import co.elastic.clients.elasticsearch.core.DeleteRequest;
+import co.elastic.clients.elasticsearch.core.IndexRequest;
+import co.elastic.clients.elasticsearch.core.SearchRequest;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
+import co.elastic.clients.elasticsearch.indices.CreateIndexRequest;
+import co.elastic.clients.elasticsearch.indices.ExistsRequest;
+import com.smartlect.entity.po.ProductInfo;
+import com.smartlect.mappers.ProductInfoMapper;
+import com.smartlect.entity.query.ProductInfoQuery;
+import com.smartlect.utils.PageUtils;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 商品搜索索引（smartlect-products）的读写门面。
+ *
+ * <p>索引只承担检索谓词（文本短语包含 + 在售过滤），结构化过滤（品类、价格区间、
+ * 排除项）与排序仍由 DB 查询完成——文本谓词的语义必须与被替换的
+ * {@code product_name like '%kw%'} 逐字等价：keyword 子字段 + case-insensitive
+ * wildcard（v16 评测曾因分词检索放宽资格语义而回退，见 ProductInfoMapper 注释）。</p>
+ *
+ * <p>价格/库存不入索引（与"交易事实以 Java 查询时点为准"的架构边界一致），
+ * 仅冗余商品静态快照。ES 不可达时所有方法返回降级信号（null / false），
+ * 调用方回退 SQL LIKE。</p>
+ */
+@Slf4j
+@Service
+public class ProductIndexService {
+
+    public static final String INDEX = "smartlect-products";
+    /** ES 检索命中的 id 上限：约束单次回表批量，DB 侧分页在其子集上进行。 */
+    public static final int SEARCH_ID_CAP = 500;
+
+    /** 建索引 mapping：productName 双字段（smartcn 文本 + raw keyword 供短语 wildcard）。 */
+
+    private final ElasticsearchClient client;
+    private final ProductInfoMapper productInfoMapper;
+
+    public ProductIndexService(ElasticsearchClient client, ProductInfoMapper productInfoMapper) {
+        this.client = client;
+        this.productInfoMapper = productInfoMapper;
+    }
+
+    public boolean ensureIndex() {
+        try {
+            boolean exists = client.indices()
+                    .exists(ExistsRequest.of(b -> b.index(INDEX))).value();
+            if (!exists) {
+                try {
+                    // 显式 Java API 构建 mapping（withJson 会被动态映射覆盖）
+                    client.indices().create(c -> c
+                            .index(INDEX)
+                            .settings(se -> se
+                                    .analysis(a -> a
+                                            .analyzer("smartcn_zh", an -> an
+                                                    .custom(z -> z
+                                                            .tokenizer("standard"))))  )
+                            .mappings(m -> m
+                                    .properties("productId", p -> p.keyword(k -> k))
+                                    .properties("productName", p -> p.text(t -> t
+                                            .analyzer("smartcn_zh")
+                                            .fields("raw", f -> f.keyword(k -> k))))
+                                    .properties("productDesc", p -> p.text(t -> t.analyzer("smartcn_zh")))
+                                    .properties("brand", p -> p.keyword(k -> k))
+                                    .properties("categoryId", p -> p.keyword(k -> k))
+                                    .properties("pCategoryId", p -> p.keyword(k -> k))
+                                    .properties("cover", p -> p.keyword(k -> k.index(false).docValues(false)))
+                                    .properties("status", p -> p.integer(i -> i))
+                                    .properties("minPriceCents", p -> p.long_(l -> l))
+                                    .properties("maxPriceCents", p -> p.long_(l -> l))
+                                    .properties("totalSale", p -> p.integer(i -> i))
+                                    .properties("commendType", p -> p.integer(i -> i))
+                                    .properties("catalogScope", p -> p.keyword(k -> k))
+                                    .properties("createTimeMillis", p -> p.long_(l -> l))));
+                    log.info("商品索引 {} 已创建（含 smartcn 分析与 raw keyword 子字段）", INDEX);
+                } catch (co.elastic.clients.elasticsearch._types.ElasticsearchException already) {
+                    if (!"resource_already_exists_exception".equals(already.error().type())) {
+                        throw already;
+                    }
+                }
+            }
+            return true;
+        } catch (IOException e) {
+            log.warn("商品索引 ensure 失败（ES 不可达将回退 SQL）：{}", e.getMessage());
+            return false;
+        }
+    }
+
+    public boolean upsert(ProductInfo product) {
+        try {
+            client.index(IndexRequest.of(b -> b.index(INDEX)
+                    .id(product.getProductId()).document(toDocument(product))));
+            return true;
+        } catch (IOException e) {
+            log.warn("商品索引写入失败 productId={}：{}", product.getProductId(), e.getMessage());
+            return false;
+        }
+    }
+
+    public boolean delete(String productId) {
+        try {
+            client.delete(DeleteRequest.of(b -> b.index(INDEX).id(productId)));
+            return true;
+        } catch (IOException e) {
+            log.warn("商品索引删除失败 productId={}：{}", productId, e.getMessage());
+            return false;
+        }
+    }
+
+    public long count() {
+        try {
+            CountResponse response = client.count(b -> b.index(INDEX));
+            return response.count();
+        } catch (IOException e) {
+            return -1;
+        }
+    }
+
+    /** 全量重建（幂等 upsert，不清索引）：初始化器在索引为空时调用。 */
+    public int rebuildAll(int pageSize) {
+        if (!ensureIndex()) {
+            return -1;
+        }
+        int total = 0;
+        int pageNo = 1;
+        while (true) {
+            List<ProductInfo> page = PageUtils.pageInfo(pageNo, pageSize,
+                    () -> productInfoMapper.selectList(new ProductInfoQuery())).getList();
+            if (page == null || page.isEmpty()) {
+                break;
+            }
+            BulkRequest.Builder bulk = new BulkRequest.Builder();
+            for (ProductInfo product : page) {
+                Map<String, Object> doc = toDocument(product);
+                bulk.operations(op -> op.index(idx -> idx.index(INDEX)
+                        .id(product.getProductId()).document(doc)));
+            }
+            try {
+                BulkResponse response = client.bulk(bulk.build());
+                if (response.errors()) {
+                    log.warn("全量索引第 {} 页存在失败项", pageNo);
+                }
+            } catch (IOException e) {
+                log.warn("全量索引第 {} 页失败：{}", pageNo, e.getMessage());
+            }
+            total += page.size();
+            if (page.size() < pageSize) {
+                break;
+            }
+            pageNo++;
+        }
+        log.info("商品索引全量重建完成：{} 条", total);
+        return total;
+    }
+
+    /**
+     * 文本检索谓词：与 {@code product_name like '%kw%'} 逐字等价的短语包含
+     * （keyword 子字段 + case-insensitive wildcard），叠加在售与目录隔离过滤。
+     *
+     * @return 有序 productId 列表（create_time desc，对齐 DB 默认排序）；
+     *         {@code null} 表示 ES 不可达，调用方应回退 SQL LIKE
+     */
+    public List<String> searchIdsByKeyword(String keyword, Collection<String> excludeProductIds, int limit) {
+        String trimmed = keyword == null ? "" : keyword.trim();
+        if (trimmed.isEmpty()) {
+            return List.of();
+        }
+        int capped = Math.min(Math.max(limit, 1), SEARCH_ID_CAP);
+        List<String> exclude = excludeProductIds == null ? List.of()
+                : excludeProductIds.stream().limit(1000).toList();
+        try {
+            String pattern = "*" + escapeWildcard(trimmed) + "*";
+            List<co.elastic.clients.elasticsearch._types.FieldValue> excludeValues = exclude.stream()
+                    .map(co.elastic.clients.elasticsearch._types.FieldValue::of).toList();
+            Query query = Query.of(q -> {
+                q.bool(b -> {
+                    b.must(m -> m.wildcard(w -> w
+                            .field("productName.raw").caseInsensitive(true).wildcard(pattern)));
+                    b.filter(f -> f.term(t -> t.field("status").value(1)));
+                    b.filter(f -> f.bool(nb -> nb
+                            .mustNot(n -> n.term(t -> t.field("catalogScope").value("eval")))));
+                    if (!excludeValues.isEmpty()) {
+                        b.filter(f -> f.bool(nb -> nb.mustNot(n -> n.terms(t -> t
+                                .field("productId").terms(tv -> tv.value(excludeValues))))));
+                    }
+                    return b;
+                });
+                return q;
+            });
+            SearchResponse<Map> response = client.search(SearchRequest.of(b -> b
+                    .index(INDEX).query(query)
+                    .size(capped)
+                    .sort(s -> s.field(f -> f.field("createTimeMillis").order(SortOrder.Desc)))),
+                    Map.class);
+            List<String> ids = new ArrayList<>();
+            for (Hit<Map> hit : response.hits().hits()) {
+                if (hit.id() != null) {
+                    ids.add(hit.id());
+                }
+            }
+            return ids;
+        } catch (IOException e) {
+            log.warn("商品索引检索失败（回退 SQL LIKE）：{}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** wildcard 元字符转义：保持与 LIKE 字面量一致的"用户输入即字面"语义。 */
+    static String escapeWildcard(String input) {
+        return input.replace("\\", "\\\\").replace("*", "\\*").replace("?", "\\?");
+    }
+
+    static Map<String, Object> toDocument(ProductInfo p) {
+        Map<String, Object> doc = new HashMap<>();
+        doc.put("productId", p.getProductId());
+        doc.put("productName", p.getProductName());
+        doc.put("productDesc", p.getProductDesc());
+        doc.put("brand", p.getBrand());
+        doc.put("categoryId", p.getCategoryId());
+        doc.put("pCategoryId", p.getpCategoryId());
+        doc.put("cover", p.getCover());
+        doc.put("status", p.getStatus());
+        doc.put("minPriceCents", cents(p.getMinPrice()));
+        doc.put("maxPriceCents", cents(p.getMaxPrice()));
+        doc.put("totalSale", p.getTotalSale() == null ? 0 : p.getTotalSale());
+        doc.put("commendType", p.getCommendType() == null ? 0 : p.getCommendType());
+        doc.put("catalogScope", p.getCatalogScope() == null ? "store" : p.getCatalogScope());
+        doc.put("createTimeMillis", p.getCreateTime() == null ? 0L : p.getCreateTime().getTime());
+        return doc;
+    }
+
+    static long cents(BigDecimal yuan) {
+        return yuan == null ? 0L : yuan.movePointRight(2).longValue();
+    }
+}

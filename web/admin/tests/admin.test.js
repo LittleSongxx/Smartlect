@@ -26,15 +26,15 @@ afterEach(() => { wrappers.splice(0).forEach(wrapper => wrapper.unmount()); vi.u
 describe('Smartlect 管理端业务边界', () => {
   it('refreshes merchant CSRF on each write and blocks an account switch', async () => {
     handler = path => path.endsWith('/session') ? reply({ actor: { ...actor, actor_id: 'm2' }, csrf_token: 'new' }) : null;
-    await expect(aiWrite('/ads/campaigns', { campaign_id: 'x' })).rejects.toThrow('账号已变化');
+    await expect(aiWrite('/knowledge', { doc_id: 'refund-policy' })).rejects.toThrow('账号已变化');
     expect(calls).toHaveLength(1);
     handler = path => path.endsWith('/session') ? reply({ actor: { ...actor, actor_id: 'm2' }, csrf_token: 'latest' }) : reply({ status: 'DRAFT' });
-    await aiWrite('/ads/campaigns', { campaign_id: 'x' });
+    await aiWrite('/knowledge', { doc_id: 'refund-policy' });
     expect(calls.at(-1).options.headers['X-CSRF-Token']).toBe('latest');
   });
   it('clears expired sessions and rejects non-merchant identities without posting', async () => {
     handler = () => reply({ detail: 'invalid_session' }, 401);
-    await expect(aiWrite('/ads/actions', {})).rejects.toThrow('invalid_session'); expect(session.value).toBeNull(); expect(calls).toHaveLength(1);
+    await expect(aiWrite('/knowledge', {})).rejects.toThrow('invalid_session'); expect(session.value).toBeNull(); expect(calls).toHaveLength(1);
     handler = () => reply({ actor: { ...actor, subject_type: 'user' }, csrf_token: 'bad' });
     await expect(loadSession()).rejects.toThrow('permission_denied'); expect(session.value).toBeNull();
   });

@@ -3,9 +3,10 @@
 The installable `smartlect` package provides a FastAPI entry, trusted Java cookie
 sessions, confirmed transaction proposals and durable recovery.
 Shopping runs bounded LangGraph ReAct with versioned skills, source citations,
-owned memory and human handoff. Recommendations and immutable attribution are
-implemented; the campaign/Merchant plane was retired by ADR-0008 (no worker
-process remains). No model tool can approve a transaction.
+owned memory and human handoff. The recommendation, attribution and
+campaign/Merchant planes were retired by ADR-0008; only the scenario-scope and
+retrieval-receipt contracts survive (no worker process remains). No model tool
+can approve a transaction.
 
 ## Agent 架构（自上而下）
 
@@ -49,17 +50,17 @@ Use `./scripts/dev.sh model-mode live` then `up` after configuring the provider.
 Direct dependencies are declared in `pyproject.toml`; the single
 `requirements.lock` pins their full closure, including MySQL RSA authentication
 and the FastAPI/Pydantic/LangGraph stack plus bounded text-PDF parsing with pypdf.
-Event consumption is disabled unless
-`SMARTLECT_GROWTH_EVENTS_ENABLED=true`.
+The growth event consumer and its `SMARTLECT_GROWTH_EVENTS_ENABLED` switch were
+retired with the attribution line (ADR-0008); retention cleanup now runs inside
+the API process.
 
 The launcher reads `run/runtime.env` and, for the Python application only,
 the optional mode-600 `run/model.env`. The latter accepts only provider fields;
 it cannot replace database, payment or internal authentication configuration.
 These files are literal Python inputs, not shell scripts. F0 has copied the
 authorized model fields and fixed `SMARTLECT_MODEL_ID=qwen3.7-plus`. See
-`../artifacts/f2-provider-capabilities.json`, `../artifacts/f2-live-vertical-v6.json`,
 `../docs/agent-design.md`, `../docs/adr/0001-final-integration.md` and
-`../docs/integration-reuse.md` for decisions and source attribution.
+`../docs/history/integration-reuse.md` for decisions and source attribution.
 
 Frozen source attribution and limitations are recorded in
-`../docs/growth-migration.md`; original license material is under `licenses/`.
+`../docs/history/growth-migration.md`; original license material is under `licenses/`.

@@ -1,18 +1,27 @@
 # Smartlect 本地运行
 
-更新：2026-10-04（收敛重构后）。从项目根目录执行 `./scripts/dev.sh bootstrap`，探测空闲端口并生成本项目随机凭证，保存在 Git 忽略的 `run/runtime.env`（权限 600）。
+更新：2026-10-07（新增 Canal / xxl-job-admin 容器，Nacos 兼作配置中心）。从项目根目录执行 `./scripts/dev.sh bootstrap`，探测空闲端口并生成本项目随机凭证，保存在 Git 忽略的 `run/runtime.env`（权限 600）。
 
-## 基础设施（7 个容器）
+## 基础设施（9 个容器）
 
 | 服务 | 默认端口 | 说明 |
 |---|---|---|
-| MySQL 8.4 | 13306 | 10 个业务库（无 Seata） |
+| MySQL 8.4 | 13306 | 8 个业务库 + nacos/growth/xxljob（无 Seata） |
 | Redis 7.4 | 16379 | Sa-Token 会话 + Redisson 锁/限流 |
 | RabbitMQ 4.2 | 15672/15674 | Outbox 可靠消息 + 延迟队列 |
-| Nacos v2.5 | 18848 | 服务发现（无配置中心） |
+| Nacos v2.5 | 18848 | 服务发现 + 配置中心（`SMARTLECT_GROUP` 下 `smartlect-common.yml` 与 `smartlect-{服务}.yml`） |
 | Elasticsearch 8.19 | 9200 | smartcn 中文分词（需 build Dockerfile） |
 | Qdrant 1.15 | 6333 | 1024 维 HNSW 向量检索 |
-| PostgreSQL 16 | 15432 | LangGraph checkpointer（profile `postgres`） |
+| Canal 1.1.8 | 11111 | 伪装 MySQL 从库解析 binlog 直投 RabbitMQ，驱动商品索引增量同步与缓存失效 |
+| xxl-job-admin 2.5 | 18090 | 调度中心（九个定时任务由 `@Scheduled` 迁移而来，表结构见 `deploy/sql/16-xxljob.sql`） |
+| LiteLLM | 14000 | 模型路由网关，挂在 `litellm` profile 下，默认不随 `infra-up` 启动 |
+
+> LangGraph checkpointer 已移除（2026-10-05，ADR-0009 后记）：图状态无消费者（跨 run 不复用、崩溃不恢复、不用 interrupt），会话事实源是 MySQL。PostgreSQL 容器与 psycopg 依赖随之退役。
+
+> 配置中心：各服务的 `spring.config.import` 从 Nacos 拉取 `smartlect-common.yml` 与
+> `smartlect-{服务}.yml`，全部写成 `optional:`——配置中心缺这条 dataId 或不可达时静默退回
+> 本地 `application.yml`，不阻断启动。改完本地配置用 `python3 scripts/nacos_config_push.py`
+> 重新推送（脚本会剥掉"从 Nacos 导入自身"的行，避免配置中心自引用）。
 
 ```bash
 ./scripts/dev.sh infra-up   # 启动上述全部容器并等待健康

@@ -25,3 +25,11 @@
 
 - 自研面显著缩小：HTTP 管线、熔断器、pgvector 镜像、内存 BM25（主路径）、推荐/归因全部退役。
 - 保留的自研（守卫/编排/提案状态机）全部有「评测合同锚定 + 测试锁定」的双重理由，符合「每个留下的组件都能在 30 秒内说出不选替代方案的理由」的收敛终点标准。
+
+---
+
+## 后记（2026-10-05，不改写上文）
+
+1. 上文「StateGraph + checkpointer + 条件边」中的 **checkpointer 已于本日移除**。复核结论：其写入无任何消费者——每 run 用独立 checkpoint_ns，跨 run 不复用；崩溃恢复走 run 租约与幂等台账而非图状态续跑；interrupt() 不用（HITL 是跨请求持久化提案，见决定一）。所有等待点（提案确认/转人工/澄清）均为跨请求语义，由 MySQL 领域状态机覆盖；等待期需保留的事实（提案、工单、任务槽、偏好）全部结构化落库，图状态本身无保留价值，每轮从 MySQL 重建输入的成本可忽略。
+2. 随之退役：`smartlect/postgres.py`、`psycopg*` 与 `langgraph-checkpoint-postgres` 依赖（lock 同步）、compose 的 postgres 服务与 `deploy/postgres-init.sql`、`scripts/runtime.py` 的 PG env 写入。`graph_runtime` 只保留图编译单例、ContextVar 会话注入与 recursion_limit 配置；`test_interview_stage2` 增加行为守卫（编译产物 `checkpointer is None`）。
+3. 若未来需要 interrupt 或 durable resume，恢复路径：thread_id 固定为 conversation_id、重引入 PG saver 与依赖，并按上文原则先验证副作用幂等（本项目工具层台账已具备）。

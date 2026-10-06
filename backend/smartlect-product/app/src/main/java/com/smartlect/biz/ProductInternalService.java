@@ -3,7 +3,6 @@ package com.smartlect.biz;
 import com.smartlect.api.dto.ProductSnapshotBatchVO;
 import com.smartlect.api.vo.ProductInfoSnapshotVO;
 import com.smartlect.api.vo.ProductPropertyValueSnapshotVO;
-import com.smartlect.api.vo.ProductSearchIndexVO;
 import com.smartlect.api.vo.ProductSkuSnapshotVO;
 import com.smartlect.api.enums.ProductStatusEnum;
 import com.smartlect.api.support.StockFeignSupport;
@@ -17,7 +16,6 @@ import com.smartlect.exception.BusinessException;
 import com.smartlect.mappers.ProductInfoMapper;
 import com.smartlect.mappers.ProductPropertyValueMapper;
 import com.smartlect.mappers.ProductSkuMapper;
-import com.smartlect.utils.ProductIndexTextSanitizer;
 import com.smartlect.utils.StringTools;
 import jakarta.annotation.Resource;
 import org.springframework.beans.BeanUtils;
@@ -125,27 +123,6 @@ public class ProductInternalService {
         if (affected == null || affected == 0) {
             throw new BusinessException("商品不存在");
         }
-    }
-
-    public ProductSearchIndexVO getSearchIndex(String productId) {
-        if (StringTools.isEmpty(productId)) {
-            return null;
-        }
-        ProductInfo product = productInfoMapper.selectByProductId(productId);
-        if (product == null) {
-            return null;
-        }
-        ProductSearchIndexVO vo = new ProductSearchIndexVO();
-        vo.setProductId(product.getProductId());
-        vo.setProductName(product.getProductName());
-        vo.setProductDesc(ProductIndexTextSanitizer.sanitize(product.getProductDesc()));
-        vo.setCover(product.getCover());
-        vo.setCategoryId(product.getCategoryId());
-        vo.setMinPrice(product.getMinPrice());
-        vo.setMaxPrice(product.getMaxPrice());
-        vo.setTotalSale(product.getTotalSale());
-        vo.setStatus(product.getStatus());
-        return vo;
     }
 
     public List<String> listOnSaleProductIds() {

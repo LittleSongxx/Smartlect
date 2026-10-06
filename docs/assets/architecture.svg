@@ -60,7 +60,7 @@
   <text x="710" y="276" class="body">17 工具 · 预算墙（模型≤6 · 工具≤10 · 检索≤2 · 90s）</text>
   <text x="710" y="294" class="body">task_dispatch → 1–3 子智能体（create_react_agent）并发</text>
   <text x="710" y="312" class="body">openai SDK · 端点/模型白名单 · 持久化提案 HITL</text>
-  <text x="710" y="330" class="sub">PostgresSaver checkpointer · trim_messages 上下文裁剪</text>
+  <text x="710" y="330" class="sub">trim_messages 上下文裁剪</text>
 
   <!-- Java ↔ assistant 箭头 -->
   <line x1="652" y1="276" x2="688" y2="276" class="arrow" stroke-dasharray="4,3"/>

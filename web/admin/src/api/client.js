@@ -1,7 +1,6 @@
 import { ref } from 'vue';
 
 export const session = ref(null);
-export const actionLabels = { activate_campaign: '启用活动', pause_campaign: '暂停活动', resume_campaign: '恢复活动', activate_creative: '启用素材', pause_creative: '暂停素材', resume_creative: '恢复素材', set_budget: '调整预算', replace_creative: '替换文案', set_recommendation_policy: '调整推荐策略' };
 let epoch = 0;
 export const ownerKey = value => value ? `${value.actor.subject_type}:${value.actor.actor_id}:${value.actor.execution_scope_id}:${value.actor.session_id}` : '';
 export function clearSession() { epoch++; session.value = null; }

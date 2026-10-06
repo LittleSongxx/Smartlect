@@ -2,6 +2,11 @@
 
 日期：2026-09-14 ｜ 状态：**已完成**（邮件通道用户确认收到；Growth FastAPI 指标已上线） ｜ 部署：`/opt/monitoring`（compose project `monitoring`，独立于 smartlect 主栈）
 
+> **部分内容已失效（2026-10 追记，正文保持原样）**：本文记录的 growth worker 心跳与其告警
+> `SmartlectGrowthWorkerDown` 已随 ADR-0008 退役，现役告警文件 `run/cloud/monitoring/alerts.yml`
+> 不再含该规则；`smartlect_process_up` 现只上报 `growth-api`。本文其余部分（Java 指标、容器内存
+> 水位、队列深度）仍然有效。下文为 2026-09-14 时点的记录，不再代表现役采集面。
+
 ## 做了什么
 
 ### 架构

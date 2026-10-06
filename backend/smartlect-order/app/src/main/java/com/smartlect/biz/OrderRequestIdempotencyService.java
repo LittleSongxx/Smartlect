@@ -23,6 +23,9 @@ import java.util.regex.Pattern;
 @Service
 public class OrderRequestIdempotencyService {
 
+    @jakarta.annotation.Resource
+    private org.springframework.transaction.support.TransactionTemplate txTemplate;
+
     public static final String COMMAND_POST_ORDER = "POST_ORDER";
     public static final String COMMAND_POST_ORDER_V2 = "POST_ORDER_V2";
     public static final String COMMAND_COUPON_RUSH_PREPARE = "COUPON_RUSH_PREPARE";
@@ -64,10 +67,13 @@ public class OrderRequestIdempotencyService {
 
         boolean acquired;
         try {
-            acquired = mapper.insertProcessing(newRecord) == 1;
+            // PROCESSING 插入用独立事务：即使调用方后续回滚，幂等账本仍留痕（请求已受理）
+            acquired = Boolean.TRUE.equals(txTemplate.execute(txStatus ->
+                    mapper.insertProcessing(newRecord) == 1));
         } catch (DuplicateKeyException duplicate) {
-            // An ignored insert with zero affected rows breaks Seata's after-image
-            // generation. Let the unique constraint report a replay explicitly.
+            // 让唯一约束显式报告一次重放，而不是把插入异常吞成零行影响。
+            // （历史注：Seata 时代 ignored-insert 会破坏 after-image 生成；Seata
+            // 已随 ADR-0006 移除，此处保留显式重放语义不变。）
             acquired = false;
         }
         if (!acquired) {
