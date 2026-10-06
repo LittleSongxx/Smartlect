@@ -21,12 +21,15 @@ cat /tmp/instance.properties > /home/admin/canal-server/conf/example/instance.pr
 # 预声明交换机（幂等）：canal 只 publish 不 declare，Java 侧 RabbitAdmin 声明可能晚于
 # canal 启动（首次部署鸡蛋顺序），404 会杀死 channel。用 bash /dev/tcp 探活 + HTTP PUT。
 declare_exchange() {
+  # 主机名跟随 CANAL_RABBIT_HOST：单机形态是 compose 服务名 rabbitmq，
+  # 集群形态由 runtime.env 指向集群成员（写死 rabbitmq 会在集群下解析失败）。
+  local host="${CANAL_RABBIT_HOST:-rabbitmq}"
   local mgmt_port="${CANAL_RABBIT_MGMT_PORT:-15672}"
   local vhost="$CANAL_RABBIT_VHOST" user="$CANAL_RABBIT_USER" pass="$CANAL_RABBIT_PASSWORD"
   local auth=$(printf '%s:%s' "$user" "$pass" | base64 2>/dev/null || echo "")
   [ -z "$auth" ] && return 0
-  exec 3<>/dev/tcp/rabbitmq/"$mgmt_port" 2>/dev/null || return 0
-  printf 'PUT /api/exchanges/%s/smartlect-canal HTTP/1.1\r\nHost: rabbitmq:%s\r\nAuthorization: Basic %s\r\nContent-Type: application/json\r\nContent-Length: 76\r\nConnection: close\r\n\r\n{"type":"topic","durable":true,"auto_delete":false,"internal":false,"arguments":{}}' "$vhost" "$mgmt_port" "$auth" >&3
+  exec 3<>/dev/tcp/"$host"/"$mgmt_port" 2>/dev/null || return 0
+  printf 'PUT /api/exchanges/%s/smartlect-canal HTTP/1.1\r\nHost: %s:%s\r\nAuthorization: Basic %s\r\nContent-Type: application/json\r\nContent-Length: 76\r\nConnection: close\r\n\r\n{"type":"topic","durable":true,"auto_delete":false,"internal":false,"arguments":{}}' "$vhost" "$host" "$mgmt_port" "$auth" >&3
   cat <&3 >/dev/null 2>&1
   exec 3<&- 3>&-
 }

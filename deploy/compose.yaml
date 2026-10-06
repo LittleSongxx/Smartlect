@@ -138,11 +138,13 @@ services:
       CANAL_MYSQL_ADDRESS: "mysql:3306"
       CANAL_MYSQL_USER: smartlect_canal
       CANAL_MYSQL_PASSWORD: ${SMARTLECT_CANAL_MYSQL_PASSWORD:?run bootstrap}
-      CANAL_RABBIT_HOST: rabbitmq
+      # 单机形态走 compose 服务名；集群形态下 RabbitMQ 由 /opt/cluster 提供，
+      # 必须用 SMARTLECT_CANAL_RABBIT_HOST 指向集群成员，否则 canal 启动即 DNS 失败。
+      CANAL_RABBIT_HOST: ${SMARTLECT_CANAL_RABBIT_HOST:-rabbitmq}
       CANAL_RABBIT_PORT: "5672"
       CANAL_RABBIT_VHOST: ${SMARTLECT_RABBIT_VHOST:?run bootstrap}
       CANAL_RABBIT_USER: ${SMARTLECT_RABBIT_USER:?run bootstrap}
-      CANAL_RABBIT_MGMT_PORT: "15672"
+      CANAL_RABBIT_MGMT_PORT: ${SMARTLECT_CANAL_RABBIT_MGMT_PORT:-15672}
       CANAL_RABBIT_PASSWORD: ${SMARTLECT_RABBIT_PASSWORD:?run bootstrap}
     ports:
       - "127.0.0.1:${SMARTLECT_CANAL_PORT:-11111}:11111"
