@@ -22,6 +22,12 @@
 > `smartlect-{服务}.yml`，全部写成 `optional:`——配置中心缺这条 dataId 或不可达时静默退回
 > 本地 `application.yml`，不阻断启动。改完本地配置用 `python3 scripts/nacos_config_push.py`
 > 重新推送（脚本会剥掉"从 Nacos 导入自身"的行，避免配置中心自引用）。
+>
+> **`refreshEnabled=false`：配置只在启动时拉取，改完 Nacos 里的配置需要重启应用才生效。**
+> 起因是一次线上故障：Nacos 客户端 3.0.3（Spring Cloud Alibaba 2025 引入）与 2.5.x 服务端
+> 组合下配置长轮询不挂起，退化成每 200ms 一次的短轮询，九个服务合计每天产出约 4GB 日志，
+> 写满磁盘后 MySQL 退出。仓库内没有任何 `@RefreshScope` Bean，热刷新本就没有消费者，
+> 关掉监听没有功能损失。详见 `docs/改动记录/2026-10-07/线上故障-配置请求风暴.md`。
 
 ```bash
 ./scripts/dev.sh infra-up   # 启动上述全部容器并等待健康
