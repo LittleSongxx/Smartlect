@@ -8,8 +8,8 @@ spring:
       # 本地 classpath 兜底优先级最低；Nacos 可达且存在同名 dataId 时以后者为准。
       # 三者都写 optional：配置中心缺失/不可达时退回本地 yml，而不是启动失败。
       - optional:classpath:smartlect-common.yml
-      - optional:nacos:smartlect-common.yml?group=SMARTLECT_GROUP&refreshEnabled=true
-      - optional:nacos:smartlect-pay.yml?group=SMARTLECT_GROUP&refreshEnabled=true
+      - optional:nacos:smartlect-common.yml?group=SMARTLECT_GROUP&refreshEnabled=false
+      - optional:nacos:smartlect-pay.yml?group=SMARTLECT_GROUP&refreshEnabled=false
   lifecycle:
     timeout-per-shutdown-phase: 30s
   application:
