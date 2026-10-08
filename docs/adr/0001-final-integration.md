@@ -52,6 +52,12 @@ Java 的订单、价格、库存、付款和退款仍是唯一交易事实来源
 | 经营情景记忆 | 已提交的快照、计划、动作、结果和失败原因 | 模型总结先为 DRAFT，人工批准后才成为可复用经营规则 |
 | 程序性知识 | Git 版本化 Skills、SOP 和提示词 | 只由开发/审核流程发布；不能由模型、用户文档或网页改写权限 |
 
+> **叙事收口（2026-10-07，ADR-0015）**：「四层记忆」中实际落地的是短期会话、
+> 用户长期偏好、程序性知识三层。**经营情景记忆线未实施**（`merchant_experience`
+> 等表零代码消费者，随 ADR-0008 的推荐/归因线退役而悬空）；**行为记忆**
+> （浏览/订单→偏好推断）经用户决策正式不接线并删除（`apply_behavior_inference`）。
+> 用户长期偏好层已升级为双时态（历史表快照 + 冲突台账 + NOOP），见 ADR-0015。
+
 六个业务 Skill 为 `shopping_advice`、`support_policy`、`order_service`、`campaign_plan`、
 `performance_review`、`creative_copy`。Shopping 开场只有目录工具（`load_skill` / `search_knowledge` / 记忆 / `request_handoff`），业务工具由 `load_skill` 按已审核 Skill 并入本轮；Merchant 按阶段加载所需提示词、契约和工具子集，不创建新 Agent。
 Skill 只能缩小 ActorContext 的工具范围；管理端热改也只能再缩小已加载 Skill 的 `tools`。上下文初值上限 12k token，工具调用与结果成对保留。

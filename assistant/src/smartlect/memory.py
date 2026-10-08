@@ -100,6 +100,30 @@ def _preference(key, value):
     return canonical(value)
 
 
+def preference_conflicts(key, value, existing):
+    """跨键一致性检查（组件 10，纯函数）：新写入与现存偏好的 likes∩avoid 折叠交集。
+
+    existing 为 _preferences 输出形态（[{preference_key, value, ...}]）。
+    单键内的新值覆盖旧值不算冲突（那是 UPDATE 语义）；likes 与 avoid 出现
+    同一词条才是用户立场自相矛盾——按「标冲突并要求澄清」处理，不静默覆盖。
+    返回冲突描述列表（空列表 = 无冲突）。
+    """
+    def fold(text):
+        return str(text).strip().casefold()
+
+    if key not in {"likes", "avoid"} or not isinstance(value, list):
+        return []
+    other = "avoid" if key == "likes" else "likes"
+    opposite = {fold(item) for row in existing or []
+                if row.get("preference_key") == other for item in (row.get("value") or [])}
+    if not opposite:
+        return []
+    overlap = sorted({fold(item) for item in value} & opposite)
+    if not overlap:
+        return []
+    return [{"keys": sorted([key, other]), "terms": overlap}]
+
+
 class MemoryStore(SessionStore):
     def finish_answer(self, lease, actor, result: dict, context: dict):
         """Commit one grounded final answer, its events and terminal run atomically."""
@@ -149,6 +173,10 @@ class MemoryStore(SessionStore):
             result["answer"] = message["content"]
             result_json = _json(result)
             final_event = "proposal_required" if proposal else "completed"
+            # 成本反范式列（组件 12）：run 级 token/成本入列，管理端 GROUP BY 归因不再解 JSON。
+            audit = result.get("audit") if isinstance(result.get("audit"), dict) else {}
+            total_tokens = sum(int(((attempt.get("usage") or {}).get("total_tokens")) or 0)
+                               for attempt in (context.get("model_attempts") or []))
             cursor.executemany("""INSERT INTO agent_run_event (agent_run_id,sequence,event_type,data_json,created_at)
                 VALUES (%s,%s,%s,%s,UTC_TIMESTAMP(6))""", [
                 # replace=True：权威全文收口——前端收到后重置增量游标为该全文，
@@ -157,9 +185,10 @@ class MemoryStore(SessionStore):
                  _json({"text": result["answer"], "replace": True})),
                 (run["agent_run_id"], run["event_sequence"] + 2, final_event, result_json)])
             cursor.execute("""UPDATE agent_run SET context_json=%s,result_json=%s,model_mode=%s,state=%s,
-                event_sequence=%s,version=version+1,updated_at=UTC_TIMESTAMP(6)
+                event_sequence=%s,cost_estimate_cny=%s,total_tokens=%s,version=version+1,updated_at=UTC_TIMESTAMP(6)
                 WHERE agent_run_id=%s AND version=%s""", (context_json, result_json, model_mode,
-                "WAIT_USER" if proposal else "COMPLETED", run["event_sequence"] + 2, run["agent_run_id"], run["version"]))
+                "WAIT_USER" if proposal else "COMPLETED", run["event_sequence"] + 2,
+                audit.get("cost_estimate_cny"), total_tokens, run["agent_run_id"], run["version"]))
             if cursor.rowcount != 1:
                 raise StateError("run_version_conflict")
             self._unlock(cursor, conversation["conversation_id"])
@@ -235,6 +264,32 @@ class MemoryStore(SessionStore):
             if source == "inferred" and prior and (prior["deleted_at"] is not None or
                     prior["source"] == "explicit" and (prior["expires_at"] is None or prior["expires_at"] > now)):
                 raise StateError("explicit_preference_has_priority")
+            existing = self._preferences(cursor, actor)
+            # 跨键冲突（组件 10）：likes/avoid 同词条是立场自相矛盾，要求澄清而非静默覆盖；
+            # 被拒写入把「挡住这次写入的既有偏好行」快照进台账（action=rejected_conflict），
+            # 「为什么没存进去」可追溯。
+            conflicts = preference_conflicts(key, value, existing)
+            if conflicts:
+                other_key = "avoid" if key == "likes" else "likes"
+                cursor.execute("SELECT * FROM user_preference WHERE subject_type=%s AND actor_id=%s "
+                               "AND execution_scope_id=%s AND preference_key=%s FOR UPDATE", (*owner, other_key))
+                blocker = cursor.fetchone()
+                if blocker is not None and blocker["deleted_at"] is None:
+                    self._history(cursor, blocker, action="rejected_conflict", superseded_at=now, conflict=conflicts)
+                    # 本事务到这里只有台账插入这一个待写变更（upsert 尚未发生），先提交
+                    # 再抛错——拒绝路径的审计记录不能随事务回滚一起消失。
+                    cursor.connection.commit()
+                raise StateError("preference_conflict_needs_clarification", 409)
+            # NOOP（组件 10）：同值同源同效期的重复写入不升 version、不重置过期，
+            # 只留一条 noop 台账——重复点击/重复推断不应制造版本噪声。
+            if (prior is not None and prior["deleted_at"] is None and prior["value_json"] == encoded
+                    and prior["source"] == source and prior["expires_at"] == expiry):
+                self._history(cursor, prior, action="noop", superseded_at=now)
+                return next(row for row in existing if row["preference_key"] == key)
+            # 双时态最小版（组件 10，对齐 Zep 的 invalidate-not-delete）：覆盖/复活前
+            # 先把旧值快照进历史表，活表行保持唯一——「上周预算是多少」可回溯。
+            if prior is not None and prior["deleted_at"] is None:
+                self._history(cursor, prior, action="superseded", superseded_at=now)
             cursor.execute("""INSERT INTO user_preference (subject_type,actor_id,execution_scope_id,preference_key,
                 value_json,source,confidence,evidence_ids_json,observed_at,expires_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming
@@ -243,46 +298,82 @@ class MemoryStore(SessionStore):
                 deleted_at=NULL,version=user_preference.version+1""", (*owner, key, encoded, source, confidence, canonical(evidence), now, expiry))
             return next(row for row in self._preferences(cursor, actor) if row["preference_key"] == key)
 
-    def apply_behavior_inference(self, actor, values, *, product_ids=()):
-        """Write source=inferred likes/categories/purpose from browse/orders; never clobber explicit."""
+    @staticmethod
+    def _history(cursor, prior, *, action, superseded_at, conflict=None):
+        """把被覆盖/删除/拒绝前的偏好行快照进 user_preference_history（双时态最小版）。
+
+        活表（user_preference）保持单行热路径不变；历史行回答「当时这条偏好是什么、
+        为什么被换掉/拒绝」。id 客户端生成（与 answer_feedback 同款 CHAR(32) 惯例）。
+        """
+        cursor.execute("""INSERT INTO user_preference_history (id,subject_type,actor_id,execution_scope_id,
+            preference_key,value_json,source,confidence,evidence_ids_json,observed_at,expires_at,version,
+            deleted_at,action,conflict_json,superseded_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (uuid.uuid4().hex, prior["subject_type"], prior["actor_id"], prior["execution_scope_id"],
+             prior["preference_key"], prior["value_json"], prior["source"], prior["confidence"],
+             prior["evidence_ids_json"], prior["observed_at"], prior["expires_at"], prior["version"],
+             prior["deleted_at"], action, canonical(conflict) if conflict else None, superseded_at))
+
+    def preference_history(self, actor, *, key=None, limit=100):
+        """偏好变更台账（组件 10，只读、owner 范围）：superseded/deleted/noop/rejected_conflict。"""
         owner = _actor(actor)
         if owner[0] != "user":
             raise StateError("login_required", 401)
-        if not isinstance(values, dict):
-            raise StateError("invalid_preference_value", 422)
-        ids = []
-        for item in product_ids or ():
-            if isinstance(item, str) and item and item not in ids:
-                ids.append(item)
-            if len(ids) >= 20:
-                break
-        evidence = [{"origin": "behavior", "product_ids": ids}]
-        written = []
+        limit = max(1, min(int(limit), 200))
+        where = "subject_type=%s AND actor_id=%s AND execution_scope_id=%s"
+        values = list(owner)
+        if key is not None:
+            where += " AND preference_key=%s"
+            values.append(_text(key, "preference_key", 32))
         with self._transaction() as cursor:
-            cursor.execute("SELECT UTC_TIMESTAMP(6) AS now")
-            now = cursor.fetchone()["now"]
-            expiry = now + timedelta(days=30)
-            for key in ("likes", "categories", "purpose"):
-                value = values.get(key)
-                if value in (None, "", []):
+            cursor.execute("""SELECT preference_key,value_json,source,confidence,evidence_ids_json,
+                observed_at,expires_at,version,action,conflict_json,superseded_at FROM user_preference_history
+                WHERE """ + where + " ORDER BY superseded_at DESC,id DESC LIMIT %s", (*values, limit))
+            return [{**_public(row), "confidence": float(row["confidence"])} for row in cursor.fetchall()]
+
+    # 历史证据回查（组件 9）只认事实类工具：流程类（load_skill）与结论文本类
+    # （task_dispatch）回执不是可引用的历史观测。
+    EVIDENCE_TOOLS = ("search_knowledge", "search_skus", "recommend_skus", "compare_skus",
+                      "get_product_offer", "get_my_orders", "get_order_status",
+                      "get_refund_status", "get_payment_status")
+
+    def conversation_evidence(self, actor, conversation_id, *, call_id=None, term=None, limit=3):
+        """按引用/关键词回查本会话历史工具回执（组件 9，只读、owner 范围）。
+
+        tool_call.receipt_json 本就按调用完整存档（30 天保留），缺的只是模型侧的
+        回查口。返回行是历史观察值——消费方必须带「当前值以实时工具为准」语义，
+        本方法不裁剪 receipt 数据（观察投影层负责体积）。
+        """
+        limit = max(1, min(int(limit), 5))
+        placeholders = ",".join(["%s"] * len(self.EVIDENCE_TOOLS))
+        where = (f"r.conversation_id=%s AND t.tool_name IN ({placeholders}) "
+                 "AND t.receipt_json IS NOT NULL")
+        values = [conversation_id, *self.EVIDENCE_TOOLS]
+        if call_id is not None:
+            where += " AND t.call_id=%s"
+            values.append(_text(call_id, "result_ref", 64))
+        elif term is not None:
+            where += " AND (t.arguments_json LIKE %s OR t.receipt_json LIKE %s)"
+            needle = "%" + _text(term, "term", 64) + "%"
+            values.extend([needle, needle])
+        with self._transaction() as cursor:
+            self._conversation(cursor, actor, conversation_id)
+            cursor.execute("""SELECT t.call_id,t.tool_name,t.arguments_json,t.receipt_json,t.started_at,t.outcome
+                FROM tool_call t JOIN agent_run r USING(agent_run_id)
+                WHERE """ + where + " ORDER BY t.started_at DESC,t.call_id DESC LIMIT %s", (*values, limit))
+            records = []
+            for row in cursor.fetchall():
+                receipt = json.loads(row["receipt_json"]) if row["receipt_json"] else {}
+                # 只回放带事实载荷的回执：拒绝/失败回执只有 error_type，
+                # 不是可引用的历史观测。
+                if not isinstance(receipt, dict) or "data" not in receipt:
                     continue
-                encoded = _preference(key, value)
-                cursor.execute("SELECT * FROM user_preference WHERE subject_type=%s AND actor_id=%s "
-                               "AND execution_scope_id=%s AND preference_key=%s FOR UPDATE", (*owner, key))
-                prior = cursor.fetchone()
-                if prior and (prior["deleted_at"] is not None or
-                        prior["source"] == "explicit" and (prior["expires_at"] is None or prior["expires_at"] > now)):
-                    continue
-                cursor.execute("""INSERT INTO user_preference (subject_type,actor_id,execution_scope_id,preference_key,
-                    value_json,source,confidence,evidence_ids_json,observed_at,expires_at)
-                    VALUES (%s,%s,%s,%s,%s,'inferred',0.6,%s,%s,%s) AS incoming
-                    ON DUPLICATE KEY UPDATE value_json=incoming.value_json,source=incoming.source,
-                    confidence=incoming.confidence,evidence_ids_json=incoming.evidence_ids_json,
-                    observed_at=incoming.observed_at,expires_at=incoming.expires_at,
-                    deleted_at=NULL,version=user_preference.version+1""",
-                    (*owner, key, encoded, canonical(evidence), now, expiry))
-                written.append(key)
-        return written
+                records.append({
+                    "result_ref": row["call_id"], "tool_name": row["tool_name"],
+                    "observed_at": receipt.get("observed_at"), "outcome": row["outcome"],
+                    "data": receipt.get("data"),
+                })
+            return records
 
     @staticmethod
     def _fence(cursor, conversation_id):
@@ -317,6 +408,12 @@ class MemoryStore(SessionStore):
             raise StateError("invalid_preference_key", 422)
         with self._transaction() as cursor:
             self._forget(cursor, actor)
+            cursor.execute("SELECT * FROM user_preference WHERE subject_type=%s AND actor_id=%s "
+                           "AND execution_scope_id=%s AND preference_key=%s FOR UPDATE", (*_actor(actor), key))
+            prior = cursor.fetchone()
+            if prior is not None and prior["deleted_at"] is None:
+                cursor.execute("SELECT UTC_TIMESTAMP(6) AS now")
+                self._history(cursor, prior, action="deleted", superseded_at=cursor.fetchone()["now"])
             # Tombstones stop forgotten implicit evidence from recreating a deleted preference.
             cursor.execute("""INSERT INTO user_preference (subject_type,actor_id,execution_scope_id,preference_key,
                 value_json,source,confidence,evidence_ids_json,observed_at,deleted_at)
@@ -331,8 +428,17 @@ class MemoryStore(SessionStore):
                 self._conversation(cursor, actor, conversation_id)
             # Long-term preferences may have appeared in any conversation summary.
             self._forget(cursor, actor)
+            owner = _actor(actor)
+            cursor.execute("SELECT * FROM user_preference WHERE subject_type=%s AND actor_id=%s "
+                           "AND execution_scope_id=%s AND deleted_at IS NULL FOR UPDATE", owner)
+            rows = list(cursor.fetchall())
+            if rows:
+                cursor.execute("SELECT UTC_TIMESTAMP(6) AS now")
+                now = cursor.fetchone()["now"]
+                for prior in rows:
+                    self._history(cursor, prior, action="deleted", superseded_at=now)
             cursor.execute("""UPDATE user_preference SET value_json='null',evidence_ids_json='[]',deleted_at=UTC_TIMESTAMP(6),
-                version=version+1 WHERE subject_type=%s AND actor_id=%s AND execution_scope_id=%s""", _actor(actor))
+                version=version+1 WHERE subject_type=%s AND actor_id=%s AND execution_scope_id=%s""", owner)
         return {"cleared": True, "summary_references_revoked": True, "transaction_audit_preserved": True}
 
     @staticmethod

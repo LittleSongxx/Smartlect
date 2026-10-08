@@ -30,9 +30,10 @@ def knowledge_observation(data):
     return observation
 
 
-def product_observation(data):
+def product_observation(data, *, detailed=False):
     # Identity and parameters are visible; product-level totals and SKU stock do not
     # establish sellable quantities. Price/stock stay off the knowledge index.
+    # detailed（组件 11）：附商品介绍文本（答"这件是干什么的"时免一次反查）。
     properties = []
     for item in data.get('propertyValues') or []:
         if not isinstance(item, dict):
@@ -68,9 +69,14 @@ def sku_items(data):
     return [item for item in (items or []) if isinstance(item, dict) and item.get('sku_key')]
 
 
-def sku_observation(data):
-    cards = [{key: item[key] for key in ('sku_key', 'productId', 'propertyValueIds', 'productName',
-              'price_cents', 'stock', 'specification', 'reasons') if key in item} for item in sku_items(data)]
+def sku_observation(data, *, detailed=False):
+    # detailed（组件 11 安全子集）：附排序归因字段——回答"为什么推荐这件"时模型
+    # 可自证；concise 是默认，与历史观察逐字节一致。
+    keys = ('sku_key', 'productId', 'propertyValueIds', 'productName',
+            'price_cents', 'stock', 'specification', 'reasons')
+    if detailed:
+        keys = keys + ('feature_contributions',)
+    cards = [{key: item[key] for key in keys if key in item} for item in sku_items(data)]
     if not isinstance(data, dict):
         return cards
     extra = {key: data[key] for key in ('empty_reason', 'comparison', 'comparison_complete', 'missing_targets',
@@ -95,6 +101,27 @@ def order_observation(name, receipt):
     if semantics:
         payload['semantics'] = semantics
     return payload
+
+
+def evidence_observation(data):
+    """历史证据回查投影（组件 9）：显式历史值语义，防旧价格/旧状态被当现状引用。
+
+    与 order_observation 同一诚实边界思路——历史观察值（historical）不是当前值，
+    这句语义随观察下发；记录逐条累计，超 6500 字节预算停止收录（保完整记录，
+    不截半条）。
+    """
+    observation = {'records': [], 'historical': True,
+                   'semantics': '历史观察值：价格、库存、订单/退款/付款状态以实时工具为准，'
+                                '不得把历史值当作现状陈述或当作当前报价引用'}
+    for row in (data.get('records') or [])[:5]:
+        if not isinstance(row, dict):
+            continue
+        item = {key: row.get(key) for key in ('result_ref', 'tool_name', 'observed_at', 'data')}
+        candidate = {**observation, 'records': [*observation['records'], item]}
+        if len(canonical(candidate).encode()) > 6500:
+            break
+        observation = candidate
+    return observation
 
 
 def constraint_echo(request):

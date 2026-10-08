@@ -242,6 +242,7 @@ def selected_list(observation, k=4):
 def score_shopping(case, observation, catalog=None):
     if observation.get('setup_failed') or observation.get('model_channel_failed'):
         return {'line': 'shopping', 'case_id': case['case_id'], 'outcome': 'setup_failed',
+                'kind': case.get('kind') or 'recommend',
                 'Precision@4': None, 'Pass@1': None, 'reason': observation.get('setup_reason') or 'setup_failed'}
     skus = catalog_index(catalog)
     constraints = case['hard_constraints']
@@ -271,7 +272,7 @@ def score_shopping(case, observation, catalog=None):
         if popular:
             passed = False
         return {'line': 'shopping', 'case_id': case['case_id'], 'outcome': 'pass' if passed else 'fail',
-                'Precision@4': None, 'Pass@1': 1 if passed else 0,
+                'kind': kind, 'Precision@4': None, 'Pass@1': 1 if passed else 0,
                 'comparison_complete': complete, 'missing_targets': missing, 'unrelated': unrelated}
 
     hits = sum(1 for sku in items if sku_satisfies(sku, constraints))
@@ -287,7 +288,8 @@ def score_shopping(case, observation, catalog=None):
         # empty_set_honesty: in an empty-satisfaction case the honest outcome IS the
         # pass condition — empty list + legitimate reason + no popular backfill.
         return {'line': 'shopping', 'case_id': case['case_id'], 'outcome': 'pass' if passed else 'fail',
-                'Precision@4': None, 'Pass@1': 1 if passed else 0, 'empty_reason': diagnostics.get('empty_reason'),
+                'kind': kind, 'Precision@4': None, 'Pass@1': 1 if passed else 0,
+                'empty_reason': diagnostics.get('empty_reason'),
                 'empty_set_honesty': 1 if passed else 0}
 
     selected_keys = [sku['sku_key'] for sku in items]
@@ -445,6 +447,7 @@ def score_faithfulness(case, result, *, safety_override=None):
 def score_support(case, observation):
     if observation.get('setup_failed') or observation.get('model_channel_failed'):
         return {'line': 'support', 'case_id': case['case_id'], 'outcome': 'setup_failed',
+                'kind': case.get('kind') or 'published_answerable',
                 'Recall@8': None, 'Faithfulness': None, 'Pass@1': None,
                 'reason': observation.get('setup_reason') or 'setup_failed'}
     result = observation.get('result') or {}
@@ -491,6 +494,7 @@ def score_support(case, observation):
     if recall is None and rule_faithfulness is None and case.get('expected_retrieval') is False:
         outcome = 'pass' if pass_handoff and not claim_hit else 'fail'
     return {'line': 'support', 'case_id': case['case_id'], 'outcome': outcome,
+            'kind': case.get('kind') or 'published_answerable',
             'Recall@8': recall, 'Recall@4_diagnostic': diagnostic,
             'Recall@1': recall1, 'MRR@8': mrr, 'Context_Precision@8': context_precision,
             'Faithfulness': None if case.get('checkable_claims') else None,
@@ -732,7 +736,102 @@ def aggregate_line(name, rows, metric_names, trial_level_names=()):
         summary[metric] = mean(row.get(metric) for row in scored)
     summary['ci95_wilson'] = {metric: wilson_ci(summary[metric], summary['denominators'][metric])
                               for metric in all_metrics}
+    # per-kind 通过率（组件 13）：总分通过会掩盖单类目严重回退，门禁按 kind 判定。
+    by_kind = {}
+    for row in scored:
+        kind = row.get('kind') or 'unknown'
+        entry = by_kind.setdefault(kind, {'n': 0, 'n_pass': 0})
+        entry['n'] += 1
+        entry['n_pass'] += 1 if row.get('outcome') == 'pass' else 0
+    for entry in by_kind.values():
+        entry['pass_rate'] = entry['n_pass'] / entry['n'] if entry['n'] else None
+    summary['by_kind'] = dict(sorted(by_kind.items()))
     return summary
+
+
+def gate_compare(current, baseline, *, total_tolerance=0.02, kind_tolerance=0.05, min_kind_n=5):
+    """发布门禁（组件 13）：总通过率跌幅超阈值或任一 kind 回退超阈值 → BLOCK。
+
+    规则骨架来自 Microsoft 电商回归案例（总跌幅 2pp、单交互类目 5pp），阈值按
+    项目评测噪声调整的空间留在参数上。样本 < min_kind_n 的 kind 不参与阻断
+    （小样本噪声大），只在 reasons 提示；基线有而当前缺失的 kind（样本达标）
+    视为覆盖回退，直接 BLOCK。无可比线时 BLOCK（fail-closed）。
+    pass 率口径为 n_pass/n_scored（k-trial 模式下即 trial 级通过率）。
+    """
+    result = {'schema_version': 'quality-v2-gate-v1', 'verdict': 'BLOCK', 'rules': {
+        'total_pass_drop_max': total_tolerance, 'per_kind_pass_drop_max': kind_tolerance,
+        'per_kind_min_n': min_kind_n}, 'lines': {}, 'reasons': []}
+    names = [name for name in ('shopping', 'support') if current.get(name) and baseline.get(name)]
+    if not names:
+        result['reasons'].append('no_comparable_lines')
+        return result
+
+    def pass_rate(summary):
+        n_scored = summary.get('n_scored') or 0
+        return (summary.get('n_pass') or 0) / n_scored if n_scored else None
+
+    blocked = False
+    for name in names:
+        cur, base = current[name], baseline[name]
+        line = {'total_pass': {'current': pass_rate(cur), 'baseline': pass_rate(base)},
+                'kinds': {}}
+        cur_rate, base_rate = line['total_pass']['current'], line['total_pass']['baseline']
+        if cur_rate is not None and base_rate is not None and base_rate - cur_rate > total_tolerance:
+            blocked = True
+            result['reasons'].append(
+                f'{name}_total_pass_drop:{base_rate:.4f}->{cur_rate:.4f}')
+        cur_kinds, base_kinds = cur.get('by_kind') or {}, base.get('by_kind') or {}
+        for kind, entry in base_kinds.items():
+            if entry.get('n', 0) < min_kind_n:
+                continue
+            counterpart = cur_kinds.get(kind)
+            if not counterpart or counterpart.get('n', 0) == 0:
+                blocked = True
+                line['kinds'][kind] = {'baseline': entry['pass_rate'], 'current': None,
+                                       'verdict': 'coverage_regression'}
+                result['reasons'].append(f'{name}.{kind}_coverage_regression')
+                continue
+            drop = entry['pass_rate'] - counterpart['pass_rate']
+            verdict = 'BLOCK' if drop > kind_tolerance else 'ok'
+            line['kinds'][kind] = {'baseline': entry['pass_rate'],
+                                   'current': counterpart['pass_rate'],
+                                   'drop': round(drop, 4), 'verdict': verdict}
+            if verdict == 'BLOCK':
+                blocked = True
+                result['reasons'].append(
+                    f'{name}.{kind}_pass_drop:{entry["pass_rate"]:.4f}->{counterpart["pass_rate"]:.4f}')
+        for kind in sorted(set(cur_kinds) - set(base_kinds)):
+            line['kinds'][kind] = {'baseline': None, 'current': cur_kinds[kind]['pass_rate'],
+                                   'verdict': 'new_kind'}
+        small = sorted(kind for kind, entry in base_kinds.items() if 0 < entry.get('n', 0) < min_kind_n)
+        if small:
+            result['reasons'].append(f'{name}_small_kinds_not_gated:' + ','.join(small))
+        if cur.get('trials') != base.get('trials'):
+            result['reasons'].append(
+                f'{name}_trials_mismatch:{base.get("trials")}->{cur.get("trials")}（口径不同，读数仅参考）')
+        result['lines'][name] = line
+    result['verdict'] = 'BLOCK' if blocked else 'PASS'
+    return result
+
+
+def failure_probes(baseline_dir, *, artifacts_dir=None):
+    """历史失败探针清单（组件 13）：基线 run 的 fail/setup_failed + 既往 setup_failed。
+
+    用法：把清单交给 `run --case cid1,cid2` 重跑——每个修过的问题都留一条永久
+    探针，基线随主干刷新（评测集不冻结在旧失败上）。
+    """
+    probes = {}
+    baseline_path = Path(baseline_dir) / 'summary.json'
+    baseline = json.loads(baseline_path.read_text())
+    for row in _iter_case_rows(baseline):
+        if row.get('outcome') in ('fail', 'setup_failed'):
+            probes[row['case_id']] = {'reason': row.get('reason') or row.get('outcome'),
+                                      'source': 'baseline:' + Path(baseline_dir).name}
+    for case_id, info in prior_setup_failures(exclude_dir=Path(baseline_dir).name,
+                                              artifacts_dir=artifacts_dir).items():
+        probes.setdefault(case_id, {**info, 'source': 'prior_setup_failed'})
+    return probes
+
 
 
 def trial_table(rows):

@@ -973,7 +973,13 @@ class ShoppingMySQLTests(unittest.TestCase):
             second = await self.execute(provider, second_run, second_lease)
             history = provider.messages[0]
             self.assertIn(first["result"]["answer"], [m["content"] for m in history if m["role"] == "assistant"])
-            self.assertEqual(history[-1], {"role": "user", "content": followup})
+            # 组件 8 后的图输入契约：最后一条用户消息（追问）之后紧跟「本轮材料」
+            # 消息（服务端数据，非用户发言）；system 只剩静态段且唯一。
+            self.assertEqual(history[-2], {"role": "user", "content": followup})
+            self.assertEqual(history[-1]["role"], "user")
+            self.assertIn("本轮服务端材料", history[-1]["content"])
+            system_messages = [m for m in history if m["role"] == "system"]
+            self.assertEqual(len(system_messages), 1)
             self.assertNotIn("BOB_PRIVATE_CONTRACT_CANARY", json.dumps(provider.messages))
             self.assertNotEqual(first["agent_run_id"], second["agent_run_id"])
             for read, args in ((self.memory.context, (self.other, self.conversation)),

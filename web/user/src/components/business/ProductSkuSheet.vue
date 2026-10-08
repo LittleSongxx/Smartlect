@@ -82,7 +82,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, watch, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { Close } from '@element-plus/icons-vue';
 import ProductImage from '@/components/common/ProductImage.vue';
 import { cartApi } from '@/api/modules';
@@ -91,11 +91,11 @@ import { useProductSkuSheet } from '@/composables/useProductSkuSheet';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 import { toast } from '@/utils/toast';
+import { promptLogin } from '@/utils/sessionGuard';
 import { TRIAL_USER_DENIED } from '@/constants/trial';
 import { useDevice } from '@/composables/useDevice';
 
 const route = useRoute();
-const router = useRouter();
 const authStore = useAuthStore();
 const cartStore = useCartStore();
 const { isDesktop } = useDevice();
@@ -131,7 +131,8 @@ onBeforeUnmount(() => {
 const confirmAdd = async () => {
   if (!authStore.isLoggedIn) {
     close();
-    router.push({ path: '/login', query: { redirect: route.fullPath } });
+    // 先弹窗说明「加购需要登录」，确认后再去登录页——静默跳转让人不知道发生了什么
+    promptLogin(route.fullPath);
     return;
   }
   if (authStore.isTrial) {

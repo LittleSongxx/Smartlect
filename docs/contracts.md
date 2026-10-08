@@ -1,6 +1,14 @@
 # Smartlect 业务契约
 
-更新：2026-10-04（收敛重构后）。Java 是价格、库存、订单、支付、退款的唯一权威；assistant 只调用受控 API、维护自身会话状态，不直接读写交易表。
+更新：2026-10-07（组件蓝图实施）。Java 是价格、库存、订单、支付、退款的唯一权威；assistant 只调用受控 API、维护自身会话状态，不直接读写交易表。
+
+## 交易执行的注册层 deny（不可绕过）
+
+**没有任何模型工具可以直接成交**，且这不是提示词约定而是**工具注册层的结构性事实**
+（REGISTRY 中不存在执行类工具；提案确认走 `POST /proposals/{id}/confirm` 的用户
+HTTP 通道 + CSRF + version 乐观锁；授权只认服务端快照，前端仅回传 decision）。
+该语义等价于 Claude Agent SDK 的 deny 规则（在任何权限模式下生效）——未来任何
+「给模型开执行工具」的改动必须先推翻本节与 ADR-0003，属于架构变更而非配置变更。
 
 ## Java ↔ assistant 双向调用
 
@@ -53,6 +61,7 @@
 | CRUD | `/prompts/*` | 提示词版本管理 |
 | GET | `/tools/catalog` · POST `/tools/invoke` | 工具调试 |
 | GET | `/runs[/{id}]` | Run 审计浏览器 |
+| GET | `/feedback-summary` · `/cost-attribution` · `/preferences-history` | 分析面：反馈聚合、成本归因（模型/意图/终止原因）、偏好变更台账 |
 | GET/PATCH | `/support/*` | 工单管理 |
 
 ## 身份与鉴权

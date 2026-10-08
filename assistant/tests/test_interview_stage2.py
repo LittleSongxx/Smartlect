@@ -22,9 +22,13 @@ from smartlect.tokenizer import count_tokens, truncate_tokens
 
 
 class InterviewStage2Tests(unittest.IsolatedAsyncioTestCase):
-    def test_compose_replaces_instead_of_concatenating(self):
-        self.assertEqual(compose_search_query('全国包邮吗', '配送政策'), '配送政策')
+    def test_compose_prefers_original_with_rewrite_as_variant(self):
+        """组件 3 收口后的合同：原话是主检索词，改写只作附加变体（不再替换）。"""
+        self.assertEqual(compose_search_query('全国包邮吗', '配送政策'), '全国包邮吗')
         self.assertEqual(parallel_queries('全国包邮吗', '配送政策'), ['配送政策', '全国包邮吗'])
+        # 无原话回落改写；双空回落空串
+        self.assertEqual(compose_search_query('', '配送政策'), '配送政策')
+        self.assertEqual(compose_search_query('', ''), '')
 
     def test_rank_chunks_need_ann_hits_not_mysql_json(self):
         row = {'doc_id': 'd', 'version': 1, 'chunk_id': 'c1', 'heading': '政策',

@@ -11,8 +11,10 @@ import './styles/global.scss';
 import { useDeviceStore } from './stores/device';
 import { installMobileViewportGuards, installVisualViewportSync } from './utils/mobileViewport';
 import { ensureLiquidGlassFilters } from './utils/liquidGlassFilters';
+import { installSessionGuard } from './utils/sessionGuard';
 
 ensureLiquidGlassFilters();
+installSessionGuard();
 
 const pinia = createPinia();
 const deviceStore = useDeviceStore(pinia);

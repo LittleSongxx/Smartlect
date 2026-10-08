@@ -3,7 +3,9 @@ import os
 import unittest
 from unittest.mock import patch
 
-from smartlect.decision_record import SHOPPING_MODEL_LIMIT, attach_shopping_audit
+from smartlect.decision_record import (SHOPPING_MODEL_LIMIT,
+                                       attach_shopping_audit, shopping_decision)
+from smartlect.agents.shopping.policy import CLOSE_REASONS
 
 
 class DecisionRecordTests(unittest.TestCase):
@@ -75,3 +77,77 @@ class DecisionRecordTests(unittest.TestCase):
             self.assertEqual(reloaded.SHOPPING_MODEL_LIMIT, 9)
         importlib.reload(policy_module)
         importlib.reload(module)
+
+    def test_close_reason_mapping_covers_all_terminal_paths(self):
+        """终止原因归一（组件 5）：每条收口路径都必须落到已知枚举值。"""
+        base_result = {'answer': 'ok', 'answer_status': 'answered', 'citations': [], 'proposal': None}
+        cases = [
+            # (result 覆盖, context 覆盖, 期望 close_reason)
+            ({}, {}, 'completed'),
+            ({'closeout': 'observed_catalog_template'}, {}, 'completed'),
+            ({'closeout': 'rollback_substitution_template'}, {}, 'completed'),
+            ({'closeout': 'salvaged_observed_facts'}, {}, 'completed'),
+            ({'closeout': 'handoff_tool'}, {}, 'handoff'),
+            ({'closeout': 'recovered_proposal'}, {}, 'recovered_proposal'),
+            ({'closeout': 'recovered_ticket'}, {}, 'recovered_ticket'),
+            ({'safety_override': 'citation_no_longer_visible'}, {}, 'guard_violation'),
+            ({}, {'fallback_reason': 'answer_contract_failed'}, 'repair_exhausted'),
+            ({}, {'fallback_reason': 'tool_call_limit'}, 'budget_exceeded'),
+            ({}, {'fallback_reason': 'context_limit'}, 'budget_exceeded'),
+            ({}, {'fallback_reason': 'model_call_or_time_limit'}, 'budget_exceeded'),
+            ({}, {'fallback_reason': 'retrieval_rewrite_limit'}, 'budget_exceeded'),
+            ({}, {'fallback_reason': 'turn_token_budget'}, 'budget_exceeded'),
+            ({}, {'fallback_reason': ''}, 'deadline'),
+            ({}, {'fallback_reason': 'TimeoutError'}, 'deadline'),
+            ({}, {'fallback_reason': 'model_timeout'}, 'provider_fault'),
+            ({}, {'fallback_reason': 'model_transport_error'}, 'provider_fault'),
+            ({}, {'fallback_reason': 'explicit_mock'}, 'provider_fault'),
+            ({}, {'fallback_reason': 'mystery_failure'}, 'degraded'),
+            ({'closeout': 'empty_evidence'}, {}, 'retrieval_empty'),
+            ({'closeout': 'provider_fault'}, {}, 'provider_fault'),
+            # 显式覆盖优先于一切派生
+            ({}, {'close_reason': 'completed'}, 'completed'),
+        ]
+        for result_over, context_over, expected in cases:
+            with self.subTest(result_over=result_over, context_over=context_over):
+                result = dict(base_result)
+                result.update(result_over)
+                context = dict(context_over)
+                decision = shopping_decision(result, context)
+                self.assertIn(decision['close_reason'], CLOSE_REASONS)
+                self.assertEqual(decision['close_reason'], expected)
+
+    def test_close_reason_check_reports_unknown_only_for_unmapped(self):
+        result = {'answer_status': 'answered', 'citations': []}
+        attach_shopping_audit(result, {})
+        statuses = {item['id']: item['status'] for item in result['checks']}
+        self.assertEqual(statuses['close_reason_known'], 'passed')
+        # 显式未知值：原样保留（不静默重映射），check 失败暴露未登记原因
+        result2 = {'answer_status': 'answered', 'citations': []}
+        attach_shopping_audit(result2, {'close_reason': 'not_a_reason'})
+        self.assertEqual(result2['decision']['close_reason'], 'not_a_reason')
+        statuses2 = {item['id']: item['status'] for item in result2['checks']}
+        self.assertEqual(statuses2['close_reason_known'], 'failed')
+
+    def test_dispatch_summary_aggregates_sub_attempts_and_unverified(self):
+        """派发审计（组件 6）：sub-* 前缀的子智能体调用聚合 token/成本，无派发时字段为 None。"""
+        context = {
+            'dispatch_summary': {'task_count': 2, 'unverified_count': 1,
+                                 'routing': [{'task': '查A', 'status': 'succeeded'}]},
+            'model_attempts': [
+                {'prompt_version': 'shopping-react-v28', 'usage': {'total_tokens': 500},
+                 'cost_estimate_cny': 0.01},
+                {'prompt_version': 'sub-retrieval-scout-v1', 'usage': {'total_tokens': 300},
+                 'cost_estimate_cny': 0.005},
+                {'prompt_version': 'sub-comparator-v1', 'usage': {'total_tokens': 200},
+                 'cost_estimate_cny': 0.002}],
+        }
+        decision = shopping_decision({'answer_status': 'answered', 'citations': []}, context)
+        self.assertEqual(decision['dispatch']['task_count'], 2)
+        self.assertEqual(decision['dispatch']['unverified_count'], 1)
+        self.assertEqual(decision['dispatch']['model_attempts'], 2)
+        self.assertEqual(decision['dispatch']['total_tokens'], 500)
+        self.assertEqual(decision['dispatch']['cost_estimate_cny'], 0.007)
+        # 无派发：不产空摘要
+        plain = shopping_decision({'answer_status': 'answered', 'citations': []}, {})
+        self.assertIsNone(plain['dispatch'])

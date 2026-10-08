@@ -28,6 +28,9 @@ export class ApiError extends Error {
 }
 const descriptions: Record<string, string> = {
   login_required: '请先登录后再操作。', invalid_session: '登录已失效，请重新登录。',
+  invalid_visitor: '访客身份已过期，正在为你重新建立会话。',
+  ambiguous_session_cookie: '检测到重复的登录凭证，请清理本站 Cookie 后重新登录。',
+  identity_unavailable: '身份服务暂时不可用，请稍后重试。',
   trial_read_only: '作品集试用账号只能浏览，不能下单、改密或改资料。',
   trial_chat_limit: '试用账号今日咨询次数已用完，请明天再试。',
   permission_denied: '当前账号没有此操作权限。', RECONFIRM_REQUIRED: '商品、金额或地址已变化，请重新生成提案并确认。',
@@ -74,7 +77,11 @@ async function request<T>(url: string, options: RequestInit = {}, java = false):
   if (!response.ok || (java && payload.code !== 200)) {
     if (epoch === sessionEpoch && (response.status === 401 || (java && payload.code === 901))) {
       session.value = null;
-      window.dispatchEvent(new Event('smartlect:identity-changed'));
+      // 带上原因码：身份失效有"需要重新登录"与"访客凭证过期（服务端会自愈）"之分，
+      // 两者该给的引导完全不同，交给 sessionGuard 按原因分流。
+      window.dispatchEvent(new CustomEvent('smartlect:identity-changed', {
+        detail: { reason: payload.error || payload.detail || payload.info || '' },
+      }));
     }
     throw new ApiError(response.status, payload.error || payload.detail || payload.info || '请求失败');
   }

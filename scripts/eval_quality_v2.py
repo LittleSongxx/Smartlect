@@ -660,7 +660,8 @@ def freeze_holdout():
 def main():
     parser = argparse.ArgumentParser(description='quality-v2 development evaluation')
     parser.add_argument('command', choices=('self-check', 'validate', 'freeze', 'judge',
-                                            'judge-calibrate', 'run', 'report', 'report-frozen', 'score'))
+                                            'judge-calibrate', 'run', 'report', 'report-frozen', 'score',
+                                            'gate', 'probes'))
     parser.add_argument('--line', choices=('shopping', 'support', 'all'), default='all')
     parser.add_argument('--split', default='development')
     parser.add_argument('--run-id', default=None)
@@ -674,6 +675,8 @@ def main():
                         help='judge-calibrate: second judge model for cross-judging')
     parser.add_argument('--case', action='append', default=[],
                         help='optional case_id; repeat or comma-separate to rerun a subset')
+    parser.add_argument('--baseline', default=None,
+                        help='gate/probes: baseline run dir with summary.json (gate compares against it)')
     args = parser.parse_args()
     if args.trials < 1:
         raise SystemExit('--trials must be >= 1')
@@ -741,6 +744,32 @@ def main():
                               official=args.official, partial=bool(args.case), trials=args.trials)
         append_rerun_ledger(output, report)
         print_lines(report)
+        return
+    if args.command == 'gate':
+        if not args.baseline:
+            raise SystemExit('gate needs --baseline <run dir>')
+        baseline_path = Path(args.baseline) / 'summary.json'
+        if not baseline_path.exists():
+            raise SystemExit(f'missing_baseline_summary:{baseline_path}')
+        if not (output / 'summary.json').exists():
+            raise SystemExit('missing_current_summary; run first, or pass --output <dir>')
+        from quality_v2 import gate_compare
+        verdict = gate_compare(load_json(output / 'summary.json'), load_json(baseline_path))
+        (output / 'gate.json').write_text(json.dumps(verdict, ensure_ascii=False, indent=2) + '\n')
+        print(json.dumps(verdict, ensure_ascii=False, indent=2))
+        if verdict['verdict'] == 'BLOCK':
+            raise SystemExit('gate_BLOCK')
+        return
+    if args.command == 'probes':
+        if not args.baseline:
+            raise SystemExit('probes needs --baseline <run dir>')
+        from quality_v2 import failure_probes
+        probes = failure_probes(args.baseline)
+        case_ids = sorted(probes)
+        rerun = ('python scripts/eval_quality_v2.py run --case ' + ','.join(case_ids)
+                 + ' --output <新目录>') if case_ids else None
+        print(json.dumps({'count': len(case_ids), 'probes': probes, 'rerun': rerun},
+                         ensure_ascii=False, indent=2))
         return
     raise SystemExit('unknown_command')
 

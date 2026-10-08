@@ -3,11 +3,9 @@
 import asyncio
 from datetime import datetime, timezone
 import inspect
-import json
 import math
 import random
 import re
-import threading
 import time
 import uuid
 from urllib.parse import urlsplit
@@ -488,6 +486,10 @@ class Provider:
                     span.set_attribute("gen_ai.usage.input_tokens", usage["input_tokens"])
                 if usage.get("output_tokens") is not None:
                     span.set_attribute("gen_ai.usage.output_tokens", usage["output_tokens"])
+                # 前缀缓存命中可观测（组件 8）：上游不报 cached 为 None——
+                # None 与 0 语义不同，未报不等于未命中。
+                if usage.get("cached_input_tokens") is not None:
+                    span.set_attribute("gen_ai.usage.cached_input_tokens", usage["cached_input_tokens"])
             return {**output, "usage": trace["usage"], "metadata": metadata, "attempts": attempts}
 
     @staticmethod

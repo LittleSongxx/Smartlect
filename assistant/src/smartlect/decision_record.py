@@ -1,12 +1,52 @@
-import time
 """Append-only audit snapshots. Never changes answer_status, tickets, or grants."""
-from smartlect.agents.shopping.policy import (MODEL_CALL_LIMIT, TOOL_CALL_LIMIT,
-                                              RETRIEVAL_CALL_LIMIT, ANSWER_REPAIR_LIMIT)
+from smartlect.agents.shopping.policy import (CLOSE_REASONS, MODEL_CALL_LIMIT, TOOL_CALL_LIMIT,
+                                              RETRIEVAL_CALL_LIMIT, ANSWER_REPAIR_LIMIT,
+                                              TURN_TOKEN_BUDGET)
 
 SHOPPING_MODEL_LIMIT = MODEL_CALL_LIMIT
 SHOPPING_TOOL_LIMIT = TOOL_CALL_LIMIT
 SHOPPING_RETRIEVAL_LIMIT = RETRIEVAL_CALL_LIMIT
 SHOPPING_REPAIR_LIMIT = ANSWER_REPAIR_LIMIT
+
+_BUDGET_CODES = frozenset({'context_limit', 'model_call_or_time_limit', 'rerank_context_limit',
+                           'retrieval_rewrite_limit', 'tool_call_limit', 'turn_token_budget'})
+
+
+def _close_reason(result, context):
+    """轮次终止原因归一（组件 5）：所有收口路径映射到 policy.CLOSE_REASONS 枚举。
+
+    顺序敏感：显式覆盖 > 恢复路径 > 安全覆写 > 降级 fallback_reason > closeout 模板 > completed。
+    显式覆盖但不在枚举内时原样保留——check 会失败并暴露未登记的终止原因，
+    静默重映射成已知值等于把新路径的可见性藏起来。
+    """
+    explicit = context.get('close_reason')
+    if explicit:
+        return explicit
+    closeout = result.get('closeout')
+    if closeout in {'recovered_proposal', 'recovered_ticket', 'handoff_tool'}:
+        return closeout if closeout != 'handoff_tool' else 'handoff'
+    if result.get('safety_override'):
+        return 'guard_violation'
+    fallback = context.get('fallback_reason')
+    if fallback is not None:
+        # asyncio.timeout 抛内置 TimeoutError（无 code，str 为空串）：那是轮级 deadline。
+        if not fallback or 'TimeoutError' in fallback:
+            return 'deadline'
+        if fallback == 'answer_contract_failed':
+            return 'repair_exhausted'
+        if fallback in _BUDGET_CODES:
+            return 'budget_exceeded'
+        if fallback.startswith('model_') or fallback.startswith('explicit_'):
+            return 'provider_fault'
+        return 'degraded'
+        if fallback.startswith('model_') or fallback.startswith('explicit_'):
+            return 'provider_fault'
+        return 'degraded'
+    if closeout == 'empty_evidence':
+        return 'retrieval_empty'
+    if closeout == 'provider_fault':
+        return 'provider_fault'
+    return 'completed'
 
 
 def _elapsed_ms(attempts):
@@ -32,6 +72,26 @@ def _ids(items, key):
 
 def _ref(value, key):
     return value.get(key) if isinstance(value, dict) else None
+
+
+def _dispatch_summary(result, context):
+    """派发审计（组件 6）：任务数/未核验数来自 run context 的 dispatch_summary，
+    token 与成本从 model_attempts 中 prompt_version 以 sub- 开头的子智能体
+    调用聚合——「派发是否值得」可用消融数据回答，而不是靠感觉。"""
+    summary = context.get('dispatch_summary')
+    if not isinstance(summary, dict):
+        return None
+    sub_attempts = [a for a in (context.get('model_attempts') or [])
+                    if str(a.get('prompt_version') or '').startswith('sub-')]
+    usage = [a.get('usage') or {} for a in sub_attempts]
+    return {
+        'task_count': summary.get('task_count'),
+        'unverified_count': summary.get('unverified_count'),
+        'model_attempts': len(sub_attempts),
+        'total_tokens': sum(int(u.get('total_tokens') or 0) for u in usage),
+        'cost_estimate_cny': round(sum(
+            float(a.get('cost_estimate_cny') or 0) for a in sub_attempts), 6),
+    }
 
 
 def _check(name, passed, *, applicable=True):
@@ -60,6 +120,9 @@ def shopping_decision(result, context):
         'handoff_origin': result.get('handoff_origin'),
         'safety_override': result.get('safety_override'),
         'closeout': result.get('closeout'),
+        'close_reason': _close_reason(result, context),
+        'dispatch': _dispatch_summary(result, context),
+        'cache_read_ratio': _cache_read_ratio(context),
         'final_output_channel': context.get('final_output_channel'),
         'accepted_tools': list(context.get('accepted_tools') or []),
         'dispatch_enabled': bool(context.get('dispatch_enabled')),
@@ -76,12 +139,32 @@ def shopping_decision(result, context):
             'retrieval_calls_limit': SHOPPING_RETRIEVAL_LIMIT,
             'answer_repairs_used': int(context.get('answer_repairs') or 0),
             'answer_repairs_limit': SHOPPING_REPAIR_LIMIT,
+            'input_tokens': _token_sum(context, 'input_tokens'),
+            'cached_input_tokens': _token_sum(context, 'cached_input_tokens'),
+            'turn_tokens_used': _token_sum(context, 'total_tokens'),
+            'turn_token_budget': TURN_TOKEN_BUDGET,
+            'turn_budget_tier': context.get('turn_budget_tier'),
         },
         'cost_estimate_cny': round(sum(
             float(a.get('cost_estimate_cny') or 0)
             for a in (context.get('model_attempts') or [])
         ), 6),
     }
+
+
+def _token_sum(context, key):
+    """按 attempt 聚合 usage 字段；上游不报的 attempt 不计入（未知不当 0）。"""
+    return sum(int(((a.get('usage') or {}).get(key)) or 0)
+               for a in (context.get('model_attempts') or []))
+
+
+def _cache_read_ratio(context):
+    cached = _token_sum(context, 'cached_input_tokens')
+    total = _token_sum(context, 'input_tokens')
+    # 无输入时返回 None 而不是 0——未知不当 0（上游不报 cached 时同样为 None 语义）。
+    if total and cached:
+        return round(cached / total, 4)
+    return None
 
 
 def shopping_checks(result, context, decision=None):
@@ -93,6 +176,7 @@ def shopping_checks(result, context, decision=None):
     return [
         _check('compiled_decision_present', compiled, applicable=result.get('closeout') not in {
             'recovered_proposal', 'recovered_ticket'}),
+        _check('close_reason_known', decision['close_reason'] in CLOSE_REASONS),
         _check('policy_grounding_has_this_turn_citation',
                bool(decision['citation_chunk_ids']) or bool(context.get('legal_empty_visible')),
                applicable=grounding == 'store_policy' and status == 'answered'),
@@ -117,6 +201,4 @@ def attach_shopping_audit(result, context):
     result['audit_checks'] = shopping_checks(result, context, audit)
     result['decision'] = audit
     result['checks'] = result['audit_checks']
-    return result
-
     return result

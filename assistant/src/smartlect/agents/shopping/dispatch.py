@@ -12,9 +12,13 @@
 - 子工具调用走与主循环同一条 invoke() 路径（幂等台账 + RBAC + 范围闸 + span），
   子智能体没有第二条更弱的进工具的路。
 - 派发是只读操作（is_concurrency_safe）：不产生交易副作用，提案仍归主 Agent。
+- 结论引用核验（组件 6）：答案文本里的 sku 形 token 必须在本轮真实工具回执
+  集合内，未核验任务降级为 unverified 并要求业务工具复核——子智能体只回传
+  文本，"结论文本当证据"没有开第二条路的资格。
 """
 import asyncio
 import logging
+import re
 import time
 
 from langchain_core.tools import StructuredTool
@@ -169,3 +173,37 @@ async def dispatch(tasks: list[str], *, model: ProviderChatModel, invoke) -> dic
 
     results = await asyncio.gather(*(one(task) for task in tasks))
     return compose_results(list(results), round((time.monotonic() - started) * 1000, 2))
+
+
+# sku_key 的权威形态是 "商品名:规格"（如 kb-lite:black）。只核验这一种 token：
+# 数字形 productId/订单号不匹配该形态，宁可少核验也不误杀正常的订单类结论。
+SKU_TOKEN = re.compile(r'[A-Za-z0-9_-]+:[A-Za-z0-9_-]+')
+
+
+def verify_against_observed(payload: dict, observed_keys) -> dict:
+    """派发结论的引用核验（组件 6，确定性、零模型调用）。
+
+    子智能体只回传结论文本；文本里出现的 sku 形 token 若不在本轮真实工具
+    回执集合（sub_invoke 收集的 items.sku_key）里，就是未观测的引用——
+    直接采信等于接受幻觉。处理：该任务降级 status='unverified'，结论替换为
+    复核指引，并按 compose_results 的既有语义计入 incomplete（最终答复必须
+    披露）。有观测集合但结论不提任何 sku token 的（政策类结论）不动。
+    """
+    observed = {str(key) for key in (observed_keys or ())}
+    unverified = []
+    for row in payload.get('results') or []:
+        if row.get('status') != 'succeeded':
+            continue
+        mentioned = set(SKU_TOKEN.findall(row.get('answer') or ''))
+        unknown = {token for token in mentioned if token not in observed}
+        if unknown:
+            row['status'] = 'unverified'
+            row['unverified_keys'] = sorted(unknown)
+            row['answer'] = ('结论中出现本轮工具回执未观测到的商品标识（'
+                             + '、'.join(sorted(unknown)[:5]) + '）；请使用业务工具复核后再引用。')
+            unverified.append(row['task'])
+    if unverified:
+        recomposed = compose_results(payload['results'], payload.get('elapsed_ms') or 0.0)
+        recomposed['unverified_tasks'] = unverified
+        return recomposed
+    return payload

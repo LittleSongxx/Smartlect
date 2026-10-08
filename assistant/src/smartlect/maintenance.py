@@ -4,7 +4,8 @@ from smartlect.db import connect_from_env
 
 def purge_expired(connect=connect_from_env):
     counts = dict(messages=0, tool_calls=0, run_events=0, runs_scrubbed=0,
-                  summaries_revoked=0, ticket_replies=0, conversations_checked=0, index_model_attempts=0)
+                  summaries_revoked=0, ticket_replies=0, conversations_checked=0, index_model_attempts=0,
+                  preference_history=0)
     cutoff, after = None, ""
     while True:
         with connect() as connection, connection.cursor() as cursor:
@@ -15,6 +16,11 @@ def purge_expired(connect=connect_from_env):
                 cursor.execute("DELETE FROM knowledge_index_attempt WHERE started_at<%s LIMIT 1000", (cutoff,))
                 removed_attempts = cursor.rowcount
                 counts['index_model_attempts'] += removed_attempts
+                # 偏好历史（组件 10）与 message/trace 同口径的 30 天保留：个人数据
+                # 最小化优先于无限期审计回溯；过期后双时态回答以活表与墓碑为准。
+                cursor.execute("DELETE FROM user_preference_history WHERE superseded_at<%s LIMIT 1000", (cutoff,))
+                removed_history = cursor.rowcount
+                counts['preference_history'] += removed_history
                 # Lock the same parent as SessionStore before touching its children.
                 # Busy conversations are retried on the next maintenance invocation.
                 cursor.execute("""SELECT conversation_id FROM conversation WHERE conversation_id>%s
@@ -23,7 +29,7 @@ def purge_expired(connect=connect_from_env):
                 conversations = list(cursor.fetchall())
                 if not conversations:
                     connection.commit()
-                    if removed_attempts == 1000:
+                    if removed_attempts == 1000 or removed_history == 1000:
                         continue
                     return counts
                 for row in conversations:

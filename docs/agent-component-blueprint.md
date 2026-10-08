@@ -1,8 +1,30 @@
 # Agent 组件对齐蓝图
 
 > 定位：从「完整 AI Agent 组件」视角，逐模块给出 Smartlect Agent 的目标形态、与现状的差距、以及参考来源（同题材项目 B/C 与业界成熟做法）。
-> 性质：**调研与设计文档，未实施**。每条目标设计都写成可用一句话复述的形态，便于评审、拆分与验收。
-> 日期：2026-10-07 ｜ 关联：[agent-design.md](agent-design.md)、[ADR 目录](adr/)、[quality-eval-v2.md](quality-eval-v2.md)
+> 性质：**首批已实施（2026-10-07，见下表落地状态）**。每条目标设计都写成可用一句话复述的形态，便于评审、拆分与验收。
+> 日期：2026-10-07 ｜ 关联：[agent-design.md](agent-design.md)、[ADR 目录](adr/)、[quality-eval-v2.md](quality-eval-v2.md)、[改动记录](改动记录/2026-10-07/Agent组件蓝图首批实施.md)
+
+## 落地状态（2026-10-07 首批）
+
+| 组件 | 状态 | 落点 |
+|---|---|---|
+| 5 终止原因枚举 | ✅ 已实施 | `decision_record._close_reason` + `assistant_close_reason_total` + check |
+| 6 子 Agent 核验/审计 | ✅ 已实施 | `dispatch.verify_against_observed` + `sub_agent_routing` 事件（修复死代码）+ `decision.dispatch` |
+| 8 前缀缓存 | ✅ 已实施 | `assemble_static_system`/`assemble_turn_context`/`with_turn_context`（ADR-0014）+ 三不变量测试 + cache 观测三处 |
+| 4 待决提案前置提示 | ✅ 已实施 | 本轮材料注入「不得视为已确认/已拒绝」 |
+| 10 记忆双时态+冲突+删行为记忆 | ✅ 已实施 | 迁移 0024 + `preference_conflicts`/`_history`/`preference_history`（ADR-0015）+ `apply_behavior_inference` 删除 |
+| 9 证据回查 | ✅ 已实施 | `memory.conversation_evidence` + `lookup_conversation_evidence` 工具 + `evidence_observation`（复用 tool_call 存档，未建新表） |
+| 12 预算分层+成本归因 | ✅ 已实施 | `turn_budget_tier` 四档 + agent_run 反范式列 + 管理端 cost-attribution |
+| 13 per-kind 门禁+失败探针 | ✅ 已实施 | `gate_compare`/`failure_probes` + `gate`/`probes` 命令（pass^k 机制本就存在） |
+| 13 反馈聚合 | ✅ 已实施 | `/admin-api/assistant/feedback-summary`（管理端聚合报表） |
+| 3 查询理解收口 | ✅ 已实施 | `compose_search_query` 原话为主 + `query_understanding.anaphora_expand` + 20 例契约 |
+| 11 安全子集 | ✅ 已实施 | 检索三工具 `response_format` + 错误回执带示例 |
+| 13b 漂移采样 | ✅ 已实施 | `scripts/drift_sample_judge.py`（离线 judge，7 天滚动） |
+| 2 记忆访问矩阵 | ✅ 已实施 | [agent-memory-access-matrix.md](agent-memory-access-matrix.md) |
+| 1 事件续传 | ➖ 无需实施 | `agent_run_event` + SSE `after` 游标本已存在（探索期发现） |
+| 11 工具合并（19→≤15） | ⏸ 按决策暂缓 | 用户决策：留独立 PR + 评测关卡 |
+| 10 行为记忆接线 | ❌ 按决策不做 | 用户决策：正式不接线并删除 |
+| 语义缓存 | ❌ 不做 | 蓝图建议不采纳 |
 
 ## 0. 参考项目与本文引用约定
 

@@ -10,7 +10,7 @@
 ```
 用户消息 → Shopping Agent（有界 ReAct，手写三节点 LangGraph StateGraph）
               │
-              ├── 19 个工具（读 / 提案 / 记忆 / 人工 / 派发）
+              ├── 20 个工具（读 / 提案 / 记忆 / 证据 / 人工 / 派发）
               │      │
               │      ├── task_dispatch ──→ 1–3 个子智能体并发（create_react_agent）
               │      │                      各自独立上下文，只回传结论
@@ -32,17 +32,23 @@
 | 轮 deadline | 90s（图用 85s） | 超限走确定性降级收口 |
 | 图步数 | recursion_limit 25 | LangGraph 硬界 |
 | 上下文窗口 | 14400 token / 43200 字节 | `langchain_core.trim_messages`（ADR-0010） |
+| 轮 token 预算 | 60000（env 可调，0=关闭） | 四档分层：main / lite（注入简洁提示）/ minimal（强收口提示）/ fallback（`turn_token_budget` 走降级链）；lite 起拒绝 task_dispatch |
+| 终止原因 | close_reason 枚举 | completed/handoff/recovered_*/budget_exceeded/repair_exhausted/deadline/provider_fault/retrieval_empty/guard_violation/degraded，`assistant_close_reason_total{reason}` 可统计降级率 |
 | 终答修复 | ≤1 次 | GuardViolation 后单次重写 |
 
 超限不无限循环：`BudgetExceeded` → `close_degraded_turn()` 确定性收口（诚实空集 / 转人工 / 模板答案），终态记录在 run 结果里。
 
-## 工具面（19 个）
+## 工具面（20 个）
+
+> 贴着 OpenAI 的 <20 软上限：新增能力优先做成 Skill（load_skill 延迟加载）；
+> 工具合并（如 6 个订单查询工具收敛）属第三批结构性改动，独立 PR + 评测关卡。
 
 | 类别 | 工具 | 权限 | 说明 |
 |---|---|---|---|
 | 检索 | `search_knowledge` | shopping:read | RAG 检索（ES BM25 + Qdrant dense → RRF → rerank） |
 | 检索 | `search_skus` / `recommend_skus` / `compare_skus` | shopping:read | 约束检索，价格库存每次实时查 Java |
 | 检索 | `get_product_offer` | shopping:read | Java 商品级介绍 |
+| 证据 | `lookup_conversation_evidence` | shopping:read | 按 result_ref/关键词回查本会话历史工具回执；返回历史观察值，当前价格/库存/状态必须实时工具复核 |
 | 派发 | `task_dispatch` | shopping:read | 1–3 个独立只读检索任务并行交子智能体（ADR-0010） |
 | 订单只读 | `get_my_orders` / `get_order_status` / `get_refund_status` / `get_payment_status` / `list_my_coupons` / `get_my_addresses` | orders:read | 查询本人交易事实 |
 | 提案 | `propose_order` / `propose_cancel` / `propose_refund` | orders:write | 先向 Java 要报价 → 落库为待确认提案 |
@@ -64,6 +70,17 @@
 - **模型与工具调用计入主循环同一预算与审计**：子智能体每次模型调用过主会话 `before_attempt` 闸（计入 MODEL_CALL_LIMIT、落 `model_attempts`），子工具调用过 `tool_tick`（计入 TOOL_CALL_LIMIT）；预算耗尽按单任务失败降级披露
 - 只回传最终结论文本——中间工具事件不进主上下文
 - 派发判据写进系统提示词：**可并行 / 需上下文隔离 / 调用链深**，其一成立才用
+
+## 上下文拼装与前缀缓存（ADR-0014）
+
+system 只承载会话内逐字恒定的五段（角色契约 + 冻结策略 + Skills 目录 + 已加载
+流程 + 主体类别）；所有每轮可变载荷（Skill 预告、澄清闸、只读上下文、焦点块、
+待决提案提示）进「本轮材料」user 消息，插在最后一条用户消息之后——ReAct 步间
+严格前缀。三不变量由 `tests/test_prompt_prefix.py` 钉死；缓存命中经
+`assistant_prompt_cache_read_tokens_total` 与 decision 的 `cache_read_ratio` 观测
+（上游不报 cached 为 None，未知不当 0）。检索词遵循「原话为主」合同
+（`compose_search_query`），指代式短问句由 `query_understanding.anaphora_expand`
+做确定性补全（失败回落原句；独立完整问句原样透传）。
 
 ## RAG 检索管道
 

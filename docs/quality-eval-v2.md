@@ -26,6 +26,18 @@ cd scripts && python3 eval_quality_v2.py run --official
 
 所有指标带分母、Wilson 95% CI、`pass^k` 多试验（`--trials N`），不合成总分。
 
+## 发布门禁与失败探针（2026-10-07 起）
+
+- **`gate --baseline <run目录> [--output <当前run目录>]`**：对照基线判 BLOCK/PASS——
+  总通过率跌幅 >2pp，或任一 `kind` 通过率跌幅 >5pp（样本 ≥5 才参与阻断，小样本
+  kind 豁免但留名；基线有而当前缺失的达标 kind 视为覆盖回退，直接 BLOCK；无可比
+  线 fail-closed BLOCK）。判定写 `gate.json`，BLOCK 时退出码非零，可直接挂 CI。
+  阈值骨架来自 Microsoft 电商回归案例，按本项目评测噪声可再调（`gate_compare` 参数）。
+- **`probes --baseline <run目录>`**：基线 fail/setup_failed 案例 + 既往 setup_failed
+  案例的探针清单，输出配套的 `run --case cid1,cid2` 重跑命令——每个修过的问题
+  留一条永久探针，基线随主干刷新，评测集不冻结在旧失败上。
+- `pass^k`（`--trials N`）机制不变；trials 口径不一致时 gate 只提示不阻断。
+
 ## 纪律
 
 - 一题三结局：pass / unscored / setup_failed（复跑台账禁止重采样刷绿）

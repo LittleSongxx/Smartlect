@@ -46,3 +46,20 @@ strategy=last + start_on=human + include_system；token_counter 复用既有估�
 - 多智能体叙事成立且克制：supervisor 模式 + 并行 sub-agent + 工具面权限隔离，评测/演示可解释。
 - langgraph 升级 1.2.12（prebuilt 1.0.13 的运行时依赖），lock 已同步。
 - 新增 5 个子智能体契约测试；全量 255×2 遍测试绿。
+
+
+## 后记（2026-10-07，组件蓝图 WP2）
+
+两个补强落地：
+
+1. **只读不仅是权限最小化，更是并行正确性的前提**——并行分支各自持有隐式
+   决策时，冲突的决策产生冲突的产物（Cognition《Don't Build Multi-Agents》：
+   "Actions carry implicit decisions, and conflicting decisions carry bad results"）。
+   「子 Agent 永远只读、提案永远归主 Agent」因此升格为不可协商约束：未来任何
+   「让子 Agent 也能下单」的提议，本 ADR 有据可驳。
+2. **派发结论引用核验**（`dispatch.verify_against_observed`）：子 Agent 只回传
+   结论文本，答案里的 sku 形 token（`商品:规格`）必须在本轮真实工具回执集合
+   （sub_invoke 收集的 items）内，未核验任务降级 `unverified` 并按 incomplete
+   语义强制披露——「结论文本当证据」不开放第二条路。派发路由与未核验计数随
+   `sub_agent_routing` decision 事件与 decision_record.dispatch 审计落库
+   （原实现该事件挂在不可达死代码上，从未发出过，本次一并修复）。

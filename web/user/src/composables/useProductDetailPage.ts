@@ -13,6 +13,7 @@ import { normalizeProductDesc } from '@/utils/productDesc';
 import { resolveImageUrl } from '@/utils/image';
 import { saveCheckoutSession } from '@/utils/checkout';
 import { toast } from '@/utils/toast';
+import { promptLogin } from '@/utils/sessionGuard';
 import { TRIAL_USER_DENIED } from '@/constants/trial';
 import { MAX_CART_QTY } from '@/constants/validation';
 import { ownerKey, session } from '@/api/client';
@@ -247,7 +248,8 @@ export function useProductDetailPage() {
     ];
     saveCheckoutSession(checkoutItems, 0);
     if (!authStore.isLoggedIn) {
-      router.push({ path: '/login', query: { redirect: '/checkout' } });
+      // 结算需要登录态：先弹窗说明，确认后去登录页，登录完直接落在结算页
+      promptLogin('/checkout');
       return;
     }
     router.push('/checkout');

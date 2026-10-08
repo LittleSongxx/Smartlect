@@ -7,7 +7,7 @@ from pathlib import Path
 from eval_quality_v2 import business_closeout_after_budget, handoff_ends_conversation
 import quality_v2
 from quality_v2 import (CONTRACT_JSON, SHOPPING_CATALOG, SHOPPING_DEV, SUPPORT_DEV,
-                        AnnotationError, aggregate_line, append_rerun_ledger,
+                        AnnotationError, aggregate_line, append_rerun_ledger, failure_probes, gate_compare,
                         catalog_index, catalog_overlay_plan, context_precision_at_k,
                         handoff_f1, last_real_search, live_support_cases, load_json, load_jsonl,
                         mrr_at_k, recall_at_1_strict, recall_at_k, refuse_holdout, remap_observation,
@@ -988,6 +988,83 @@ class FrozenReportTests(unittest.TestCase):
         self.assertIn('qv2', report)                        # 映射表内容在场
         self.assertNotIn('composite_score', text)           # 不合成总分也不复述它
         self.assertIn('模拟 CTR/CVR 非因果', text)
+
+
+class GateCompareTests(unittest.TestCase):
+    """发布门禁（组件 13）：总跌幅/kind 回退/覆盖回退/小样本豁免的判定契约。"""
+
+    @staticmethod
+    def _summary(n_scored, n_pass, by_kind=None):
+        return {'n': n_scored, 'n_scored': n_scored, 'n_pass': n_pass,
+                'by_kind': by_kind or {}, 'trials': 1}
+
+    def test_flat_or_improving_passes(self):
+        current = {'shopping': self._summary(100, 90, {'recommend': {'n': 60, 'n_pass': 55, 'pass_rate': 55 / 60}}),
+                   'support': self._summary(83, 70, {'multi_doc_synthesis': {'n': 7, 'n_pass': 5, 'pass_rate': 5 / 7}})}
+        verdict = gate_compare(current, current)
+        self.assertEqual(verdict['verdict'], 'PASS')
+
+    def test_total_drop_beyond_2pp_blocks(self):
+        baseline = {'shopping': self._summary(100, 90)}
+        current = {'shopping': self._summary(100, 85)}
+        verdict = gate_compare(current, baseline)
+        self.assertEqual(verdict['verdict'], 'BLOCK')
+        self.assertTrue(any('total_pass_drop' in reason for reason in verdict['reasons']))
+
+    def test_kind_drop_beyond_5pp_blocks_even_when_total_ok(self):
+        # 总通过率跌幅 1pp（<2pp 不阻断），但单 kind 跌 10pp → BLOCK
+        baseline = {'support': self._summary(100, 90, {
+            'published_answerable': {'n': 60, 'n_pass': 57, 'pass_rate': 0.95},
+            'negative_trap': {'n': 20, 'n_pass': 15, 'pass_rate': 0.75},
+            'multi_turn': {'n': 20, 'n_pass': 18, 'pass_rate': 0.9}})}
+        current = {'support': self._summary(100, 89, {
+            'published_answerable': {'n': 60, 'n_pass': 57, 'pass_rate': 0.95},
+            'negative_trap': {'n': 20, 'n_pass': 13, 'pass_rate': 0.65},
+            'multi_turn': {'n': 20, 'n_pass': 19, 'pass_rate': 0.95}})}
+        verdict = gate_compare(current, baseline)
+        self.assertEqual(verdict['verdict'], 'BLOCK')
+        self.assertTrue(any('negative_trap_pass_drop' in reason for reason in verdict['reasons']))
+
+    def test_small_kind_is_exempt_but_named(self):
+        baseline = {'support': self._summary(100, 90, {'injection_quarantine': {'n': 3, 'n_pass': 3, 'pass_rate': 1.0}})}
+        current = {'support': self._summary(100, 90, {'injection_quarantine': {'n': 3, 'n_pass': 0, 'pass_rate': 0.0}})}
+        verdict = gate_compare(current, baseline)
+        self.assertEqual(verdict['verdict'], 'PASS')
+        self.assertTrue(any('small_kinds_not_gated' in reason for reason in verdict['reasons']))
+
+    def test_missing_kind_with_enough_samples_blocks(self):
+        baseline = {'shopping': self._summary(100, 90, {'recommend': {'n': 80, 'n_pass': 74, 'pass_rate': 0.925},
+                                                        'compare': {'n': 20, 'n_pass': 16, 'pass_rate': 0.8}})}
+        current = {'shopping': self._summary(100, 90, {'recommend': {'n': 100, 'n_pass': 90, 'pass_rate': 0.9}})}
+        verdict = gate_compare(current, baseline)
+        self.assertEqual(verdict['verdict'], 'BLOCK')
+        self.assertTrue(any('compare_coverage_regression' in reason for reason in verdict['reasons']))
+
+    def test_no_comparable_lines_blocks_fail_closed(self):
+        self.assertEqual(gate_compare({}, {})['verdict'], 'BLOCK')
+
+    def test_by_kind_aggregation_in_aggregate_line(self):
+        rows = [{'case_id': 'a', 'outcome': 'pass', 'kind': 'recommend', 'Pass@1': 1},
+                {'case_id': 'b', 'outcome': 'fail', 'kind': 'recommend', 'Pass@1': 0},
+                {'case_id': 'c', 'outcome': 'pass', 'kind': 'empty', 'Pass@1': 1}]
+        summary = aggregate_line('shopping', rows, ('Pass@1',))
+        self.assertEqual(summary['by_kind']['recommend'], {'n': 2, 'n_pass': 1, 'pass_rate': 0.5})
+        self.assertEqual(summary['by_kind']['empty']['pass_rate'], 1.0)
+
+    def test_failure_probes_collect_baseline_failures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / 'official-x'
+            run_dir.mkdir()
+            summary = {'schema_version': 'quality-v2-report-v2',
+                       'shopping': {'n': 2}, 'support': {'n': 0},
+                       'cases': {'shopping': [
+                           {'case_id': 'shop-d-01', 'outcome': 'pass'},
+                           {'case_id': 'shop-d-02', 'outcome': 'fail', 'reason': 'constraint_violated'}],
+                           'support': []}}
+            (run_dir / 'summary.json').write_text(json.dumps(summary))
+            probes = failure_probes(run_dir, artifacts_dir=tmp)  # no other runs exist
+            self.assertEqual(list(probes), ['shop-d-02'])
+            self.assertEqual(probes['shop-d-02']['source'], 'baseline:official-x')
 
 
 if __name__ == '__main__':

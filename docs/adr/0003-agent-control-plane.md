@@ -31,3 +31,18 @@ Shopping 维持有界 ReAct；Merchant 维持无工具规划。Skill 是版本�
 - 用户端「本轮如何决定」、管理端客服/经营只读展示同一份快照。
 - 不引入 Supervisor、意图分类器、记忆摘要 Agent，也不给 Merchant 开放 `tool_calls`。
 - 本 ADR 不宣称 F6/F7 通过；评测仍以 [IMPLEMENTATION_STATUS](../../IMPLEMENTATION_STATUS.md) 为准。
+
+
+## 后记（2026-10-07，组件蓝图 WP4）：何时才引入语义路由
+
+「不设意图分类器」维持不变，但补上可触发的升级条件（届时另立 ADR）：
+
+1. 工具数超过 OpenAI 官方软上限（<20）且仍需增长——工具面稀释模型选择准确率
+   时，先做工具合并（组件 11 第三批），合并后仍不够再引入向量路由做**工具预筛**
+   （Aurelio semantic-router 的 `Route(utterances)` + 阈值形态），不替换主循环决策；
+2. 需要把简单问答分流到小模型降本（RouteLLM 式成本路由，目标是选模型档位
+   而非选工具）；
+3. 出现跨领域扩展（导购 + 售后 + 商家经营面各成工具域）。
+
+当前 20 个工具（含 lookup_conversation_evidence）仍贴上限：新增能力优先做成
+Skill（load_skill 延迟加载，等价官方 tool search 建议）。

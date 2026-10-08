@@ -142,6 +142,61 @@ class ComposerTests(unittest.TestCase):
         self.assertEqual(payload["results"][0]["profile"], COMPARATOR.name)
 
 
+class DispatchVerificationTests(unittest.TestCase):
+    """引用核验（组件 6）：子结论里的 sku 形 token 必须在本轮真实回执集合内。"""
+
+    def _payload(self, answer):
+        return dispatch.compose_results(
+            [{"task": "查键盘", "status": "succeeded", "answer": answer,
+              "profile": "retrieval-scout"}], 8.0)
+
+    def test_observed_key_passes_untouched(self):
+        payload = self._payload("kb-lite:black 现价 199，有货")
+        verified = dispatch.verify_against_observed(payload, {"kb-lite:black"})
+        self.assertEqual(verified["results"][0]["status"], "succeeded")
+        self.assertNotIn("unverified_tasks", verified)
+        self.assertTrue(verified["all_succeeded"])
+
+    def test_unknown_key_downgrades_to_unverified(self):
+        payload = self._payload("推荐 kb-ghost:red，性价比最高")
+        verified = dispatch.verify_against_observed(payload, {"kb-lite:black"})
+        row = verified["results"][0]
+        self.assertEqual(row["status"], "unverified")
+        self.assertEqual(row["unverified_keys"], ["kb-ghost:red"])
+        self.assertIn("复核", row["answer"])
+        # 未核验按 incomplete 语义披露：不能被包装成完整证据
+        self.assertEqual(verified["unverified_tasks"], ["查键盘"])
+        self.assertEqual(verified["incomplete_tasks"], ["查键盘"])
+        self.assertFalse(verified["all_succeeded"])
+        self.assertIn("缺失", verified["merge_instruction"])
+
+    def test_policy_conclusion_without_sku_tokens_is_untouched(self):
+        # 政策类结论不带 sku 形 token：不属于核验范围，不动
+        payload = self._payload("满99元包邮，7天无理由退货")
+        verified = dispatch.verify_against_observed(payload, set())
+        self.assertEqual(verified["results"][0]["status"], "succeeded")
+
+    def test_numeric_ids_are_not_flagged(self):
+        # 数字形 productId/订单号不匹配 sku 形态：宁少核验不误杀订单类结论
+        payload = self._payload("订单 10086 已发货，运单号 SF12345678")
+        verified = dispatch.verify_against_observed(payload, set())
+        self.assertEqual(verified["results"][0]["status"], "succeeded")
+
+    def test_failed_task_not_rechecked(self):
+        payload = dispatch.compose_results(
+            [{"task": "查A", "status": "timeout", "answer": "kb-ghost:red 子智能体在时限内未完成"}], 25.0)
+        verified = dispatch.verify_against_observed(payload, set())
+        self.assertEqual(verified["results"][0]["status"], "timeout")
+        self.assertNotIn("unverified_tasks", verified)
+
+    def test_recompose_preserves_elapsed_and_flags(self):
+        payload = self._payload("kb-lite:black 与 kb-ghost:red 都可售")
+        payload["elapsed_ms"] = 123.4
+        verified = dispatch.verify_against_observed(payload, {"kb-lite:black"})
+        self.assertEqual(verified["elapsed_ms"], 123.4)
+        self.assertEqual(verified["unverified_tasks"], ["查键盘"])
+
+
 class TaskDispatchThroughInvokeTests(unittest.TestCase):
     """task_dispatch 分支的端到端回归：必须走完整 invoke()（台账/RBAC/范围闸）。
 

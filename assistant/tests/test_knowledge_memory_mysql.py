@@ -176,24 +176,90 @@ class KnowledgeMemoryMySQLTests(unittest.TestCase):
             self.memory.set_preference(self.user, 'likes', ['轻便'], source='inferred', evidence_ids=['u1'], conversation_id=self.conversation)
         self.memory.set_preference(self.user, 'likes', ['新版明确偏好'])
         self.assertEqual(self.memory.preferences(self.user)[0]['value'], ['新版明确偏好'])
-        written = self.memory.apply_behavior_inference(self.user, {'likes': ['零食'], 'purpose': '零食'},
-                                                       product_ids=['snack-1'])
-        self.assertNotIn('likes', written)
-        self.assertEqual(self.memory.preferences(self.user)[0]['value'], ['新版明确偏好'])
-        self.assertEqual(next(row['source'] for row in self.memory.preferences(self.user) if row['preference_key'] == 'likes'),
-                         'explicit')
-        self.assertIn('purpose', written)
-        self.assertEqual(next(row['value'] for row in self.memory.preferences(self.user) if row['preference_key'] == 'purpose'),
-                         '零食')
 
-    def test_behavior_inference_writes_likes_when_user_has_no_explicit_preference(self):
-        written = self.memory.apply_behavior_inference(self.user, {'likes': ['零食']}, product_ids=['snack-1'])
-        self.assertEqual(written, ['likes'])
-        row = self.memory.preferences(self.user)[0]
-        self.assertEqual(row['preference_key'], 'likes')
-        self.assertEqual(row['source'], 'inferred')
-        self.assertEqual(row['value'], ['零食'])
-        self.assertEqual(row['evidence_ids'][0]['origin'], 'behavior')
+    def test_preference_history_records_superseded_noop_and_deletion(self):
+        """双时态最小版（组件 10）：覆盖/NOOP/删除都进历史台账，旧值可回溯。"""
+        self.memory.set_preference(self.user, 'budget_max_cents', 8000)
+        first = self.memory.set_preference(self.user, 'budget_max_cents', 12000)
+        self.assertEqual(first['version'], 2)  # 覆盖升版
+        history = self.memory.preference_history(self.user, key='budget_max_cents')
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]['action'], 'superseded')
+        self.assertEqual(history[0]['value'], 8000)  # 旧值留史——「上周预算是 8 千」可回答
+        self.assertEqual(history[0]['version'], 1)
+        # 同值同源同效期：NOOP，不升 version、不新增活表变更
+        again = self.memory.set_preference(self.user, 'budget_max_cents', 12000)
+        self.assertEqual(again['version'], 2)
+        noop = self.memory.preference_history(self.user, key='budget_max_cents')[0]
+        self.assertEqual(noop['action'], 'noop')
+        self.assertEqual(noop['value'], 12000)
+        # 删除也留史
+        self.memory.delete_preference(self.user, 'budget_max_cents')
+        deleted = self.memory.preference_history(self.user, key='budget_max_cents')[0]
+        self.assertEqual(deleted['action'], 'deleted')
+        self.assertEqual(deleted['value'], 12000)
+        self.assertEqual(self.memory.preferences(self.user), [])
+        # 历史 owner 隔离
+        self.assertEqual(self.memory.preference_history(self.other, key='budget_max_cents'), [])
+
+    def test_preference_cross_key_conflict_requires_clarification(self):
+        """跨键冲突（组件 10）：likes 与 avoid 同词条拒绝写入并要求澄清，留 rejected_conflict 台账。"""
+        self.memory.set_preference(self.user, 'likes', ['轻便', '红色'])
+        with self.assertRaisesRegex(StateError, 'preference_conflict_needs_clarification'):
+            self.memory.set_preference(self.user, 'avoid', ['红色', '塑料'])
+        # 活表未被污染：avoid 未写入
+        self.assertEqual([row['preference_key'] for row in self.memory.preferences(self.user)], ['likes'])
+        rejected = self.memory.preference_history(self.user, key='likes')
+        # 冲突发生在写入 avoid 时——prior 是 likes 行，因此台账挂在 likes 键上
+        self.assertEqual(rejected[0]['action'], 'rejected_conflict')
+        self.assertIn('红色', rejected[0]['conflict'][0]['terms'])
+        # 不冲突的 avoid 正常写入
+        self.memory.set_preference(self.user, 'avoid', ['塑料'])
+        self.assertEqual(next(r['value'] for r in self.memory.preferences(self.user) if r['preference_key'] == 'avoid'),
+                         ['塑料'])
+        # 大小写/空白折叠后与 avoid 同词条仍冲突
+        with self.assertRaisesRegex(StateError, 'preference_conflict_needs_clarification'):
+            self.memory.set_preference(self.user, 'likes', [' 塑料 '])
+
+    def test_clear_snapshots_all_live_preferences_to_history(self):
+        self.memory.set_preference(self.user, 'likes', ['轻便'])
+        self.memory.set_preference(self.user, 'purpose', '露营')
+        self.memory.clear(self.user)
+        self.assertEqual(self.memory.preferences(self.user), [])
+        actions = sorted(row['action'] for row in self.memory.preference_history(self.user))
+        self.assertEqual(actions, ['deleted', 'deleted'])
+
+    def test_conversation_evidence_returns_receipts_scoped_to_owner(self):
+        """历史证据回查（组件 9）：tool_call 回执按会话回查、owner 隔离、引用与关键词两种定位。"""
+        run = self.state.create_run(self.user, self.conversation, 'e1', '查键盘')
+        lease = self.state.claim_run(self.user, run['agent_run_id'], owner='test')
+        self.state.start_tool_call(lease, 'call-kb-001', 'recommend_skus', {'query': '键盘 轻便'})
+        self.state.finish_tool_call(lease, 'call-kb-001', outcome='command_accepted',
+                                    receipt={'data': {'items': [{'sku_key': 'kb-lite:black', 'price_cents': 19900}]},
+                                             'observed_at': '2026-10-07T00:00:00Z'})
+        self.state.start_tool_call(lease, 'call-order-002', 'get_order_status', {'orderId': '10086'})
+        self.state.finish_tool_call(lease, 'call-order-002', outcome='business_pending',
+                                    receipt={'data': {'orderId': '10086'}, 'observed_at': '2026-10-07T00:01:00Z'})
+        # 拒绝回执只有 error_type、无事实载荷——不属于可回放的历史观测
+        self.state.start_tool_call(lease, 'call-rejected-003', 'get_order_status', {'orderId': 'bogus'})
+        self.state.finish_tool_call(lease, 'call-rejected-003', outcome='rejected',
+                                    receipt={'error_type': 'CommerceRejected'})
+        self.state.finish_run(lease, state='COMPLETED')
+        # 按关键词
+        by_term = self.memory.conversation_evidence(self.user, self.conversation, term='键盘')
+        self.assertEqual(len(by_term), 1)
+        self.assertEqual(by_term[0]['result_ref'], 'call-kb-001')
+        self.assertEqual(by_term[0]['tool_name'], 'recommend_skus')
+        self.assertEqual(by_term[0]['data']['items'][0]['sku_key'], 'kb-lite:black')
+        # 按引用
+        by_ref = self.memory.conversation_evidence(self.user, self.conversation, call_id='call-order-002')
+        self.assertEqual(by_ref[0]['data']['orderId'], '10086')
+        # 全量倒序（拒绝回执被过滤，不进入回放）
+        all_rows = self.memory.conversation_evidence(self.user, self.conversation, limit=5)
+        self.assertEqual([row['result_ref'] for row in all_rows], ['call-order-002', 'call-kb-001'])
+        # owner 隔离：他人读不到
+        with self.assertRaisesRegex(StateError, 'conversation_not_found'):
+            self.memory.conversation_evidence(self.other, self.conversation)
 
     def test_summary_survives_restart_and_clear_revokes_without_deleting_messages(self):
         for i in range(1, 11):

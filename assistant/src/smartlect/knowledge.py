@@ -168,12 +168,18 @@ def split_document(body, *, window=CHUNK_WINDOW, overlap=CHUNK_OVERLAP):
 
 
 def compose_search_query(utterance, model_query, *, limit=COMPOSED_QUERY_LIMIT):
-    """Rewrite replaces the submitted query. Original is kept for parallel lexical fusion."""
+    """原话为主（组件 3 收口）：用户原话就是提交检索词；模型改写只作附加变体。
+
+    改写继续经 model_query 参数走 extra_queries 一路（rank_chunks 的内存 BM25
+    与 ES 的 extra_queries），不再是主检索词——替换式改写让检索词脱离用户原话，
+    改写漂移（丢约束词、混入臆测）只能靠事后守卫兜底；原话为主把锚点放在检索
+    之前。无原话（空 utterance）回落改写，再回落空串。
+    """
     original = (utterance or "").strip()
     rewrite = (model_query or "").strip()
-    if rewrite:
-        return rewrite[:limit]
-    return original[:limit]
+    if original:
+        return original[:limit]
+    return rewrite[:limit]
 
 
 def parallel_queries(utterance, model_query, *, limit=COMPOSED_QUERY_LIMIT):
@@ -408,7 +414,7 @@ def rank_chunks(rows, query, *, query_vector=None, embedding_model=None, index_v
     if model_query is not None:
         retrieval["submitted_query"] = query
         retrieval["model_query"] = model_query
-        retrieval["query_mode"] = "replace_or_parallel"
+        retrieval["query_mode"] = "original_first_with_rewrite_variant"
     return [by_key[key] for key in keys], retrieval
 
 

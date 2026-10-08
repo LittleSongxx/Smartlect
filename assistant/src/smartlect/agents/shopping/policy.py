@@ -33,8 +33,8 @@ def system_policy_body(enabled=None):
     return SYSTEM_POLICY_BODY if on else _SYSTEM_POLICY_BASE + _SYSTEM_POLICY_REST
 
 BOOTSTRAP_TOOLS = frozenset({
-    'load_skill', 'search_knowledge', 'get_conversation_memory', 'request_handoff',
-    'task_dispatch',
+    'load_skill', 'search_knowledge', 'get_conversation_memory',
+    'lookup_conversation_evidence', 'request_handoff', 'task_dispatch',
 })
 
 _DISPATCH_CLAUSE = ('task_dispatch 把 1-3 个独立只读检索任务并行交给子智能体（各算各的上下文与预算）；'
@@ -89,6 +89,48 @@ TOOL_CALL_LIMIT = 10
 RETRIEVAL_CALL_LIMIT = 2
 ANSWER_REPAIR_LIMIT = 1
 TURN_DEADLINE_SECONDS = 90
+# —— 轮级 token 预算分层（组件 12）——
+# 调用次数只防烧穿，token 档位让「烧到一半」的行为可控：lite 起注入简洁收口提示，
+# minimal 强收口，fallback 直接走既有 BudgetExceeded 降级链。0 = 关闭分层（退回纯次数闸）。
+TURN_TOKEN_BUDGET = max(0, int(os.environ.get('SMARTLECT_TURN_TOKEN_BUDGET') or 60000))
+TURN_BUDGET_TIERS = ((0.50, 'main'), (0.80, 'lite'), (0.95, 'minimal'), (float('inf'), 'fallback'))
+TURN_BUDGET_HINTS = {
+    'lite': '[服务端预算提示] 本轮 token 预算已过半：优先基于已有观察直接收口，'
+            '避免重复检索与长篇铺陈；确需新证据时用一次精准检索。',
+    'minimal': '[服务端预算提示] 本轮 token 预算即将耗尽：立即基于已有证据按终答契约收口，'
+               '不要再发起检索或派发；证据不足时如实说明并转人工。',
+}
+
+
+def turn_budget_tier(used, budget=None):
+    """按本轮已耗 token 计算档位（组件 12）：main/lite/minimal/fallback。
+
+    used 取 model_attempts 的 usage.total_tokens 求和；budget<=0 时恒为 main
+    （分层关闭）。阈值是「已用占比」：<50% main，<80% lite，<95% minimal，其余 fallback。
+    """
+    budget = TURN_TOKEN_BUDGET if budget is None else budget
+    if budget <= 0:
+        return 'main'
+    ratio = (used or 0) / budget
+    for threshold, name in TURN_BUDGET_TIERS:
+        if ratio < threshold:
+            return name
+    return 'fallback'
+# 轮次终止原因枚举（组件 5）：所有收口路径归一到这里，降级率按 reason 可统计。
+# 派生规则见 decision_record._close_reason——顺序敏感：恢复路径 > 降级原因 > closeout 模板 > completed。
+CLOSE_REASONS = (
+    'completed',            # 模型编译终答（含目录模板/回退授权/散文挽救等正常收口）
+    'handoff',              # request_handoff 工具或编译开单收口
+    'recovered_proposal',   # 恢复已保存提案
+    'recovered_ticket',     # 恢复已有工单
+    'budget_exceeded',      # 模型/工具/检索/上下文预算耗尽
+    'repair_exhausted',     # 终答契约修复用尽（answer_contract_failed）
+    'deadline',             # 轮级超时（asyncio.timeout）
+    'provider_fault',       # 模型通道故障（超时/传输/HTTP/输出截断/非 live 模式）
+    'retrieval_empty',      # 合法空证据收口（empty_evidence）
+    'guard_violation',      # 安全覆写（引用失效 citation_no_longer_visible 等）
+    'degraded',             # 其余降级路径（无法归类时的兜底）
+)
 EMPTY_EVIDENCE_ANSWER = '本轮没有当前有效资料，无法依据已发布政策作答。可补充信息后重试，也可以选择人工客服。'
 PRODUCT_UNCOVERED_ANSWER = '资料未覆盖这一件。可切换到全店询问运费或退换，也可以转人工核实。'
 PROVIDER_FAULT_ANSWER = '本轮模型通道未能完成回答，已转人工核实。'

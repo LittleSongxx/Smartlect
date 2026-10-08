@@ -114,8 +114,14 @@ class IdentityBridge:
             raise HTTPException(401, "login_required")
         visitor = request.cookies.get("smartlect_visitor")
         if visitor:
-            identifier = self.visitor_id(visitor)
-        else:
+            try:
+                identifier = self.visitor_id(visitor)
+            except HTTPException:
+                # 失效的访客凭证不该让访客永久拿不到身份——旧格式残留、密钥轮换、
+                # 或浏览器里留着的过期 proof 都会走到这里。清掉它，按新访客重新签发，
+                # 让读路径自愈；否则未登录用户会卡在 invalid_visitor 上无法提问。
+                visitor = None
+        if not visitor:
             from smartlect.guest_token import issue_visitor_jwt
             identifier = secrets.token_hex(16)
             visitor = issue_visitor_jwt(self.secret, identifier)

@@ -26,6 +26,9 @@ class AdminApiMySQLTests(unittest.TestCase):
     def test_runs_browser_lists_scope_runs_and_debug_invoke_is_audited(self):
         asyncio.run(self.exercise())
 
+    def test_analytics_endpoints_aggregate_feedback_costs_and_preference_history(self):
+        asyncio.run(self.exercise_analytics())
+
     def test_publish_runs_async_index_job_to_published(self):
         asyncio.run(self.exercise_indexing())
 
@@ -262,6 +265,78 @@ class AdminApiMySQLTests(unittest.TestCase):
                                     headers=await csrf_headers(client, origin), json={"body": "{}"})
             self.assertEqual(bad.status_code, 422)
 
+
+    async def exercise_analytics(self):
+        """Analytics 面（组件 10/12 + 反馈消费）：反馈聚合、成本归因、偏好历史。"""
+        from smartlect.memory import MemoryStore
+        suffix = uuid.uuid4().hex
+        origin = "http://smartlect.test"
+        config = {"SMARTLECT_USER_PORT": "18105", "SMARTLECT_INTERNAL_TOKEN": "synthetic",
+                  "SMARTLECT_VISITOR_SECRET": "s" * 48, "SMARTLECT_ALLOWED_ORIGINS": origin}
+
+        def java(request):
+            if request.url.path == "/internal/identity/introspect":
+                data = {"subjectType": "merchant", "actorId": "boss-" + suffix, "sessionId": "s",
+                        "permissions": ["admin:legacy", "shopping:read"]}
+                return httpx.Response(200, json={"status": "success", "data": data})
+            raise AssertionError(request.url.path)
+
+        transport = httpx.MockTransport(java)
+
+        def app():
+            return create_app(Settings(), config=config, store=SessionStore(self.connect),
+                              identity=IdentityBridge(config, transport=transport),
+                              commerce=AsyncCommerceClient(config, transport=transport))
+
+        seeded = SessionStore(self.connect)
+        memory = MemoryStore(self.connect)
+        alice = ActorContext(subject_type="user", actor_id="alice-" + suffix,
+                             permissions=("shopping:read", "orders:read", "orders:write"),
+                             session_id="alice-session")
+        conversation = seeded.create_conversation(alice)
+        run = seeded.create_run(alice, conversation["conversation_id"], "an-" + suffix,
+                                canonical({"text": "查政策"}), model_mode="mock")
+        lease = seeded.claim_run(alice, run["agent_run_id"], owner="seed", ttl_seconds=30)
+        # 走真实收口路径 memory.finish_answer：run 级 cost/total_tokens 反范式列
+        # （迁移 0024）只在这里写入，state.finish_run 的测试直插路径不经过它。
+        context = {"model_mode": "mock", "model_calls": 1,
+                   "model_attempts": [{"model_id": "qwen3.7-plus", "prompt_version": "shopping-react-v28",
+                                       "usage": {"total_tokens": 4321, "input_tokens": 4000, "output_tokens": 321},
+                                       "cost_estimate_cny": 0.01}]}
+        memory.finish_answer(lease, alice, {
+            "answer": "已按政策回答。", "answer_status": "answered", "citations": [], "products": [],
+            "orders": [], "proposal": None, "request_kind": "inquire_fact",
+            "audit": {"request_kind": "inquire_fact", "close_reason": "completed", "cost_estimate_cny": 0.01}},
+            context)
+        seeded.save_feedback(alice, run["agent_run_id"], "down", reason_code="outdated")
+        memory.set_preference(alice, "budget_max_cents", 8000)
+        memory.set_preference(alice, "budget_max_cents", 12000)
+        memory.delete_preference(alice, "budget_max_cents")
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app()), base_url=origin) as client:
+            # 用户 realm 不可达管理面（先只带用户 token）
+            client.cookies.set("token", "alice-" + suffix)
+            self.assertEqual((await client.get("/admin-api/assistant/feedback-summary")).status_code, 401)
+            client.cookies.delete("token")
+            client.cookies.set("adminToken", "boss-" + suffix)
+
+            summary = (await client.get("/admin-api/assistant/feedback-summary", params={"days": 7})).json()
+            self.assertEqual(summary["days"], 7)
+            self.assertEqual(next(t for t in summary["totals"] if t["rating"] == "down")["count"], 1)
+            self.assertEqual(summary["daily"][0]["reason_code"], "outdated")
+
+            costs = (await client.get("/admin-api/assistant/cost-attribution")).json()
+            self.assertEqual(costs["runs"], 1)
+            self.assertEqual(costs["by_request_kind"]["inquire_fact"]["runs"], 1)
+            self.assertEqual(costs["by_request_kind"]["inquire_fact"]["total_tokens"], 4321)
+            self.assertEqual(costs["by_model"]["qwen3.7-plus"]["cost_estimate_cny"], 0.01)
+            self.assertEqual(costs["by_close_reason"]["completed"]["runs"], 1)
+
+            history = (await client.get("/admin-api/assistant/preferences-history",
+                                        params={"actor_id": "alice-" + suffix, "key": "budget_max_cents"})).json()
+            actions = [row["action"] for row in history]
+            self.assertEqual(actions, ["deleted", "superseded"])
+            self.assertEqual(history[1]["value"], 8000)
 
     def seed_scope_payment(self, suffix):
         """One attributed payment plus an unrelated refund in the default `store` scope."""
