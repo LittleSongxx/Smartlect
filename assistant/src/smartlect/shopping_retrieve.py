@@ -135,6 +135,9 @@ class ShoppingRetrieve:
         import re as _re
         # 空白归一：与 catalog_gate._fold 同口径（"USB 线"→"USB线"），目录命名无空格语义
         query = {'keyword': _re.sub(r'\s+', '', keyword or ''), 'limit': limit, **recall_scope}
+        print(f"[retrieve:on_sale] keyword={keyword!r} category={category_id!r} "
+              f"scope_limited={scope[0] is not None} excluded={len(recall_scope['excludeProductIds'])}",
+              flush=True)
         if category_id is not None:
             query['categoryId'] = category_id
         # 价格窗不下发 Java（v19）：Java searchOnSale 按商品粒度（min/max_price 列）
@@ -220,6 +223,7 @@ class ShoppingRetrieve:
     async def search(self, actor, request, *, product_scope=None):
         """Independent query-relevance retrieve. Same eligibility gates, no mission merge, no homepage routes."""
         kind, _, _ = _actor(actor)
+        print(f"[retrieve:search 入口] { {k: v for k, v in (request or {}).items() if v} }", flush=True)
         if 'shopping:read' not in getattr(actor, 'permissions', ()) and not (
                 kind == 'merchant' and (
                     'admin:legacy' in getattr(actor, 'permissions', ())
@@ -362,6 +366,7 @@ class ShoppingRetrieve:
 
     async def compare(self, actor, request, *, mission=None, preferences=(), product_scope=None, semantic_rerank=None):
         kind, _, _ = _actor(actor)
+        print(f"[retrieve:compare 入口] { {k: v for k, v in (request or {}).items() if v} }", flush=True)
         if 'shopping:read' not in getattr(actor, 'permissions', ()) and not (
                 kind == 'merchant' and (
                     'admin:legacy' in getattr(actor, 'permissions', ())
