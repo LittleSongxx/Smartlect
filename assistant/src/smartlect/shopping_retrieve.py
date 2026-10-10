@@ -1,5 +1,8 @@
 """Shopping-only catalog retrieve. Hard-constraint misses stay empty; no popular fill."""
 import asyncio
+import logging
+
+log = logging.getLogger("smartlect.retrieve")
 from datetime import datetime, timezone
 from hashlib import sha256
 import uuid
@@ -259,9 +262,17 @@ class ShoppingRetrieve:
         hard = has_hard_constraints(request, mission)
         variants = retrieval_variants(request, mission)
         errors, rows, browse, relaxed = {}, [], False, False
+        # 检索可观测性：没这几行就只能看到「答未找到」，分不清是没调到检索、
+        # 变体全空、还是资格门把命中剔光了。
+        log.info("retrieve query=%r required_terms=%s excluded=%s category_id=%r variants=%s hard=%s",
+                 request.get('query'), request.get('required_terms'),
+                 request.get('excluded_terms'), request.get('category_id'), variants, hard)
         if variants:
             for variant in variants:
+                before = len(rows)
                 rows.extend(await self._search_on_sale(request, scope, variant, category_id=request['category_id'], errors=errors))
+                log.info("  variant=%r → +%d (累计 %d)", variant, len(rows) - before, len(rows))
+        log.info("retrieve 结果 rows=%d errors=%s", len(rows), errors or {})
         if not rows:
             if variants and not request.get('required_terms') and not mission.get('rollback_authorized'):
                 # A keyword search that matched nothing on sale in scope is an honest
