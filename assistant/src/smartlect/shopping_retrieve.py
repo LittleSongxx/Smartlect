@@ -264,15 +264,15 @@ class ShoppingRetrieve:
         errors, rows, browse, relaxed = {}, [], False, False
         # 检索可观测性：没这几行就只能看到「答未找到」，分不清是没调到检索、
         # 变体全空、还是资格门把命中剔光了。
-        log.info("retrieve query=%r required_terms=%s excluded=%s category_id=%r variants=%s hard=%s",
-                 request.get('query'), request.get('required_terms'),
-                 request.get('excluded_terms'), request.get('category_id'), variants, hard)
+        print(f"[retrieve] query={request.get('query')!r} terms={request.get('required_terms')} "
+              f"excluded={request.get('excluded_terms')} category={request.get('category_id')!r} "
+              f"variants={variants} hard={hard}", flush=True)
         if variants:
             for variant in variants:
                 before = len(rows)
                 rows.extend(await self._search_on_sale(request, scope, variant, category_id=request['category_id'], errors=errors))
-                log.info("  variant=%r → +%d (累计 %d)", variant, len(rows) - before, len(rows))
-        log.info("retrieve 结果 rows=%d errors=%s", len(rows), errors or {})
+                print(f"[retrieve]   variant={variant!r} → +{len(rows) - before}（累计 {len(rows)}）", flush=True)
+        print(f"[retrieve] 结果 rows={len(rows)} errors={errors or {}}", flush=True)
         if not rows:
             if variants and not request.get('required_terms') and not mission.get('rollback_authorized'):
                 # A keyword search that matched nothing on sale in scope is an honest
