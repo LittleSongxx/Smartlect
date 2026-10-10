@@ -27,7 +27,8 @@ def validate_rerank(value, cards):
         raise ValueError('invalid_rerank_keys')
     return supplied
 from smartlect.shopping_mission import (empty_mission, has_hard_constraints, retrieval_variants,
-                                        shopping_request, validate_sku_key)
+                                        shopping_request, validate_sku_key,
+                                        _longest_keyword_term)
 from smartlect.state import StateError, _actor
 
 STRATEGY_VERSION = 'shopping-constraint-v2'
@@ -160,6 +161,18 @@ class ShoppingRetrieve:
             except CommerceError:
                 rows = []
             print(f"[retrieve:on_sale]   空白归一为空，原文重试 keyword={keyword!r} → {len(rows)} 条", flush=True)
+        if not rows and keyword:
+            # 短语包含要求关键词在商品名里**连续**；'索尼 WH-1000XM6' 夹在品牌注音
+            #「索尼（SONY）」中间就永远匹配不上。拆词下沉到这一层，search/recommend/
+            # compare 三条路径都能受益，不再只在 retrieval_variants 里做。
+            longest = _longest_keyword_term(keyword)
+            if longest and longest != keyword:
+                retry = {**query, 'keyword': longest}
+                try:
+                    rows = await self.commerce.request('product', '/internal/product/commerce/searchOnSale', data=retry)
+                except CommerceError:
+                    rows = []
+                print(f"[retrieve:on_sale]   原文为空，拆词重试 keyword={longest!r} → {len(rows)} 条", flush=True)
         if not rows and keyword and category_id is not None:
             # 类目内双重门守卫：类目是用户的显式枚举意图，关键词只是定位辅助。
             # 类目有货而叠加关键词后清零时，该空集是「类目门×品名门」叠加出的伪约束，
