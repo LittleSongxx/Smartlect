@@ -2,7 +2,7 @@
 import asyncio
 import logging
 
-log = logging.getLogger("smartlect.retrieve")
+log = logging.getLogger("uvicorn.error")  # 复用 uvicorn 的 handler：裸 logger 的 INFO 没有 handler 会被丢掉
 from datetime import datetime, timezone
 from hashlib import sha256
 import uuid

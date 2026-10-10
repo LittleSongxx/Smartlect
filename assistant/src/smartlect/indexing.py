@@ -138,6 +138,33 @@ class IndexingService:
         return {**job, "state": "DONE", "processed_chunks": 1, "failed_chunks": 0,
                 "message": "published_without_embedding", "index_version": "bm25"}
 
+    def rebuild_bm25(self, actor, *, doc_id=None):
+        """把已发布文档的切片重新写进 ES（BM25 侧）。默认全部，可指定单篇。
+
+        管理端此前只有"刷新文档列表"和"重试失败任务"，没有重建索引的入口；
+        而发布接口对已 PUBLISHED 的文档直接返回——存量数据因此没有路径补进检索层
+        （2026-10-08 线上 32 篇已发布文档一条都没索引）。
+        """
+        scope = actor.execution_scope_id
+        sql = ("SELECT doc_id, version FROM knowledge_document "
+               "WHERE execution_scope_id=%s AND status='PUBLISHED'")
+        params = [scope]
+        if doc_id:
+            sql += " AND doc_id=%s"
+            params.append(doc_id)
+        with self.jobs._transaction() as cursor:
+            cursor.execute(sql, params)
+            documents = cursor.fetchall()
+        chunks, results = 0, []
+        for row in documents:
+            try:
+                chunks += self.index_bm25_only(scope, row["doc_id"], row["version"])
+                results.append({"doc_id": row["doc_id"], "state": "DONE"})
+            except Exception as error:
+                results.append({"doc_id": row["doc_id"], "state": "FAILED",
+                                "error": type(error).__name__})
+        return {"documents": len(documents), "chunks": chunks, "results": results}
+
     def index_bm25_only(self, scope, doc_id, version):
         """无向量地写 ES：取该版本的全部切片，交给 _mirror_index（mapped 为空只写 ES）。
 

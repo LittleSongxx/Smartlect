@@ -68,7 +68,8 @@ class DecisionRecordTests(unittest.TestCase):
     def test_shopping_model_limit_follows_env(self):
         # 单一事实源：决策记录的预算上限来自 agents.shopping.policy，
         # 环境变量只在那一个模块读取（reload 链 policy → decision_record）。
-        self.assertEqual(SHOPPING_MODEL_LIMIT, max(1, int(os.environ.get('SMARTLECT_MODEL_CALL_LIMIT') or 6)))
+        # 默认值 12：对比类问题派发子智能体时，子调用计入同一预算（见 policy.py 注释）
+        self.assertEqual(SHOPPING_MODEL_LIMIT, max(1, int(os.environ.get('SMARTLECT_MODEL_CALL_LIMIT') or 12)))
         with patch.dict(os.environ, {'SMARTLECT_MODEL_CALL_LIMIT': '9'}):
             import smartlect.agents.shopping.policy as policy_module
             import smartlect.decision_record as module
