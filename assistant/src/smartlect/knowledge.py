@@ -870,10 +870,16 @@ class KnowledgeStore(SessionStore):
                 (_actor(actor)[2], doc_id, version))
             return [dict(row) for row in cursor.fetchall()]
 
-    def embed_batch(self, actor, doc_id, version, *, model, index_version, vectors):
+    def embed_batch(self, actor, doc_id, version, *, model, index_version, vectors,
+                    allow_published=False):
         """Batch-wise vector write for the async index pipeline: same validation as
         set_embeddings but without the all-chunks-at-once completeness check, so a job can
-        persist progress batch by batch and a resumed job only re-embeds missing chunks."""
+        persist progress batch by batch and a resumed job only re-embeds missing chunks.
+
+        allow_published=True 用于「给已发布文档补向量」的旁路（rebuild_vectors）——
+        那些文档没走发布流程就直接写了库，状态是 PUBLISHED 而非 DRAFT，本校验会把
+        它们挡在外面。旁路不放宽 chunk 归属校验，仅跳过状态门槛。
+        """
         _merchant(actor)
         model, index_version = _text(model, "embedding_model", 128), _text(index_version, "index_version", 128)
         if not isinstance(vectors, list) or not vectors:
@@ -895,7 +901,7 @@ class KnowledgeStore(SessionStore):
             chunks_meta = {row["chunk_id"]: {"heading": row["heading"], "content": row["content"]}
                            for row in _rows_meta}
             row = self._document(cursor, scope, doc_id, version)
-            if row["status"] != "DRAFT":
+            if row["status"] != "DRAFT" and not allow_published:
                 raise StateError("document_not_draft")
             known = {item["chunk_id"] for item in _rows_meta}
             if not set(mapped) <= known:

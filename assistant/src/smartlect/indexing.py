@@ -225,7 +225,7 @@ class IndexingService:
             mapped = {chunk["chunk_id"]: vector
                       for chunk, vector in zip(batch, embedded["embeddings"], strict=True)}
             await asyncio.to_thread(self.knowledge.embed_batch, actor, doc_id, version,
-                                    model=model, index_version=index_version,
+                                    model=model, index_version=index_version, allow_published=True,
                                     vectors=[{"chunk_id": chunk_id, "vector": vector}
                                              for chunk_id, vector in mapped.items()])
             from smartlect.knowledge import _mirror_index
