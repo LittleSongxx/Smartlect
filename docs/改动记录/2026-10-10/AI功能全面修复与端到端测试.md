@@ -385,3 +385,45 @@ deadline 的上限）。
 
 相关提交：`44b1cf0`（rebuild_vectors）、`51cde7b`（allow_published 旁路）、
 `8a2e4b9`（UUID5 point id）、`c6ee37a`（force 参数）。
+
+---
+
+## 第六轮：推荐链路的语义重排降级（同日追加）
+
+### 18. 「适合送人的小物件」这类宽泛推荐会整轮失败
+
+现象：这类问题召回正常（轨迹显示 `礼物` 变体命中 8 条），但回答是「本轮模型通道未能
+完成回答，已转人工」。日志里没有任何 `BudgetExceeded` 或检索错误。
+
+根因在语义重排：`_rerank` 调 `semantic_rerank`，它构造的 payload 里每张候选卡带完整
+`features` 向量，8 张卡很容易超过 10KB 的 `rerank_context_limit`——`session.py:284`
+直接抛 `BudgetExceeded('rerank_context_limit')`。而 `_rerank` 的异常处理是
+`except StateError: raise`——**BudgetExceeded 是 RuntimeError 的直接子类，不是 StateError**，
+不会被那条分支捕获，于是整轮失败。
+
+修复分两层：
+- `_rerank` 内部：`BudgetExceeded` 也降级到 `content_rule_fallback`（重排失败不该整轮失败）
+- `recommend` 的调用点：`_rerank` 外面再包一层 try，BudgetExceeded 时把排序键按原顺序
+  退化为规则排序
+
+**验证**（线上轨迹 + 端到端）：
+- `适合送人的小物件` 不再整轮失败，进入正常处理
+- `有没有降噪比较好的耳机` 给出澄清式回答（反问预算/场景/佩戴偏好）
+
+### 19. 语义查询验证向量混检
+
+`有没有降噪比较好的耳机` 的回答里带引用 [1][2]（商品对比与推荐、设置选购预算），
+语义召回走的是向量 + BM25 混检。
+
+## 当前状态
+
+线上 6 个端到端用例 + 2 个语义查询全部通过；日志轨迹完整可查
+（`[retrieve:]`、`[rerank:]` 打点都落进 uvicorn.error）。
+
+## 剩余待办
+
+- **对比场景接近 90 秒 deadline**（多次检索 + 主循环合成，可用但无余量）
+- **交易闭环未端到端验证**（报价→提案→下单、反馈、偏好）
+- **提示词改动需复跑 quality-v2**
+
+相关提交：`e06731b`（语义重排降级）。
