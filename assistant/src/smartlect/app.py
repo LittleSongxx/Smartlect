@@ -55,6 +55,28 @@ async def db(function, *args, **kwargs):
 log = logging.getLogger(__name__)
 
 
+def _capture_structured_print():
+    """把 [retrieve:...] / [route:...] 这类结构化 print 也落进 logging（uvicorn.error）。
+
+    uvicorn 用默认 log config 启动，root logger 没有 handler——模块里 print 出来的
+    轨迹在进程日志里看不到，等于没有观测面。只接管带前缀的那部分，其余 print
+    （如 jieba 的加载信息）原样保留。
+    """
+    import builtins
+    root = logging.getLogger("uvicorn.error")
+    if not root.handlers:
+        return
+    original = builtins.print
+
+    def wrapped(*args, **kwargs):
+        text = " ".join(str(a) for a in args)
+        if text.startswith("[retrieve:") or text.startswith("[route:"):
+            root.info("%s", text)
+        return original(*args, **kwargs)
+
+    builtins.print = wrapped
+
+
 class MessageRequest(Arguments):
     message_id: str = Field(min_length=1, max_length=128)
     text: str = Field(min_length=1, max_length=8000)
@@ -829,6 +851,7 @@ def main():
     if args.check:
         print(json.dumps(health(settings)))
         return
+    _capture_structured_print()
     uvicorn.run(create_app(settings), host=settings.host, port=settings.port, ws="none", access_log=False)
 
 
