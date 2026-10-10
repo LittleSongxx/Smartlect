@@ -315,3 +315,73 @@ print，按 INFO 级写进 `uvicorn.error`（真实进程里它有 handler）；
 5. 诊断期的 `print` 轨迹已通过 `_capture_structured_print` 接进 logging，保留为可观测的一部分。
 
 相关提交：`0688c68`（日志捕获）、`55e771e`（拆词下沉）；至此 `main` 为 `10c63c7`。
+
+---
+
+## 第五轮：Qdrant 向量补齐——向量混检真正上线（同日追加）
+
+### 15. 给已发布文档补向量
+
+存量文档是直接写库的（status=PUBLISHED），没走过发布流程，`Qdrant` 一直是空的，
+检索只有 BM25。而 `publish()` 接口对已 PUBLISHED 文档直接返回（`draft_chunks_with_status`
+会因状态拒绝），没有任何路径能把向量补进去。
+
+**做法**：
+- `IndexingService._embed_published()`：只查向量缺失的切片（`vector_json IS NULL`），
+  embed 后写 `embed_batch` + `_mirror_index`（Qdrant 向量 + ES BM25 一并落）；
+  不走 `publish()`、不动文档状态。
+- `IndexingService.rebuild_vectors()`：遍历已发布文档，逐篇串行补。
+- `POST /admin-api/assistant/knowledgeIndex/rebuild` 加 `with_vectors` 参数（管理端可用）。
+
+### 16. 过程中又发现的三个 bug
+
+| 问题 | 修复 |
+|---|---|
+| `record_sync_publish` 缺 embedding key 时只记任务、不写索引 | 改为**真的写 ES**（`index_bm25_only`） |
+| `embed_batch` 要求文档处于 DRAFT，把已发布文档挡在外面 | 加 `allow_published` 旁路（不放宽 chunk 归属校验，仅跳过状态门槛） |
+| Qdrant 的 point id 用了 `es_doc_id` 那种字符串，被 400 拒且静默吞掉 | 改为 `uuid.uuid5(NAMESPACE_URL, ...)` 从同一字符串确定性派生；`payload` 里保留完整标识用于回查 |
+
+其中最后一个（point id）是隐性 bug——向量能进 MySQL、ES 也写进去了，只有 Qdrant 一直空着，
+排查时要拿"payload 里没 doc_id"这种线索往回追。
+
+### 17. 执行与验证
+
+服务器端用 `scripts/` 独立脚本驱动（management API 有验证码，自动化登录不了）：
+
+```
+文档数: 31 → 已补向量 31 篇（共 31 切片）| 失败: 0
+```
+
+**验证**：
+
+| 检查 | 结果 |
+|---|---|
+| MySQL `knowledge_chunk` 有向量的切片 | 31 / 32 |
+| Qdrant `smartlect_knowledge` 集合 | **31 个点**（UUID5 派生 ID） |
+| 向量检索（probe"退换货政策"） | `backend=qdrant_hnsw`，命中 5 条 |
+| 端到端知识问答 | **三篇引用 [1][2][3]**（修复前只有 [1][2]） |
+| 语义商品查询（"适合送人的小物件"） | 检索召回 8 条（轨迹可见）；推荐链路见下 |
+
+### 全量回归（线上 6 用例）
+
+知识/运费/商品/订单/对比 **5 项通过**；推荐项反问预算（澄清式设计）。对比项在全量回归里
+因前端超时阈值显示为"处理中"，单独验证时给出完整对比（两次查询 + 多次检索确实接近 90 秒
+deadline 的上限）。
+
+## 已完成 / 未完成
+
+**已完成**：知识问答（带引用）、商品咨询（规格/价格/库存）、对比问答（完整对比 + 商品卡）、
+订单引导（说明需登录）、语义商品召回（向量 + BM25 混检真实工作）——五类核心场景在线上
+全部正确，且都有日志轨迹可核。
+
+**未完成**：
+1. **推荐链路的语义重排**："适合送人的小物件"这类宽泛推荐在召回后仍可能报"模型通道未能
+   完成回答"——检索召回正常（8 条），失败在更下游的语义重排或合成环节，本轮没定位到具体点。
+2. **对比场景接近 90 秒 deadline**：已可用但无余量。
+3. **交易闭环未端到端验证**：报价 → 提案确认 → 下单、子智能体成功路径、反馈、偏好。
+4. **提示词改动需复跑 quality-v2**。
+5. 诊断期的 `[retrieve:]` print 已通过 `_capture_structured_print` 接进 logging，保留为
+   可观测的一部分（不再是临时打点）。
+
+相关提交：`44b1cf0`（rebuild_vectors）、`51cde7b`（allow_published 旁路）、
+`8a2e4b9`（UUID5 point id）、`c6ee37a`（force 参数）。
