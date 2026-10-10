@@ -28,7 +28,7 @@ def build_router(*, actor_for, indexing, knowledge, provider, config, settings, 
 
     @router.post("/admin-api/assistant/knowledgeIndex/rebuild")
     async def index_rebuild(request: Request, response: Response, doc_id: str = None,
-                            with_vectors: bool = False):
+                            with_vectors: bool = False, force_vectors: bool = False):
         """把库里已发布的文档重新写进检索层（默认全部，可指定 doc_id）。
 
         发布接口对已 PUBLISHED 的文档直接返回，此前没有任何路径能把存量数据补进
@@ -39,7 +39,7 @@ def build_router(*, actor_for, indexing, knowledge, provider, config, settings, 
         actor = await actor_for(request, response, realm="merchant", write=True)
         actor.require("admin:legacy")
         bm25 = await asyncio.to_thread(indexing.rebuild_bm25, actor, doc_id=doc_id)
-        vectors = (await indexing.rebuild_vectors(actor, doc_id=doc_id)) if with_vectors else None
+        vectors = (await indexing.rebuild_vectors(actor, doc_id=doc_id, force=force_vectors)) if with_vectors else None
         return {"bm25": bm25, "vectors": vectors}
 
     @router.get("/admin-api/assistant/knowledgeIndex/jobs")
