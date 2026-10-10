@@ -467,6 +467,28 @@ def shopping_request(params, mission):
     return apply_mission_to_request(request.model_dump(), normalize_mission(mission))
 
 
+def _longest_keyword_term(text):
+    """从复合关键词里切出最长的实词，作为「短语包含」语义下的兜底检索变体。
+
+    Java searchOnSale 的文本谓词是短语包含（等价 LIKE）："小猪B-BO公仔"在商品名
+    里不连续就整体落空，而它的组成词各自都在售——实测同一接口 keyword="小猪B-BO"
+    命中、keyword="小猪B-BO公仔" 返回空。挑最长的词再试一次，比直接答"未找到"
+    更接近用户意图；切不出两个词时返回空串，不制造噪声变体。
+    """
+    raw = str(text or '').strip()
+    if len(raw) < 3:
+        return ''
+    try:
+        import jieba
+        words = [word.strip() for word in jieba.lcut(raw) if len(word.strip()) >= 2]
+    except Exception:
+        return ''
+    if len(words) < 2:
+        return ''
+    longest = max(words, key=len)
+    return '' if longest == raw else longest
+
+
 def retrieval_variants(request, mission):
     variants = []
 
@@ -481,7 +503,9 @@ def retrieval_variants(request, mission):
     targets = mission.get('comparison_targets') or []
     if len(targets) == 1:
         add(targets[0])
-    return variants[:3]
+    # 放在最后：只有前面那些精确变体都召回为空时才会用到这个放宽项
+    add(_longest_keyword_term(request.get('query')))
+    return variants[:4]
 
 
 def looks_like_exception_request(utterance):
