@@ -212,8 +212,12 @@ class ShoppingRetrieve:
                 mode = 'content_llm'
             except StateError:
                 raise
-            except Exception:
-                mode, rerank_error = 'content_rule_fallback', 'semantic_rerank_unavailable_or_invalid'
+            except Exception as error:
+                # 预算超限（rerank_context_limit 等）也要降级到规则排序——重排失败
+                # 不该让整轮失败。其余异常保持既有口径。
+                mode, rerank_error = 'content_rule_fallback', \
+                    f'semantic_rerank_{type(error).__name__}' if type(error).__name__ == 'BudgetExceeded' \
+                    else 'semantic_rerank_unavailable_or_invalid'
         elif semantic_rerank is None:
             rerank_error = 'semantic_rerank_not_configured' if len(ranked) > 1 else 'insufficient_candidates'
         return ranked_keys, mode, rerank_error
@@ -374,7 +378,17 @@ class ShoppingRetrieve:
                                 empty_reason='hard_constraint_unsatisfied' if hard else 'no_eligible_sku',
                                 variants=variants, browse=browse, relaxed=relaxed, errors=errors)
         ranked = rank_shopping_skus(cards, request, preferences)[:MAX_RERANK_SKUS]
-        ranked_keys, mode, rerank_error = await self._rerank(ranked, request, semantic_rerank)
+        try:
+            ranked_keys, mode, rerank_error = await self._rerank(ranked, request, semantic_rerank)
+        except Exception as error:
+            # 重排阶段的预算超限降级到规则排序：召回已经成立，语义排序失败不该让
+            # 整轮失败（「适合送人的小物件」这类宽泛推荐就是这样被卡住的）。
+            if type(error).__name__ == 'BudgetExceeded':
+                print(f"[rerank] BudgetExceeded: {error}", flush=True)
+                ranked_keys, mode, rerank_error = [card['sku_key'] for card in ranked], \
+                    'content_rule_fallback', f'semantic_rerank_{error}'
+            else:
+                raise
         refreshed, final_removed = await self._snapshot([card['productId'] for card in ranked], request, scope,
                                                         allowed_sku_keys=set(ranked_keys))
         scored = rank_shopping_skus(refreshed, request, preferences)
