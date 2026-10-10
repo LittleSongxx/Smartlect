@@ -58,19 +58,34 @@ def qdrant_client():
     return _qdrant
 
 
+# 中文默认分析器的候选：smartcn 需要插件（随镜像分发），cjk 是 ES 内置的中日韩
+# bigram 分析器。写死 smartcn 会在没装插件的 ES 上让建索引直接 400，索引只能由
+# dynamic mapping 兜底、中文按 standard 切分（2026-10-08 线上就是这个后果）。
+ANALYZER_CANDIDATES = ("smartcn", "cjk")
+
+
+async def _default_analyzer(es):
+    """挑一个当前 ES 真正支持的默认分析器；都不支持时返回 None，交给内置 standard。"""
+    for kind in ANALYZER_CANDIDATES:
+        try:
+            await es.indices.analyze(analyzer=kind, text="中文分词探测")
+            return kind
+        except Exception:
+            continue
+    return None
+
+
 async def ensure_schema():
     """幂等建索引/集合；任一后端缺失时跳过对应部分。"""
     es = es_client()
     if es is not None:
         if not await es.indices.exists(index=ES_INDEX):
+            settings = {"number_of_shards": 1, "number_of_replicas": 0}
+            analyzer = await _default_analyzer(es)
+            if analyzer:
+                settings["analysis"] = {"analyzer": {"default": {"type": analyzer}}}
             await es.indices.create(index=ES_INDEX, body={
-                "settings": {
-                    "number_of_shards": 1,
-                    "number_of_replicas": 0,
-                    # smartcn 是 ES 官方中文分词插件，随镜像分发；
-                    # 插件缺失的裸 ES 上回退 standard，检索质量降级但不失败。
-                    "analysis": {"analyzer": {"default": {"type": "smartcn"}}},
-                },
+                "settings": settings,
                 "mappings": {
                     "properties": {
                         "scope": {"type": "keyword"},

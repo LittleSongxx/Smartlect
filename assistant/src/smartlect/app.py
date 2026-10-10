@@ -233,8 +233,11 @@ def create_app(settings=None, *, config=None, store=None, identity=None, commerc
             from smartlect import hybrid_search
             # ensure_schema 是协程：直接 await（此前误经 db()=to_thread 包装，从未真正执行）
             await hybrid_search.ensure_schema()
-        except Exception:
-            log.warning("hybrid search schema bootstrap skipped", exc_info=True)
+        except Exception as error:
+            # 建索引失败 = 知识/商品索引可能整层不可用（2026-10-08 线上因缺 aiohttp
+            # 静默跳过全部 ES 检索，客服只能答"没有资料"）。这里必须吵，别只留 WARN。
+            log.error("检索后端初始化失败（%s）：ES/Qdrant 索引将不可用，请检查依赖与配置",
+                      type(error).__name__, exc_info=True)
         # 30 天数据保留任务原在 worker 进程；worker 退役后并入 API 进程（每日一跑，守护线程）。
         retention = threading.Thread(
             target=_retention_loop, name="smartlect-retention", daemon=True,

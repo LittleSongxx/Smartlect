@@ -124,14 +124,39 @@ class IndexingService:
         return self.settings.model_mode == "live" and bool(self.config.get("SMARTLECT_EMBEDDING_API_KEY"))
 
     def record_sync_publish(self, actor, doc_id, version):
-        """BM25-only publish still leaves an ops-visible DONE job."""
+        """BM25-only publish：留一条 ops 可见的 DONE 任务，并且**真的把切片写进 ES 索引**。
+
+        ES 侧与向量无关。早先这里只记任务、不写索引，于是没有 embedding key 的部署
+        发布任何知识都检索不到——ES 为空，BM25 召回必然落空（2026-10-08 线上事故）。
+        """
         job = self.jobs.create(actor, doc_id, version, 1)
         self.jobs.claim(job["job_id"])
         self.jobs.progress(job["job_id"], processed=1, failed=0)
+        self.index_bm25_only(actor.execution_scope_id, doc_id, version)
         self.jobs.finish(job["job_id"], "DONE", message="published_without_embedding",
                          index_version="bm25")
         return {**job, "state": "DONE", "processed_chunks": 1, "failed_chunks": 0,
                 "message": "published_without_embedding", "index_version": "bm25"}
+
+    def index_bm25_only(self, scope, doc_id, version):
+        """无向量地写 ES：取该版本的全部切片，交给 _mirror_index（mapped 为空只写 ES）。
+
+        也用于存量环境重建索引——发布接口对已 PUBLISHED 的文档直接返回，
+        没有别的入口能把它们补进检索层。
+        """
+        from smartlect.knowledge import _mirror_index
+        with self.jobs._transaction() as cursor:
+            cursor.execute("SELECT chunk_id,heading,content FROM knowledge_chunk "
+                           "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s",
+                           (scope, doc_id, version))
+            chunks_meta = {row["chunk_id"]: {"heading": row["heading"], "content": row["content"]}
+                           for row in cursor.fetchall()}
+        if not chunks_meta:
+            # 没有切片可索引不算发布失败：索引层的问题不该阻塞发布（与 _mirror_index
+            # 的容错口径一致），返回 0 交给调用方判断。
+            return 0
+        _mirror_index(scope, doc_id, version, None, "bm25", {}, chunks_meta=chunks_meta)
+        return len(chunks_meta)
 
     async def submit(self, actor, doc_id, version):
         chunks = await asyncio.to_thread(self.knowledge.draft_chunks_with_status, actor, doc_id, version)

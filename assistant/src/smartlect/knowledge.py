@@ -418,19 +418,25 @@ def rank_chunks(rows, query, *, query_vector=None, embedding_model=None, index_v
     return [by_key[key] for key in keys], retrieval
 
 
-def _mirror_vector(scope, doc_id, version, model, index_version, mapped, chunks_meta=None):
-    """索引双写：Qdrant 向量 + ES BM25 文档；任一失败不阻塞发布（审计已有 attempt 台账）。"""
+def _mirror_index(scope, doc_id, version, model, index_version, mapped, chunks_meta=None):
+    """索引双写：Qdrant 向量（有向量时）+ ES BM25 文档（始终按 chunks_meta 全量）。
+
+    ES 侧不依赖向量——早先把它的写入放进「遍历向量」的循环里，没有 embedding
+    key 的部署就永远索引不到知识：ES 为空、BM25 检索必然落空，客服只能答
+    "没有资料"（2026-10-08 线上事故）。所以 ES 走全量切片、Qdrant 只写有向量的那份。
+    任一失败不阻塞发布（审计已有 attempt 台账）。
+    """
     try:
         import asyncio
         from smartlect import hybrid_search
         async def write_all():
             results = []
-            results.append(await hybrid_search.upsert_vectors(scope, doc_id, version, model, index_version, mapped))
-            for chunk_id, vector in mapped.items():
-                meta = (chunks_meta or {}).get(chunk_id) or {}
+            if mapped:
+                results.append(await hybrid_search.upsert_vectors(scope, doc_id, version, model, index_version, mapped))
+            for chunk_id, meta in (chunks_meta or {}).items():
                 results.append(await hybrid_search.index_chunk(
-                    scope, doc_id, version, chunk_id, meta.get("heading"), meta.get("content"),
-                    index_version=index_version))
+                    scope, doc_id, version, chunk_id, (meta or {}).get("heading"),
+                    (meta or {}).get("content"), index_version=index_version))
             return results
         asyncio.run(write_all())
     except Exception:
@@ -851,7 +857,7 @@ class KnowledgeStore(SessionStore):
             cursor.executemany("UPDATE knowledge_chunk SET embedding_model=%s,embedding_dimensions=%s,index_version=%s,vector_json=%s "
                 "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s AND chunk_id=%s",
                 [(model, dimensions, index_version, canonical(vector), scope, doc_id, version, key) for key, vector in mapped.items()])
-        _mirror_vector(scope, doc_id, version, model, index_version, mapped, chunks_meta=chunks_meta)
+        _mirror_index(scope, doc_id, version, model, index_version, mapped, chunks_meta=chunks_meta)
         return {"model": model, "index_version": index_version, "dimensions": dimensions, "chunks": len(mapped)}
 
     def draft_chunks_with_status(self, actor, doc_id, version):
@@ -898,7 +904,7 @@ class KnowledgeStore(SessionStore):
                 "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s AND chunk_id=%s",
                 [(model, dimensions, index_version, canonical(vector), scope, doc_id, version, key)
                  for key, vector in mapped.items()])
-        _mirror_vector(scope, doc_id, version, model, index_version, mapped, chunks_meta=chunks_meta)
+        _mirror_index(scope, doc_id, version, model, index_version, mapped, chunks_meta=chunks_meta)
         return {"chunks": len(mapped), "model": model, "index_version": index_version}
 
     def embedding_counts(self, actor, doc_id, version):
