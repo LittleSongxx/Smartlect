@@ -166,3 +166,68 @@ smartlect.agents.shopping.contract.BudgetExceeded: model_call_or_time_limit
 4. 后续相关提交：`db30269`（索引层根治）、`03cc553`（拆词）、`48e4a46`（可观测性）、
    `9917568`（预算 12 + rebuild 接口）、`70bfbff`（诊断期 print）、`544d033`（提示词）、
    `43c23eb`（预算 8）。
+
+---
+
+## 第三轮：对比问题的真凶找到了（同日追加）
+
+### 9. 轨迹加错位置 → 加到底层入口
+
+上一轮把检索轨迹加在 `ShoppingRetrieve.recommend` 上，结果一行都看不到——**工具分派是
+`search_skus → search()`、`recommend_skus → recommend()`、`compare_skus → compare()`**，
+而商品查询走 `search`、对比走 `compare`。改为加在 `_search_on_sale`（所有检索路径的必经之路）
+加 `search`/`compare` 两个入口后，一次就看到了真相。
+
+### 10. 空白归一废掉了英文商品名（对比失败的直接原因）
+
+轨迹显示对比**确实检索了**：
+
+```
+[retrieve:compare 入口] {'comparison_targets': ['iPhone 17 Pro Max', '索尼 WH-1000XM6']}
+[retrieve:on_sale] keyword='iPhone 17 Pro Max' category=None ...
+```
+
+`_search_on_sale` 里有一句"空白归一"：`_re.sub(r'\s+', '', keyword)`，注释写着"与
+catalog_gate._fold 同口径（'USB 线'→'USB线'），目录命名无空格语义"。**中文没问题，英文就废了**——
+`iPhone 17 Pro Max` 被归一成 `iPhone17ProMax`，而 Java 的谓词是短语包含（等价 LIKE），
+商品名里是带空格的 `iPhone 17 Pro Max`，永远匹配不上。Java 层实测：
+
+| keyword | 命中 |
+|---|---|
+| `iPhone17ProMax`（归一后） | **0** |
+| `iPhone 17 Pro Max`（原文） | **1** |
+| `iPhone` | 1 |
+
+**修复**：归一是软约束，归一失败时用原文重试一次（中文行为完全不变）。
+
+**验证**（线上轨迹）：`keyword='iPhone 17 Pro Max' → 1 条`——iPhone 类恢复。
+
+### 11. 索尼那类仍不行：名称中间夹着品牌注音
+
+`索尼 WH-1000XM6` 原文也是 0 条——商品全名是「索尼（SONY）WH-1000XM6 头戴式…」，
+"索尼"与"WH-1000XM6"之间隔着"（SONY）"，短语包含语义下依然不连续。而
+`retrieval_variants` 里已有的 jieba 拆词只作用于 `search`/`recommend` 路径，
+`compare` 的 `comparison_targets` 不经过它。
+
+**本轮没继续动**：把拆词下沉到 `_search_on_sale` 会改变**所有**检索的行为，而对比场景又要走
+多次检索，`TURN_DEADLINE_SECONDS=90` 下已经出现超时（实测对比问题这次是"等待超时"）。
+这两件事要一起权衡，不宜顺手改。
+
+## 第三轮小结
+
+**已修并验证**：空白归一 bug（iPhone 类恢复）、对比预算（8）、重建索引接口、检索轨迹、
+日志诊断路径（`/proc/<pid>/fd/1` 确认 stdout 指向日志文件，`size=1836` 说明写入正常，
+只是**之前几轮加的轨迹加错了函数**）。
+
+**仍待解决**：
+1. **对比场景仍会超时或答"未检索到"**：根因有两层——(a) 索尼类商品名中间夹注音，需要把拆词
+   下沉到检索底层；(b) 对比要串行多次检索，90 秒 deadline 不够。修 (a) 会放大 (b)。
+2. **Qdrant 向量仍未补**：`rebuild_bm25` 只做 BM25 侧，向量侧需要走正常发布（`_execute`
+   要求文档处于 DRAFT）。
+3. **交易闭环未端到端验证**（报价→提案→下单、反馈、偏好）。
+4. **提示词改动需复跑 quality-v2**。
+
+**诊断期临时改动**：`_search_on_sale` / `search` / `compare` 里的 `print(..., flush=True)`
+轨迹是诊断用的，定位完成后应改回 logging 或收敛为可开关的 debug 输出。
+
+相关提交：`4bb3230`（轨迹加到正确入口）、`868200f`（空白归一原文重试）。
