@@ -161,6 +161,14 @@ async def bm25_search(query, scope, limit=FIRST_STAGE, *, extra_queries=()):
     return hits, "es_bm25"
 
 
+def qdrant_point_id(scope, doc_id, version, chunk_id):
+    """Qdrant point id 必须是 UUID 或无符号整数，不能直接用 es_doc_id 那种
+    'scope:doc_id:version:chunk_id' 字符串。用 UUID5 从同一字符串确定性派生：
+    同一切片总是同一个点（幂等 upsert），且 payload 里保留完整标识用于回查。"""
+    import uuid
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"smartlect:{scope}:{doc_id}:{version}:{chunk_id}"))
+
+
 async def upsert_vectors(scope, doc_id, version, model, index_version, mapped):
     """Qdrant 批量 upsert（mapped: chunk_id -> vector）。失败返回 False。"""
     qdrant = qdrant_client()
@@ -169,7 +177,7 @@ async def upsert_vectors(scope, doc_id, version, model, index_version, mapped):
     from qdrant_client import models
     points = [
         models.PointStruct(
-            id=es_doc_id(scope, doc_id, version, chunk_id),
+            id=qdrant_point_id(scope, doc_id, version, chunk_id),
             vector=vector,
             payload={"scope": scope, "doc_id": doc_id, "version": int(version),
                      "chunk_id": chunk_id, "embedding_model": model,
