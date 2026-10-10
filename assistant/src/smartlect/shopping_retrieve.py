@@ -133,8 +133,11 @@ class ShoppingRetrieve:
         if scope[0] is not None:
             recall_scope['productIds'] = sorted(scope[0])
         import re as _re
-        # 空白归一：与 catalog_gate._fold 同口径（"USB 线"→"USB线"），目录命名无空格语义
-        query = {'keyword': _re.sub(r'\s+', '', keyword or ''), 'limit': limit, **recall_scope}
+        # 空白归一：与 catalog_gate._fold 同口径（"USB 线"→"USB线"），中文目录命名无空格语义。
+        # 但英文商品名靠词间空格才有意义——"iPhone 17 Pro Max" 归一成 "iPhone17ProMax"
+        # 在 Java 的短语包含语义下永远匹配不上（商品名里是带空格的），所以归一失败时用原文重试。
+        keyword_folded = _re.sub(r'\s+', '', keyword or '')
+        query = {'keyword': keyword_folded, 'limit': limit, **recall_scope}
         print(f"[retrieve:on_sale] keyword={keyword!r} category={category_id!r} "
               f"scope_limited={scope[0] is not None} excluded={len(recall_scope['excludeProductIds'])}",
               flush=True)
@@ -149,6 +152,14 @@ class ShoppingRetrieve:
         except CommerceError:
             errors['content'] = 'commerce_unavailable'
             return []
+        if not rows and keyword and keyword != keyword_folded:
+            # 归一后的关键词一个字都没召回，而原文含空格——大概率是英文商品名被归一废了
+            retry = {**query, 'keyword': keyword}
+            try:
+                rows = await self.commerce.request('product', '/internal/product/commerce/searchOnSale', data=retry)
+            except CommerceError:
+                rows = []
+            print(f"[retrieve:on_sale]   空白归一为空，原文重试 keyword={keyword!r} → {len(rows)} 条", flush=True)
         if not rows and keyword and category_id is not None:
             # 类目内双重门守卫：类目是用户的显式枚举意图，关键词只是定位辅助。
             # 类目有货而叠加关键词后清零时，该空集是「类目门×品名门」叠加出的伪约束，
