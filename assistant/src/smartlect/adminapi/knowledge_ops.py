@@ -27,16 +27,20 @@ def build_router(*, actor_for, indexing, knowledge, provider, config, settings, 
         return await indexing.retry_failed(actor, job_id)
 
     @router.post("/admin-api/assistant/knowledgeIndex/rebuild")
-    async def index_rebuild(request: Request, response: Response, doc_id: str = None):
+    async def index_rebuild(request: Request, response: Response, doc_id: str = None,
+                            with_vectors: bool = False):
         """把库里已发布的文档重新写进检索层（默认全部，可指定 doc_id）。
 
         发布接口对已 PUBLISHED 的文档直接返回，此前没有任何路径能把存量数据补进
         ES —— 2026-10-08 线上 32 篇已发布文档一条都没索引，客服只能答"没有资料"。
-        只做 BM25（ES）侧：向量需要 embedding，走正常发布流程即可。
+        `with_vectors=true` 时一并补上缺失的向量（需要 embedding key）；Qdrant 向量
+        只为「缺多少补多少」，已有向量的切片不重新调用模型。
         """
         actor = await actor_for(request, response, realm="merchant", write=True)
         actor.require("admin:legacy")
-        return await asyncio.to_thread(indexing.rebuild_bm25, actor, doc_id=doc_id)
+        bm25 = await asyncio.to_thread(indexing.rebuild_bm25, actor, doc_id=doc_id)
+        vectors = (await indexing.rebuild_vectors(actor, doc_id=doc_id)) if with_vectors else None
+        return {"bm25": bm25, "vectors": vectors}
 
     @router.get("/admin-api/assistant/knowledgeIndex/jobs")
     async def index_jobs(request: Request, response: Response, limit: int = 20):

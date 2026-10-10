@@ -185,6 +185,81 @@ class IndexingService:
         _mirror_index(scope, doc_id, version, None, "bm25", {}, chunks_meta=chunks_meta)
         return len(chunks_meta)
 
+    def _published_chunks(self, scope, doc_id, version):
+        """取某文档某版本下没有向量的切片（含 heading/content，供 embedding）。"""
+        with self.jobs._transaction() as cursor:
+            cursor.execute(
+                "SELECT chunk_id,heading,content FROM knowledge_chunk "
+                "WHERE execution_scope_id=%s AND doc_id=%s AND version=%s AND vector_json IS NULL",
+                (scope, doc_id, version))
+            return cursor.fetchall()
+
+    async def _embed_published(self, actor, doc_id, version):
+        """为已发布文档补上向量——只查向量缺失的切片，embed 后直接发布到 Qdrant 与 ES。
+
+        与 _execute 的区别：不走 publish()、不动文档状态（它已经是 PUBLISHED，
+        draft_chunks_with_status 会因状态拒绝）、也不要求 embedding_enabled()
+        （由调用方判断）。缺向量时按索引版本从「缺多少补多少」；没有缺失切片就跳过。
+        """
+        todo = await asyncio.to_thread(self._published_chunks, actor.execution_scope_id, doc_id, version)
+        if not todo:
+            return {"doc_id": doc_id, "chunks": 0, "skipped": "already_embedded"}
+        if not self.config.get("SMARTLECT_EMBEDDING_API_KEY"):
+            return {"doc_id": doc_id, "chunks": len(todo), "skipped": "no_embedding_key"}
+
+        chunks_meta = {c["chunk_id"]: {"heading": c["heading"], "content": c["content"]}
+                       for c in todo}
+        model = self.config.get("SMARTLECT_EMBEDDING_MODEL")
+        dimensions = int(self.config.get("SMARTLECT_EMBEDDING_DIMENSIONS", "1024"))
+        index_version = f"{model}:d{dimensions}:v1"
+        processed = 0
+        for start in range(0, len(todo), BATCH_SIZE):
+            batch = todo[start:start + BATCH_SIZE]
+            audit = IndexModelAudit(self.jobs.connect, actor, doc_id, version,
+                                    uuid.uuid4().hex, start // BATCH_SIZE)
+            embedded = await self.provider.embed(
+                [chunk["content"] for chunk in batch],
+                before_attempt=lambda: asyncio.to_thread(audit.start),
+                on_trace=lambda record: asyncio.to_thread(audit.finish, record),
+                prompt_version="knowledge-reindex-v1", schema_version="embedding-v1")
+            mapped = {chunk["chunk_id"]: vector
+                      for chunk, vector in zip(batch, embedded["embeddings"], strict=True)}
+            await asyncio.to_thread(self.knowledge.embed_batch, actor, doc_id, version,
+                                    model=model, index_version=index_version,
+                                    vectors=[{"chunk_id": chunk_id, "vector": vector}
+                                             for chunk_id, vector in mapped.items()])
+            from smartlect.knowledge import _mirror_index
+            await asyncio.to_thread(_mirror_index, actor.execution_scope_id, doc_id, version,
+                                    model, index_version, mapped, chunks_meta=chunks_meta)
+            processed += len(batch)
+        return {"doc_id": doc_id, "chunks": processed}
+
+    async def rebuild_vectors(self, actor, *, doc_id=None):
+        """给已发布文档补上向量（默认全部，可指定单篇）。逐文档串行，不并发。
+
+        发布接口对已 PUBLISHED 的文档直接返回（不重新入队 embedding），而线上存量
+        又是直接写库的、从没走过发布流程——所以 Qdrant 一直是空的。这里补的正是
+        那条路径：走已发布文档、只补缺失向量、写 ES 与 Qdrant 都走 _mirror_index。
+        """
+        scope = actor.execution_scope_id
+        sql = ("SELECT doc_id, version FROM knowledge_document "
+               "WHERE execution_scope_id=%s AND status='PUBLISHED'")
+        params = [scope]
+        if doc_id:
+            sql += " AND doc_id=%s"
+            params.append(doc_id)
+        with self.jobs._transaction() as cursor:
+            cursor.execute(sql, params)
+            documents = cursor.fetchall()
+        results = []
+        for row in documents:
+            try:
+                results.append(await self._embed_published(actor, row["doc_id"], row["version"]))
+            except Exception as error:
+                results.append({"doc_id": row["doc_id"], "state": "FAILED",
+                                "error": type(error).__name__})
+        return {"documents": len(documents), "results": results}
+
     async def submit(self, actor, doc_id, version):
         chunks = await asyncio.to_thread(self.knowledge.draft_chunks_with_status, actor, doc_id, version)
         job = await asyncio.to_thread(self.jobs.create, actor, doc_id, version, len(chunks))
