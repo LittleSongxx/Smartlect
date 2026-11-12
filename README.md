@@ -28,9 +28,7 @@
 
 支付是本地模拟，不接真实渠道；没有真实资金，也没有把 mock 支付当成生产支付。
 
-线上可以直接点：[用户端](https://smartlect.cn/) · [管理端](https://smartlect.cn/admin/)。
-
-**对外演示账号是公开的，权限在服务端按身份拒绝。** 不要用仓库或环境里的超管。登录页默认填的是可下单的演示买家。
+**演示账号权限在服务端按身份拒绝。** 不要用仓库或环境里的超管。登录页默认填的是可下单的演示买家。
 
 | 端 | 账号 | 密码 | 能做什么 | 不能做什么 |
 | --- | --- | --- | --- | --- |
@@ -104,7 +102,7 @@
 
 用户端和管理端是两套 Sa-Token realm：用户 `token`，管理端 `adminToken`。网关只校验会话键存在性，角色、权限点和数据归属由服务端判定。
 
-公开演示的 `gallery` 账号默认只读；退款复核是显式放行的例外。写接口必须有权限注解，CI 有授权门禁。
+演示用的 `gallery` 账号默认只读；退款复核是显式放行的例外。写接口必须有权限注解，CI 有授权门禁。
 
 </td>
 </tr>
@@ -189,8 +187,6 @@ docs/      改动记录（按日归档）· ADR · 架构图/截图
 
 本地 `run/runtime.env` 可能把 Java 端口覆盖为 `18101–18108`、网关覆盖为 `18082`；以启动日志和 `run/runtime.env` 为准。
 
-已经部署的副本：[用户端](https://smartlect.cn/) · [管理端](https://smartlect.cn/admin/)。试用账密见上文，超管密码不在此公开。
-
 ---
 
 ## 怎么验证它真的能跑
@@ -262,7 +258,7 @@ python3 scripts/drills/fault_drills.py all
 | 站点 | `http://127.0.0.1/` | nginx 反代网关，`/actuator` 与业务端口不对公网开放 |
 | 网关健康 | `:18080/actuator/health` | 依赖 Redis / Nacos 的存活探针 |
 | 调度中心 | `:18090/xxl-job-admin` | 任务执行记录、手动触发、失败重试；判断“任务在跑”看 `handle_code=200`，只看触发会漏掉“调度成功但执行器不可达” |
-| 展厅账号策略 | `TrialAdminAccess` + `TrialAdminGuardInterceptor` | 公开口令的 gallery 账号：读默认允许（隐私清单除外）、写默认拒绝（退款复核显式放行）；写接口必须自带 `@SaCheckPermission` |
+| 展厅账号策略 | `TrialAdminAccess` + `TrialAdminGuardInterceptor` | 演示口令的 gallery 账号：读默认允许（隐私清单除外）、写默认拒绝（退款复核显式放行）；写接口必须自带 `@SaCheckPermission` |
 | 配置中心 | `:18848` Nacos 控制台 | `SMARTLECT_GROUP` 下的配置；改完用 `scripts/nacos_config_push.py` 推送 |
 | 指标 | 各服务 `/actuator/prometheus` | JVM / Hikari / 线程池 / 业务指标；只从内网抓 |
 | 应用日志 | `run/logs/<服务>.log` | 启动失败先看这里；`run/logs/<服务>/nacos/` 是注册与配置客户端日志 |
@@ -270,7 +266,7 @@ python3 scripts/drills/fault_drills.py all
 | Outbox 水位 | 各库 `local_message_outbox` | 积压说明投递侧异常；`EXHAUSTED` 需人工介入 |
 | 付款对账 | `payDailyReconcile` | 对比支付单/退款/渠道账本，只出差异报告，不自动改账 |
 | 订单状态历史 | `GET /admin-api/order/{orderId}/statusLog` | CAS 成功后同事务追加；创建、支付、发货、退款、关单可串成一条时间线 |
-| 部署后核对 | `scripts/probes/post_deploy_check.sh https://smartlect.cn` | 展厅矩阵 + 多节点交替检测：同一路径在期望码与其它码之间交替，说明有副本节点未更新 |
+| 部署后核对 | `scripts/probes/post_deploy_check.sh <部署地址>` | 展厅矩阵 + 多节点交替检测：同一路径在期望码与其它码之间交替，说明有副本节点未更新 |
 
 服务起不来时的顺序：`run/logs/<服务>.log` 找首个异常 → `infra-check` 确认中间件 → `apps-check` 确认注册数 → 调度类问题看 xxl-job 控制台。
 
